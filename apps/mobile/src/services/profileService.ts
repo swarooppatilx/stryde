@@ -6,6 +6,8 @@ const PRIVY_BASE_URL = 'https://auth.privy.io/api/v1';
 
 export interface PrivyMetadata {
   username?: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 type TokenProvider = () => Promise<string | null>;

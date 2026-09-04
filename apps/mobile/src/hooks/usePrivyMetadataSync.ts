@@ -9,6 +9,9 @@ export function usePrivyMetadataSync() {
 
   useEffect(() => {
     if (!user?.id) return;
+
+    useProfileStore.getState().setPrivyUserId(user.id);
+
     const localUsername = useProfileStore.getState().username;
     if (localUsername.length > 0) return;
 
@@ -17,6 +20,12 @@ export function usePrivyMetadataSync() {
       .then((metadata) => {
         if (!cancelled && metadata?.username) {
           useProfileStore.getState().setUsername(metadata.username);
+        }
+        if (!cancelled && metadata?.firstName) {
+          useProfileStore.getState().setFirstName(metadata.firstName);
+        }
+        if (!cancelled && metadata?.lastName) {
+          useProfileStore.getState().setLastName(metadata.lastName);
         }
       })
       .catch(() => {

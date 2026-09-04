@@ -8,7 +8,29 @@ export interface ElevationData {
   maxElevation: number;
 }
 
-const MAX_COORDINATES = 500;
+const BATCH_SIZE = 100;
+const FETCH_TIMEOUT_MS = 10_000;
+
+async function fetchElevationBatch(coordinates: [number, number][]): Promise<number[]> {
+  const lats = coordinates.map((c) => c[1]).join(',');
+  const lngs = coordinates.map((c) => c[0]).join(',');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${OPEN_METEO_ELEVATION_URL}?latitude=${lats}&longitude=${lngs}`, {
+      signal: controller.signal,
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.elevation ?? [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export async function getElevationForRoute(
   coordinates: [number, number][]
@@ -17,19 +39,20 @@ export async function getElevationForRoute(
 
   try {
     const sampled =
-      coordinates.length > MAX_COORDINATES
-        ? coordinates.filter((_, i) => i % Math.ceil(coordinates.length / MAX_COORDINATES) === 0)
+      coordinates.length > BATCH_SIZE * 5
+        ? coordinates.filter((_, i) => i % Math.ceil(coordinates.length / (BATCH_SIZE * 5)) === 0)
         : coordinates;
 
-    const lats = sampled.map((c) => c[1]).join(',');
-    const lngs = sampled.map((c) => c[0]).join(',');
+    const batches: [number, number][][] = [];
+    for (let i = 0; i < sampled.length; i += BATCH_SIZE) {
+      batches.push(sampled.slice(i, i + BATCH_SIZE));
+    }
 
-    const response = await fetch(`${OPEN_METEO_ELEVATION_URL}?latitude=${lats}&longitude=${lngs}`);
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const elevations: number[] = data.elevation ?? [];
+    const elevations: number[] = [];
+    for (const batch of batches) {
+      const batchElevations = await fetchElevationBatch(batch);
+      elevations.push(...batchElevations);
+    }
 
     if (elevations.length === 0) return null;
 

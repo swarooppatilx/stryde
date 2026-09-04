@@ -1,6 +1,6 @@
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getCurrentUserId } from '@/constants/config';
 import { useActivityStore } from '@/stores/activityStore';
@@ -31,7 +31,8 @@ export function useMap() {
   const [showRoutes, setShowRoutes] = useState(false);
   const cameraRef = useRef<CameraRef>(null);
   const getUserPolygons = useTerritoryStore((s) => s.getUserPolygons);
-  const userPolygons: Ring[] = getUserPolygons(getCurrentUserId());
+  const userId = getCurrentUserId();
+  const userPolygons: Ring[] = useMemo(() => getUserPolygons(userId), [getUserPolygons, userId]);
   const activities = useActivityStore((s) => s.activities);
 
   const loadLocation = useCallback(async () => {
