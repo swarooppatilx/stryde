@@ -1,14 +1,16 @@
 import { Input } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CameraRef } from '@maplibre/maplibre-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useEffect, useRef } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/button';
 import { ElevationChart } from '@/components/elevation-chart';
 import { IconBadge } from '@/components/icon-badge';
 import { type MapMarker, MapRoute } from '@/components/map-route';
+import { PhotoGrid } from '@/components/photo-grid';
 import { ShareRouteImage } from '@/components/share-route-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -128,110 +130,192 @@ export default function ActivitySummaryScreen() {
         )}
 
         <ThemedView style={[styles.statsOverlay, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedView style={styles.header}>
-            <ThemedView style={styles.headerLeft}>
-              <IconBadge size="md" backgroundColor={theme.brand.primaryTint}>
-                <Ionicons name={icon} size={20} color={theme.brand.primary} />
-              </IconBadge>
-              <ThemedView style={styles.headerText}>
-                {isEditingName ? (
-                  <Input
-                    value={editedName}
-                    onChangeText={setEditedName}
-                    onBlur={handleSaveName}
-                    onSubmitEditing={handleSaveName}
-                    autoFocus
-                    selectTextOnFocus
-                    style={styles.nameInput}
-                  />
-                ) : (
-                  <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
-                    <ThemedText type="subtitle">{activity.name}</ThemedText>
-                  </TouchableOpacity>
-                )}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.statsScroll}
+          >
+            <ThemedView style={styles.header}>
+              <ThemedView style={styles.headerLeft}>
+                <IconBadge size="md" backgroundColor={theme.brand.primaryTint}>
+                  <Ionicons name={icon} size={20} color={theme.brand.primary} />
+                </IconBadge>
+                <ThemedView style={styles.headerText}>
+                  {isEditingName ? (
+                    <Input
+                      value={editedName}
+                      onChangeText={setEditedName}
+                      onBlur={handleSaveName}
+                      onSubmitEditing={handleSaveName}
+                      autoFocus
+                      selectTextOnFocus
+                      style={styles.nameInput}
+                    />
+                  ) : (
+                    <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
+                      <ThemedText type="subtitle">{activity.name}</ThemedText>
+                    </TouchableOpacity>
+                  )}
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    {dateStr} at {timeStr}
+                  </ThemedText>
+                </ThemedView>
+              </ThemedView>
+            </ThemedView>
+
+            <ThemedView style={styles.stats}>
+              <ThemedView style={styles.stat}>
                 <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  {dateStr} at {timeStr}
+                  Distance
+                </ThemedText>
+                <ThemedText type="subtitle">{formatDistance(activity.distance)}</ThemedText>
+              </ThemedView>
+              <ThemedView style={styles.stat}>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Duration
+                </ThemedText>
+                <ThemedText type="subtitle">{formatDurationLong(activity.duration)}</ThemedText>
+              </ThemedView>
+              <ThemedView style={styles.stat}>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Pace
+                </ThemedText>
+                <ThemedText type="subtitle">
+                  {formatPace(activity.distance, activity.duration)}
                 </ThemedText>
               </ThemedView>
-            </ThemedView>
-          </ThemedView>
-
-          <ThemedView style={styles.stats}>
-            <ThemedView style={styles.stat}>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Distance
-              </ThemedText>
-              <ThemedText type="subtitle">{formatDistance(activity.distance)}</ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.stat}>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Duration
-              </ThemedText>
-              <ThemedText type="subtitle">{formatDurationLong(activity.duration)}</ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.stat}>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Pace
-              </ThemedText>
-              <ThemedText type="subtitle">
-                {formatPace(activity.distance, activity.duration)}
-              </ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.stat}>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Territory
-              </ThemedText>
-              <ThemedText type="subtitle">
-                {activity.territory ? formatArea(activity.territoryArea) : '—'}
-              </ThemedText>
-            </ThemedView>
-          </ThemedView>
-
-          {elevationData && (
-            <ThemedView style={styles.elevationSection}>
-              <ThemedView style={styles.elevationStats}>
-                <ThemedView style={styles.elevationStat}>
-                  <Ionicons name="arrow-up" size={14} color={theme.brand.success} />
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    {elevationData.totalAscent}m up
-                  </ThemedText>
-                </ThemedView>
-                <ThemedView style={styles.elevationStat}>
-                  <Ionicons name="arrow-down" size={14} color={theme.brand.danger} />
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    {elevationData.totalDescent}m down
-                  </ThemedText>
-                </ThemedView>
+              <ThemedView style={styles.stat}>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Territory
+                </ThemedText>
+                <ThemedText type="subtitle">
+                  {activity.territory ? formatArea(activity.territoryArea) : '—'}
+                </ThemedText>
               </ThemedView>
-              <ElevationChart elevations={elevationData.elevations} width={280} height={60} />
+              {activity.txHash && (
+                <ThemedView style={styles.stat}>
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    Tx Hash
+                  </ThemedText>
+                  <TouchableOpacity
+                    onPress={() => Clipboard.setStringAsync(activity.txHash!)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy transaction hash"
+                  >
+                    <ThemedText type="small" style={{ color: theme.brand.primary }}>
+                      {activity.txHash.slice(0, 10)}...{activity.txHash.slice(-8)}
+                    </ThemedText>
+                  </TouchableOpacity>
+                </ThemedView>
+              )}
             </ThemedView>
-          )}
 
-          <ThemedView style={styles.actions}>
-            <AppButton onPress={goBack} fullWidth={false} style={styles.doneButton}>
-              Done
-            </AppButton>
+            {elevationData && (
+              <ThemedView style={styles.elevationSection}>
+                <ThemedView style={styles.elevationStats}>
+                  <ThemedView style={styles.elevationStat}>
+                    <Ionicons name="arrow-up" size={14} color={theme.brand.success} />
+                    <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                      {elevationData.totalAscent}m up
+                    </ThemedText>
+                  </ThemedView>
+                  <ThemedView style={styles.elevationStat}>
+                    <Ionicons name="arrow-down" size={14} color={theme.brand.danger} />
+                    <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                      {elevationData.totalDescent}m down
+                    </ThemedText>
+                  </ThemedView>
+                </ThemedView>
+                <ElevationChart elevations={elevationData.elevations} width={280} height={60} />
+              </ThemedView>
+            )}
 
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.backgroundSelected }]}
-              onPress={handleShare}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Share activity"
-            >
-              <Ionicons name="share-outline" size={20} color={theme.text} />
-            </TouchableOpacity>
+            {/* Feel & Privacy badges */}
+            {(activity.feel || activity.privacy) && (
+              <ThemedView style={styles.badgeRow}>
+                {activity.feel && (
+                  <ThemedView style={[styles.badge, { backgroundColor: theme.brand.primaryTint }]}>
+                    <ThemedText type="caption" style={{ color: theme.brand.primary }}>
+                      {activity.feel === 'great'
+                        ? '😍'
+                        : activity.feel === 'good'
+                          ? '😊'
+                          : activity.feel === 'ok'
+                            ? '😐'
+                            : activity.feel === 'bad'
+                              ? '😕'
+                              : '😫'}{' '}
+                      {activity.feel.charAt(0).toUpperCase() + activity.feel.slice(1)}
+                    </ThemedText>
+                  </ThemedView>
+                )}
+                {activity.privacy && (
+                  <ThemedView style={[styles.badge, { backgroundColor: theme.brand.primaryTint }]}>
+                    <Ionicons
+                      name={
+                        activity.privacy === 'everyone'
+                          ? 'globe-outline'
+                          : activity.privacy === 'followers'
+                            ? 'people-outline'
+                            : 'lock-closed-outline'
+                      }
+                      size={14}
+                      color={theme.brand.primary}
+                    />
+                    <ThemedText type="caption" style={{ color: theme.brand.primary }}>
+                      {activity.privacy === 'everyone'
+                        ? 'Everyone'
+                        : activity.privacy === 'followers'
+                          ? 'Followers'
+                          : 'Only Me'}
+                    </ThemedText>
+                  </ThemedView>
+                )}
+              </ThemedView>
+            )}
 
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.backgroundSelected }]}
-              onPress={handleDelete}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Delete activity"
-            >
-              <Ionicons name="trash-outline" size={20} color={theme.brand.danger} />
-            </TouchableOpacity>
-          </ThemedView>
+            {/* Photos */}
+            {activity.images && activity.images.length > 0 && (
+              <ThemedView style={styles.photoSection}>
+                <PhotoGrid photos={activity.images} maxHeight={200} />
+              </ThemedView>
+            )}
+
+            {/* Description */}
+            {activity.description && (
+              <ThemedView style={styles.descriptionSection}>
+                <ThemedText type="small" style={{ color: theme.text }}>
+                  {activity.description}
+                </ThemedText>
+              </ThemedView>
+            )}
+
+            <ThemedView style={styles.actions}>
+              <AppButton onPress={goBack} fullWidth={false} style={styles.doneButton}>
+                Done
+              </AppButton>
+
+              <TouchableOpacity
+                style={[styles.iconButton, { backgroundColor: theme.backgroundSelected }]}
+                onPress={handleShare}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Share activity"
+              >
+                <Ionicons name="share-outline" size={20} color={theme.text} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.iconButton, { backgroundColor: theme.backgroundSelected }]}
+                onPress={handleDelete}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Delete activity"
+              >
+                <Ionicons name="trash-outline" size={20} color={theme.brand.danger} />
+              </TouchableOpacity>
+            </ThemedView>
+          </ScrollView>
         </ThemedView>
       </SafeAreaView>
 
@@ -271,11 +355,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: Spacing.four,
+    maxHeight: '70%',
     paddingBottom: Spacing.six,
-    gap: Spacing.three,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
+  },
+  statsScroll: {
+    padding: Spacing.four,
+    gap: Spacing.three,
   },
   header: {
     flexDirection: 'row',
@@ -340,5 +427,24 @@ const styles = StyleSheet.create({
     height: 1080,
     opacity: 0.01,
     zIndex: -1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    flexWrap: 'wrap',
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: BorderRadius.full,
+  },
+  photoSection: {
+    marginTop: Spacing.two,
+  },
+  descriptionSection: {
+    marginTop: Spacing.two,
   },
 });
