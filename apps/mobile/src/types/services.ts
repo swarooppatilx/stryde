@@ -14,6 +14,7 @@ export interface ITrackingService {
   getStartTime(): number | null;
   generatePolyline(): string;
   setUseGyroscope(enabled: boolean): void;
+  setMaxSpeed(kmh: number): void;
   getInterpolatedDistance(): number;
   generateInterpolatedPolyline(): string;
   generateInterpolatedPoint(): Location | null;
@@ -25,9 +26,15 @@ export interface IActivityService {
   activities: Activity[];
   saveActivity(activity: Activity): void;
   deleteActivity(id: string): void;
-  updateActivity(id: string, updates: Partial<Pick<Activity, 'name'>>): void;
+  updateActivity(
+    id: string,
+    updates: Partial<
+      Pick<Activity, 'name' | 'description' | 'feel' | 'privacy' | 'images' | 'txHash'>
+    >
+  ): void;
   getActivityById(id: string): Activity | undefined;
   reset(): void;
+  setActivities: (activities: Activity[]) => void;
 }
 
 export interface ITerritoryService {
@@ -37,6 +44,11 @@ export interface ITerritoryService {
 }
 
 export interface IProfileService {
-  fetchMetadata(userId: string): Promise<{ username?: string } | null>;
-  updateMetadata(userId: string, metadata: { username?: string }): Promise<boolean>;
+  fetchMetadata(
+    userId: string
+  ): Promise<{ username?: string; firstName?: string; lastName?: string } | null>;
+  updateMetadata(
+    userId: string,
+    metadata: { username?: string; firstName?: string; lastName?: string }
+  ): Promise<boolean>;
 }
