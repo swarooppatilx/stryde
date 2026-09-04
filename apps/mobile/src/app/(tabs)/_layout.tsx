@@ -54,11 +54,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="activities"
+        name="groups"
         options={{
-          title: 'Activities',
+          title: 'Groups',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'list' : 'list-outline'} size={size} color={color} />
+            <Ionicons name={focused ? 'people' : 'people-outline'} size={size} color={color} />
           ),
         }}
       />
