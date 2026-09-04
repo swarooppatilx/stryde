@@ -62,12 +62,12 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     chainId: 31337,
     rpcUrl: DEFAULT_LOCAL_RPC,
     contracts: {
-      profileRegistry: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
-      activityRegistry: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0',
-      territoryRegistry: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9',
-      seasonManager: '0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9',
-      achievementRegistry: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707',
-      challengeRegistry: '0x0165878A594ca255338adfa4d48449f69242Eb8F',
+      profileRegistry: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      activityRegistry: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
+      territoryRegistry: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0',
+      seasonManager: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9',
+      achievementRegistry: '0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9',
+      challengeRegistry: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707',
     },
   },
 };
@@ -86,13 +86,34 @@ export function getChainConfigByChainId(chainId: number): ChainConfig | undefine
 
 export const DEFAULT_CHAIN_MODE: ChainMode = 'ethereum-sepolia';
 
-export const ACTIVITY_TYPES = ['run', 'ride', 'walk', 'hike'] as const;
+export const ACTIVITY_TYPES = [
+  'run',
+  'ride',
+  'walk',
+  'hike',
+  'swim',
+  'yoga',
+  'workout',
+  'hiit',
+  'dance',
+  'climb',
+  'skate',
+  'row',
+] as const;
 
 export const ACTIVITY_TYPE_MAP: Record<ActivityType, number> = {
   run: 0,
   ride: 1,
   walk: 2,
   hike: 3,
+  swim: 4,
+  yoga: 5,
+  workout: 6,
+  hiit: 7,
+  dance: 8,
+  climb: 9,
+  skate: 10,
+  row: 11,
 };
 
 export const ACTIVITY_TYPE_BY_ID: Record<number, ActivityType> = {
@@ -100,6 +121,14 @@ export const ACTIVITY_TYPE_BY_ID: Record<number, ActivityType> = {
   1: 'ride',
   2: 'walk',
   3: 'hike',
+  4: 'swim',
+  5: 'yoga',
+  6: 'workout',
+  7: 'hiit',
+  8: 'dance',
+  9: 'climb',
+  10: 'skate',
+  11: 'row',
 };
 
 export const TERRITORY_MIN_AREA = 1000;

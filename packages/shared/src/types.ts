@@ -1,4 +1,16 @@
-export type ActivityType = 'run' | 'ride' | 'walk' | 'hike';
+export type ActivityType =
+  | 'run'
+  | 'ride'
+  | 'walk'
+  | 'hike'
+  | 'swim'
+  | 'yoga'
+  | 'workout'
+  | 'hiit'
+  | 'dance'
+  | 'climb'
+  | 'skate'
+  | 'row';
 
 export type Ring = [number, number][];
 
