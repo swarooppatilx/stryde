@@ -1,4 +1,11 @@
-import type { Activity, ActivityType } from '@/types';
+import type { Activity, ActivityType, User } from '@/types';
+
+export function getDisplayName(user: User): string {
+  if (user.firstName) {
+    return user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName;
+  }
+  return user.username || 'Unknown';
+}
 
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)}m`;
@@ -54,8 +61,39 @@ export function getActivityName(type: string, hour: number): string {
     ride: 'Ride',
     walk: 'Walk',
     hike: 'Hike',
+    swim: 'Swim',
+    yoga: 'Yoga',
+    workout: 'Workout',
+    hiit: 'HIIT',
+    dance: 'Dance',
+    climb: 'Climb',
+    skate: 'Skate',
+    row: 'Row',
   };
   return `${timeOfDay} ${labels[type] || 'Activity'}`;
+}
+
+export function formatRelativeTime(date: Date, compact = false): string {
+  const now = Date.now();
+  const diff = now - new Date(date).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return compact ? `${mins}m` : `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return compact ? `${hrs}h` : `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1 && !compact) return 'yesterday';
+  if (days < 7) return compact ? `${days}d` : `${days}d ago`;
+  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 export interface WeeklyStats {

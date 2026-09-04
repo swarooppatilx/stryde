@@ -11,13 +11,14 @@ export function computeStreak(activities: Activity[]): StreakData {
   const daySet = new Set<string>();
   for (const a of activities) {
     const d = new Date(a.createdAt);
-    daySet.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    daySet.add(key);
   }
 
   const days = Array.from(daySet)
     .map((s) => {
       const [y, m, d] = s.split('-').map(Number);
-      return new Date(y, m, d).getTime();
+      return new Date(y, m - 1, d).getTime();
     })
     .sort((a, b) => b - a);
 
@@ -27,7 +28,12 @@ export function computeStreak(activities: Activity[]): StreakData {
   const msPerDay = 86400000;
 
   let current = 0;
-  let expected = todayMs;
+  // Give grace: if user hasn't exercised today yet, start counting from yesterday
+  let expected = daySet.has(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  )
+    ? todayMs
+    : todayMs - msPerDay;
   for (const day of days) {
     if (day === expected) {
       current++;
