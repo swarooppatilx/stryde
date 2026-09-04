@@ -1,0 +1,7 @@
+pre-commit:
+  parallel: true
+  commands:
+    check:
+      glob: "*.{ts,tsx,js,json}"
+      run: yarn biome check --write {staged_files}
+      stage_fixed: true
