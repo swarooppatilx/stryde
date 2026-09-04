@@ -1,0 +1,89 @@
+specVersion: 1.0.0
+indexerVersion: 1.0.0
+schema: schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: ProfileRegistry
+    network: base-sepolia
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: ProfileRegistry
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Profile
+      abis:
+        - name: ProfileRegistry
+          file: ../contracts/out/ProfileRegistry.sol/ProfileRegistry.json
+      eventHandlers:
+        - event: ProfileCreated(uint256 indexed profileId, address indexed wallet, string username, uint256 joinedAt)
+          handler: handleProfileCreated
+      file: src/mappings/ProfileRegistry.ts
+  - kind: ethereum/contract
+    name: ActivityRegistry
+    network: base-sepolia
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: ActivityRegistry
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Activity
+      abis:
+        - name: ActivityRegistry
+          file: ../contracts/out/ActivityRegistry.sol/ActivityRegistry.json
+      eventHandlers:
+        - event: ActivityRecorded(uint256 indexed activityId, address indexed owner, bytes32 indexed activityHash, uint8 activityType, uint256 distance, uint256 duration, uint256 timestamp, uint256 territoryArea)
+          handler: handleActivityRecorded
+      file: src/mappings/ActivityRegistry.ts
+  - kind: ethereum/contract
+    name: TerritoryRegistry
+    network: base-sepolia
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: TerritoryRegistry
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Territory
+      abis:
+        - name: TerritoryRegistry
+          file: ../contracts/out/TerritoryRegistry.sol/TerritoryRegistry.json
+      eventHandlers:
+        - event: TerritoryClaimed(bytes32 indexed territoryId, address indexed controller, uint256 areaSqm, bytes32 polygonHash, int32 minLng, int32 minLat, int32 maxLng, int32 maxLat, uint256 capturedAt, uint256 strength)
+          handler: handleTerritoryClaimed
+        - event: TerritoryReinforced(bytes32 indexed territoryId, address indexed controller, uint256 reinforcedAt, uint256 strength)
+          handler: handleTerritoryReinforced
+      file: src/mappings/TerritoryRegistry.ts
+  - kind: ethereum/contract
+    name: SeasonManager
+    network: base-sepolia
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: SeasonManager
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Season
+        - Contribution
+      abis:
+        - name: SeasonManager
+          file: ../contracts/out/SeasonManager.sol/SeasonManager.json
+      eventHandlers:
+        - event: SeasonStarted(uint256 indexed seasonId, uint256 startTime, uint256 endTime)
+          handler: handleSeasonStarted
+        - event: ContributionRecorded(uint256 indexed seasonId, address indexed participant, uint256 contribution, uint256 total)
+          handler: handleContributionRecorded
+      file: src/mappings/SeasonManager.ts

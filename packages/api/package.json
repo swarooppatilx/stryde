@@ -1,0 +1,24 @@
+{
+  "name": "@repo/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env --import tsx src/dev.ts",
+    "build": "tsc",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "hono": "^4.13.3"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "26.4.1",
+    "tsx": "^4.19.0",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
