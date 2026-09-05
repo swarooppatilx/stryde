@@ -42,6 +42,9 @@ class MotionSensorService {
   }
 
   async start(options?: { rate?: 10 | 50; onUpdate?: () => void }): Promise<void> {
+    // Prevent duplicate subscriptions
+    if (this.gyroSub || this.accelSub) this.stop();
+
     this.onUpdate = options?.onUpdate ?? null;
     const intervalMs = 1000 / (options?.rate ?? 10);
 
@@ -55,7 +58,9 @@ class MotionSensorService {
 
         if (dt > 0 && dt < 1) {
           this.state.accumulatedRotation += data.z * dt;
-          this.state.heading = this.state.accumulatedRotation;
+          // Normalize to [0, 2π] for consistent external consumption
+          this.state.heading =
+            ((this.state.accumulatedRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
         }
 
         this.state.gyroAvailable = true;
