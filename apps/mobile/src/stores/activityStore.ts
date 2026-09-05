@@ -3,7 +3,9 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { IActivityService } from '../types/services';
 import { asyncStorageAdapter, isoDateReviver } from '../utils/storage';
 
-interface ActivityState extends IActivityService {}
+interface ActivityState extends IActivityService {
+  setActivities: (activities: import('@/types').Activity[]) => void;
+}
 
 export const useActivityStore = create<ActivityState>()(
   persist(
@@ -24,10 +26,16 @@ export const useActivityStore = create<ActivityState>()(
         })),
       getActivityById: (id) => get().activities.find((a) => a.id === id),
       reset: () => set({ activities: [] }),
+      setActivities: (activities) => set({ activities }),
     }),
     {
-      name: '@onchainstrava/activities',
+      name: '@stryde/activities',
+      version: 1,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      migrate: (persistedState: unknown, version: number) => {
+        if (version < 1) return undefined;
+        return persistedState;
+      },
     }
   )
 );
