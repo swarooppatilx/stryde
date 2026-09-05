@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
+import { getDisplayName, getInitials } from '@/utils/format';
 
 interface AvatarStackProps {
   userIds: string[];
@@ -22,13 +23,7 @@ export function AvatarStack({ userIds, max = 3, size = 24 }: AvatarStackProps) {
     <View style={styles.container}>
       {visible.map((userId, i) => {
         const user = getUserById(userId);
-        const name = user?.name ?? '?';
-        const initials = name
-          .split(' ')
-          .map((n) => n[0])
-          .join('')
-          .slice(0, 2)
-          .toUpperCase();
+        const initials = user ? getInitials(getDisplayName(user)) : '?';
 
         return (
           <View

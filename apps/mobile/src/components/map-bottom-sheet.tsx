@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -16,7 +16,6 @@ import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActivityStore } from '@/stores/activityStore';
-import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
 import { formatArea, formatDistance, formatDuration } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -44,18 +43,18 @@ export function MapBottomSheet() {
   const theme = useTheme();
   const router = useRouter();
   const userActivities = useActivityStore((s) => s.activities);
-  const socialActivities = useSocialStore((s) => s.activities);
-  const totalArea = useTerritoryStore((s) => s.getTotalArea(getCurrentUserId()));
-  const polygonCount = useTerritoryStore((s) => s.getUserPolygons(getCurrentUserId()).length);
+  const getTotalArea = useTerritoryStore((s) => s.getTotalArea);
+  const getUserPolygons = useTerritoryStore((s) => s.getUserPolygons);
+  const userId = getCurrentUserId();
+  const totalArea = useMemo(() => getTotalArea(userId), [getTotalArea, userId]);
+  const polygonCount = useMemo(() => getUserPolygons(userId).length, [getUserPolygons, userId]);
 
   // Starting fully collapsed leaves only a sliver that's hard to notice or
   // hit - default to 'peek' so territory/route info is visible immediately.
   const [snap, setSnap] = useState<SnapPoint>('peek');
   const animatedHeight = useSharedValue(PEEK_HEIGHT);
 
-  const recentWithRoute = [...userActivities, ...socialActivities]
-    .filter((a) => a.polyline?.includes(','))
-    .slice(0, 5);
+  const recentWithRoute = userActivities.filter((a) => a.polyline?.includes(',')).slice(0, 5);
 
   // Animate height when snap changes
   useEffect(() => {
@@ -148,7 +147,7 @@ export function MapBottomSheet() {
                     Recent Routes
                   </ThemedText>
                   <TouchableOpacity
-                    onPress={() => router.push('/(tabs)/activities')}
+                    onPress={() => router.push('/(tabs)/profile')}
                     accessibilityRole="button"
                     accessibilityLabel="View all activities"
                   >

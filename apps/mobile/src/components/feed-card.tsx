@@ -24,15 +24,15 @@ import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
-import type { MockActivity, MockUser } from '@/data/mock-social';
 import { useTheme } from '@/hooks/use-theme';
+import type { SocialActivity, SocialUser } from '@/stores/socialStore';
 import { useSocialStore } from '@/stores/socialStore';
-import { formatDistance, formatDuration } from '@/utils/format';
+import { formatDistance, formatDuration, getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 
 interface FeedCardProps {
-  activity: MockActivity;
-  user: MockUser;
+  activity: SocialActivity;
+  user: SocialUser;
   onKudos: () => void;
   onComment: () => void;
   onPress: () => void;
@@ -100,7 +100,7 @@ function MediaSection({
   onPress,
   onMapPress,
 }: {
-  activity: MockActivity;
+  activity: SocialActivity;
   icon: keyof typeof Ionicons.glyphMap;
   theme: ReturnType<typeof useTheme>;
   onPress: () => void;
@@ -277,12 +277,12 @@ export function FeedCard({
         activeOpacity={0.7}
         onPress={onUserPress ?? onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${user.name}'s activity`}
+        accessibilityLabel={`${user.username}'s activity`}
       >
-        <UserAvatar name={user.name} />
+        <UserAvatar name={user.username} />
         <ThemedView style={styles.headerText}>
           <ThemedText type="smallBold" numberOfLines={1}>
-            {user.name}
+            {user.username}
           </ThemedText>
           <ThemedText type="caption" style={{ color: theme.textSecondary }}>
             {formatRelativeTime(activity.createdAt)} ·{' '}
@@ -454,10 +454,11 @@ export function FeedCard({
 
 function getUserDisplayName(
   userId: string,
-  getUserById: (id: string) => MockUser | undefined
+  getUserById: (id: string) => SocialUser | undefined
 ): string {
   if (userId === getCurrentUserId()) return 'You';
-  return getUserById(userId)?.name?.split(' ')[0] ?? 'Unknown';
+  const user = getUserById(userId);
+  return user ? getDisplayName(user).split(' ')[0] : 'Unknown';
 }
 
 const styles = StyleSheet.create({

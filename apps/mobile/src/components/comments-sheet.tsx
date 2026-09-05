@@ -19,6 +19,7 @@ import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
+import { getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 
 interface CommentsSheetProps {
@@ -60,6 +61,7 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
   const getUserById = useSocialStore((s) => s.getUserById);
 
   // Reset text when switching activities
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activityId is a trigger, not read in the body
   useEffect(() => {
     setText('');
   }, [activityId]);
@@ -168,7 +170,11 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
               activity.comments.map((comment) => {
                 const commentUser = getUserById(comment.userId);
                 const isMe = comment.userId === getCurrentUserId();
-                const displayName = isMe ? 'You' : (commentUser?.name ?? 'Unknown');
+                const displayName = isMe
+                  ? 'You'
+                  : commentUser
+                    ? getDisplayName(commentUser)
+                    : 'Unknown';
                 const likeCount = comment.likedBy?.length ?? 0;
                 const hasLiked = (comment.likedBy ?? []).includes(getCurrentUserId());
 
