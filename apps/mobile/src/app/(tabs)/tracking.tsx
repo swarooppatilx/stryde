@@ -1,44 +1,40 @@
 import { Ionicons } from '@expo/vector-icons';
-import { services } from '@repo/shared';
 import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { useShallow } from 'zustand/shallow';
 import { type MapMarker, MapRoute } from '@/components/map-route';
 import { ThemedText } from '@/components/themed-text';
-import { DEFAULT_CENTER, ENV, MAP_STYLES } from '@/constants/config';
+import { SPORT_TYPES } from '@/constants/activity';
+import { DEFAULT_CENTER, MAP_STYLES } from '@/constants/config';
 import { BorderRadius, Brand, Colors, ShadowDark, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useViemWallet } from '@/hooks/useViemWallet';
 import { motionSensorService } from '@/services/motionSensorService';
 import { territoryService } from '@/services/territoryService';
 import { trackingService } from '@/services/trackingService';
-import { useActivityStore } from '@/stores/activityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useTerritoryStore } from '@/stores/territoryStore';
 import type { ActivityType, Location as LocationType, Ring } from '@/types';
-import {
-  formatArea,
-  formatDistance,
-  formatDurationLong,
-  formatPace,
-  getActivityName,
-} from '@/utils/format';
+import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
-import { generateId } from '@/utils/id';
 
-const ACTIVITY_TYPES: {
-  type: ActivityType;
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-}[] = [
-  { type: 'run', icon: 'walk-outline', label: 'Run' },
-  { type: 'ride', icon: 'bicycle-outline', label: 'Ride' },
-  { type: 'walk', icon: 'footsteps-outline', label: 'Walk' },
-  { type: 'hike', icon: 'leaf-outline', label: 'Hike' },
-];
+const ACTIVITY_TYPES = SPORT_TYPES;
+
+const SPEED_LIMITS_KMH: Record<ActivityType, number> = {
+  run: 25,
+  walk: 10,
+  hike: 15,
+  ride: 50,
+  swim: 8,
+  yoga: 5,
+  workout: 10,
+  hiit: 15,
+  dance: 15,
+  climb: 10,
+  skate: 20,
+  row: 15,
+};
 
 export default function TrackingScreen() {
   const [isTracking, setIsTracking] = useState(false);
@@ -52,10 +48,12 @@ export default function TrackingScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [trackedPolygon, setTrackedPolygon] = useState<Ring | null>(null);
   const [startLocation, setStartLocation] = useState<[number, number] | null>(null);
-  const { saveActivity } = useActivityStore();
-  const { capturePolygon } = useTerritoryStore();
-  const { useGyroscopeAssist, sensorUpdateRate } = useSettingsStore();
-  const { wallet } = useViemWallet(ENV.CHAIN_MODE);
+  const { useGyroscopeAssist, sensorUpdateRate } = useSettingsStore(
+    useShallow((s) => ({
+      useGyroscopeAssist: s.useGyroscopeAssist,
+      sensorUpdateRate: s.sensorUpdateRate,
+    }))
+  );
   const router = useRouter();
   const navigation = useNavigation();
   const theme = useTheme();
@@ -205,6 +203,7 @@ export default function TrackingScreen() {
   }, [isTracking, useGyroscopeAssist]);
 
   const handleStart = async () => {
+    trackingService.setMaxSpeed(SPEED_LIMITS_KMH[activityType]);
     await trackingService.startTracking();
     setIsTracking(true);
     setIsPaused(false);
@@ -256,64 +255,27 @@ export default function TrackingScreen() {
     setIsPaused(false);
     setExpanded(false);
 
-    const hour = new Date().getHours();
-    const activity = {
-      id: generateId(),
-      userId: 'current',
-      name: getActivityName(activityType, hour),
-      activityType,
-      distance: finalDistance,
-      duration: finalDuration,
-      polyline,
-      territory,
-      territoryArea,
-      createdAt: new Date(),
-    };
-
-    saveActivity(activity);
-
-    if (wallet) {
-      try {
-        const { txHash } = await services.activity.recordActivity(wallet, {
-          polyline,
-          activityType,
-          distance: finalDistance,
-          duration: finalDuration,
-          territoryArea,
-        });
-        console.log('[Tracking] Activity recorded onchain:', txHash);
-      } catch (err) {
-        console.warn('[Tracking] Onchain recordActivity failed:', err);
-      }
-
-      if (territory) {
-        try {
-          const { txHash } = await services.territory.claimTerritory(wallet, {
-            polygon: territory,
-            areaSqm: territoryArea,
-          });
-          console.log('[Tracking] Territory claimed onchain:', txHash);
-        } catch (err) {
-          console.warn('[Tracking] Onchain claimTerritory failed:', err);
-        }
-      }
-    }
-
-    const goToSummary = () => {
+    const goToCreateActivity = () => {
       router.push({
-        pathname: '/activity-summary',
-        params: { id: activity.id },
+        pathname: '/create-activity',
+        params: {
+          polyline,
+          distance: String(finalDistance),
+          duration: String(finalDuration),
+          territoryArea: String(territoryArea),
+          activityType,
+          ...(territory ? { territory: JSON.stringify(territory) } : {}),
+        },
       });
     };
 
     if (territory) {
-      capturePolygon('current', territory);
-      goToSummary();
+      goToCreateActivity();
     } else {
       Alert.alert(
         'No Territory Captured',
         'Your route needs to loop back to where you started to claim the ground you covered.',
-        [{ text: 'OK', onPress: goToSummary }]
+        [{ text: 'OK', onPress: goToCreateActivity }]
       );
     }
   };
