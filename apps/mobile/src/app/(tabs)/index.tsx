@@ -1,8 +1,17 @@
 import { Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  Alert,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,7 +21,7 @@ import { CommentsSheet } from '@/components/comments-sheet';
 import { FeedCard } from '@/components/feed-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActivityStore } from '@/stores/activityStore';
 import { useSocialStore } from '@/stores/socialStore';
@@ -30,19 +39,20 @@ export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
   const activities = useActivityStore((s) => s.activities);
+  const socialActivities = useSocialStore((s) => s.activities);
+  const fetchActivities = useSocialStore((s) => s.fetchActivities);
   const getUserById = useSocialStore((s) => s.getUserById);
   const toggleKudos = useSocialStore((s) => s.toggleKudos);
 
   const [commentActivityId, setCommentActivityId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showActionSheet, setShowActionSheet] = useState(false);
 
   const weekStats = useMemo(() => {
     const weekly = getWeeklyStats(activities);
     return { count: weekly.activityCount, distance: weekly.totalDistance };
   }, [activities]);
 
-  // Subscribe to social activities directly — useMemo recomputes when this changes
-  const socialActivities = useSocialStore((s) => s.activities);
   const feed = useMemo(
     () =>
       [...socialActivities].sort(
@@ -54,8 +64,43 @@ export default function HomeScreen() {
   const onRefresh = useCallback(() => {
     haptics.selection();
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
+    fetchActivities().finally(() => setRefreshing(false));
+  }, [fetchActivities]);
+
+  const handleFabAction = (action: 'record' | 'manual' | 'photo') => {
+    haptics.tap();
+    setShowActionSheet(false);
+
+    if (action === 'record') {
+      router.push('/(tabs)/tracking');
+    } else if (action === 'manual') {
+      router.push('/create-activity');
+    } else {
+      pickPhotoForPost();
+    }
+  };
+
+  const pickPhotoForPost = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Photo library access is required to post photos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      const pickedPhotos = result.assets.map((a) => a.uri);
+      router.push({
+        pathname: '/create-activity',
+        params: { photos: JSON.stringify(pickedPhotos) },
+      });
+    }
+  };
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -175,6 +220,98 @@ export default function HomeScreen() {
         </ScrollView>
       </SafeAreaView>
 
+      {/* ── FAB ── */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: theme.brand.primary }]}
+        activeOpacity={0.8}
+        onPress={() => {
+          haptics.impactMedium();
+          setShowActionSheet(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Create new activity"
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
+
+      {/* ── Action Sheet Modal ── */}
+      <Modal
+        visible={showActionSheet}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setShowActionSheet(false)}
+        >
+          <ThemedView
+            style={[styles.actionSheet, { backgroundColor: theme.backgroundElement }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <ThemedText type="sectionTitle" style={styles.actionSheetTitle}>
+              New Activity
+            </ThemedText>
+
+            <TouchableOpacity
+              style={[styles.actionItem, { borderBottomColor: theme.border }]}
+              activeOpacity={0.7}
+              onPress={() => handleFabAction('record')}
+            >
+              <View
+                style={[styles.actionIcon, { backgroundColor: tint(theme.brand.primary, 0.12) }]}
+              >
+                <Ionicons name="navigate" size={22} color={theme.brand.primary} />
+              </View>
+              <View style={styles.actionText}>
+                <ThemedText type="smallBold">Record Activity</ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  GPS tracked run, ride, or walk
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionItem, { borderBottomColor: theme.border }]}
+              activeOpacity={0.7}
+              onPress={() => handleFabAction('manual')}
+            >
+              <View
+                style={[styles.actionIcon, { backgroundColor: tint(theme.brand.success, 0.12) }]}
+              >
+                <Ionicons name="create-outline" size={22} color={theme.brand.success} />
+              </View>
+              <View style={styles.actionText}>
+                <ThemedText type="smallBold">Manual Entry</ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  Log distance and duration
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionItem}
+              activeOpacity={0.7}
+              onPress={() => handleFabAction('photo')}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: tint('#8B5CF6', 0.12) }]}>
+                <Ionicons name="camera" size={22} color="#8B5CF6" />
+              </View>
+              <View style={styles.actionText}>
+                <ThemedText type="smallBold">Post Photo</ThemedText>
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  Share a photo from your activity
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </ThemedView>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Comments sheet */}
       <CommentsSheet
         visible={commentActivityId !== null}
@@ -238,5 +375,57 @@ const styles = StyleSheet.create({
     padding: Spacing.five,
     alignItems: 'center',
     gap: Spacing.two,
+  },
+
+  /* FAB */
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  /* Action Sheet */
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+    paddingBottom: 34,
+  },
+  actionSheet: {
+    marginHorizontal: Spacing.four,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  actionSheetTitle: {
+    textAlign: 'center',
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  actionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    flex: 1,
+    gap: 2,
   },
 });
