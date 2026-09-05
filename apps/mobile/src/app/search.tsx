@@ -10,7 +10,7 @@ import { SPORT_ICONS } from '@/constants/activity';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
-import { formatDistance } from '@/utils/format';
+import { formatDistance, getDisplayName, getInitials } from '@/utils/format';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -96,35 +96,34 @@ export default function SearchScreen() {
               >
                 People
               </ThemedText>
-              {users.map((user) => (
-                <TouchableOpacity
-                  key={user.id}
-                  style={[styles.userRow, { backgroundColor: theme.backgroundElement }]}
-                  activeOpacity={0.7}
-                  onPress={() => router.push(`/user-profile?id=${user.id}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={user.name}
-                >
-                  <View style={[styles.userAvatar, { backgroundColor: theme.brand.primaryTint }]}>
-                    <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
-                      {user.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .join('')
-                        .slice(0, 2)}
-                    </ThemedText>
-                  </View>
-                  <ThemedView style={styles.userInfo}>
-                    <ThemedText type="smallBold" numberOfLines={1}>
-                      {user.name}
-                    </ThemedText>
-                    <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                      @{user.username} · {user.followers} followers
-                    </ThemedText>
-                  </ThemedView>
-                  <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-                </TouchableOpacity>
-              ))}
+              {users.map((user) => {
+                const displayName = getDisplayName(user);
+                return (
+                  <TouchableOpacity
+                    key={user.id}
+                    style={[styles.userRow, { backgroundColor: theme.backgroundElement }]}
+                    activeOpacity={0.7}
+                    onPress={() => router.push(`/user-profile?id=${user.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={displayName}
+                  >
+                    <View style={[styles.userAvatar, { backgroundColor: theme.brand.primaryTint }]}>
+                      <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
+                        {getInitials(displayName)}
+                      </ThemedText>
+                    </View>
+                    <ThemedView style={styles.userInfo}>
+                      <ThemedText type="smallBold" numberOfLines={1}>
+                        {displayName}
+                      </ThemedText>
+                      <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                        @{user.username} · {user.followers} followers
+                      </ThemedText>
+                    </ThemedView>
+                    <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+                  </TouchableOpacity>
+                );
+              })}
             </ThemedView>
           )}
 

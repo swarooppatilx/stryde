@@ -18,13 +18,14 @@ export default function RegisteringScreen() {
   const [status, setStatus] = useState('Checking registration...');
   const setUsername = useProfileStore((s) => s.setUsername);
   const setWallet = useProfileStore((s) => s.setWallet);
+  const setProfileId = useProfileStore((s) => s.setProfileId);
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       try {
-        if (!wallet) {
+        if (!wallet?.account) {
           setStatus('Waiting for wallet...');
           return;
         }
@@ -34,7 +35,17 @@ export default function RegisteringScreen() {
         const registered = await services.profile.isRegistered(address);
         if (registered) {
           if (!cancelled) {
-            setUsername('registered');
+            let username = 'registered';
+            try {
+              const users = await services.profile.getRegisteredUsers();
+              const match = users.find((u) => u.wallet.toLowerCase() === address.toLowerCase());
+              if (match?.username) {
+                username = match.username;
+              }
+            } catch {
+              // fallback to 'registered' if lookup fails
+            }
+            setUsername(username);
             setWallet(address);
             router.replace('/(tabs)');
           }
@@ -52,12 +63,17 @@ export default function RegisteringScreen() {
           setStatus(`Registering "${username}"...`);
         }
 
-        const { txHash } = await services.profile.register(wallet, username);
-        console.log('[Registering] Registered onchain:', txHash);
+        const { profileId, confirmed } = await services.profile.register(wallet, username);
+
+        if (!confirmed) {
+          if (!cancelled) setStatus('Registration failed');
+          return;
+        }
 
         if (!cancelled) {
           setUsername(username);
           setWallet(address);
+          setProfileId(profileId.toString());
           router.replace('/(tabs)');
         }
       } catch (error) {
@@ -73,7 +89,7 @@ export default function RegisteringScreen() {
     return () => {
       cancelled = true;
     };
-  }, [wallet, user]);
+  }, [wallet, user, setUsername, setWallet, setProfileId, router.replace]);
 
   return (
     <ThemedView type="background" style={styles.container}>
