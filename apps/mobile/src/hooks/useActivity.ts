@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, type View } from 'react-native';
+import { useShallow } from 'zustand/shallow';
 
 import { type ElevationData, getElevationForRoute } from '@/services/elevationService';
 import { useActivityStore } from '@/stores/activityStore';
@@ -11,8 +12,15 @@ import { shareRouteImage } from '@/utils/share';
 
 export function useActivity() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getActivityById, deleteActivity, updateActivity } = useActivityStore();
-  const socialActivities = useSocialStore((s) => s.activities);
+  const getActivityById = useActivityStore((s) => s.getActivityById);
+  const deleteActivity = useActivityStore((s) => s.deleteActivity);
+  const updateActivity = useActivityStore((s) => s.updateActivity);
+  const { socialActivities, updateSocialActivity } = useSocialStore(
+    useShallow((s) => ({
+      socialActivities: s.activities,
+      updateSocialActivity: s.updateActivity,
+    }))
+  );
   const router = useRouter();
   const [coordinates, setCoordinates] = useState<[number, number][]>([]);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -73,7 +81,12 @@ export function useActivity() {
   const saveName = () => {
     const trimmed = editedName.trim();
     if (trimmed.length > 0 && activity) {
-      updateActivity(activity.id, { name: trimmed });
+      const inActivityStore = getActivityById(activity.id);
+      if (inActivityStore) {
+        updateActivity(activity.id, { name: trimmed });
+      } else {
+        updateSocialActivity(activity.id, { name: trimmed });
+      }
     }
     setIsEditingName(false);
   };

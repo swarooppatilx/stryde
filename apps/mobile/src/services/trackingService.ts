@@ -4,7 +4,7 @@ import { haversineDistance, rejectOutliers, smoothLocations } from '../utils/geo
 import { asyncStorageAdapter, type StorageAdapter } from '../utils/storage';
 import { motionSensorService } from './motionSensorService';
 
-const TRACKING_KEY = '@onchainstrava/tracking';
+const TRACKING_KEY = '@stryde/tracking';
 const DEFAULT_STEP_LENGTH = 0.7;
 
 export class TrackingService implements ITrackingService {
@@ -24,6 +24,7 @@ export class TrackingService implements ITrackingService {
   private stepsSinceLastGps = 0;
   private lastInterpolatedLocation: Location | null = null;
   private useGyroscope = true;
+  private maxSpeedKmh = 25;
 
   private constructor(storage: StorageAdapter = asyncStorageAdapter) {
     this.storage = storage;
@@ -40,7 +41,15 @@ export class TrackingService implements ITrackingService {
     this.useGyroscope = enabled;
   }
 
+  setMaxSpeed(kmh: number): void {
+    this.maxSpeedKmh = kmh;
+  }
+
   async startTracking(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
     this.isTracking = true;
     this.startTime = Date.now();
     this.locations = [];
@@ -100,7 +109,7 @@ export class TrackingService implements ITrackingService {
         );
         if (dist < 5) return;
         const dt = (location.timestamp - prev.timestamp) / 1000;
-        if (dt > 0 && dist / dt > 25 / 3.6) return;
+        if (dt > 0 && dist / dt > this.maxSpeedKmh / 3.6) return;
       }
 
       this.locations.push(location);
@@ -197,7 +206,9 @@ export class TrackingService implements ITrackingService {
           this.pauseStartTime = data.pauseStartTime;
         }
         if (this.isTracking && typeof data.lastPersistTime === 'number') {
-          this.pausedDuration += Date.now() - data.lastPersistTime;
+          const gap = Date.now() - data.lastPersistTime;
+          const MAX_RESTORE_GAP_MS = 60_000;
+          this.pausedDuration += Math.min(gap, MAX_RESTORE_GAP_MS);
         }
         if (typeof data.stepLength === 'number') {
           this.stepLength = data.stepLength;
@@ -220,7 +231,9 @@ export class TrackingService implements ITrackingService {
   }
 
   getAllLocations(): Location[] {
-    return [...this.locations, ...this.interpolatedLocations];
+    return [...this.locations, ...this.interpolatedLocations].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
   }
 
   getDistance(): number {
@@ -237,29 +250,23 @@ export class TrackingService implements ITrackingService {
   }
 
   getInterpolatedDistance(): number {
-    const gpsDistance = this.getDistance();
-
     if (!this.useGyroscope || this.interpolatedLocations.length === 0) {
-      return gpsDistance;
+      return this.getDistance();
     }
 
-    let interpolatedDistance = 0;
     const allPts = [...this.locations, ...this.interpolatedLocations].sort(
       (a, b) => a.timestamp - b.timestamp
     );
+    const smoothed = smoothLocations(rejectOutliers(allPts));
 
-    for (let i = 1; i < allPts.length; i++) {
-      const prev = allPts[i - 1];
-      const curr = allPts[i];
-      interpolatedDistance += haversineDistance(
-        prev.latitude,
-        prev.longitude,
-        curr.latitude,
-        curr.longitude
-      );
+    let distance = 0;
+    for (let i = 1; i < smoothed.length; i++) {
+      const prev = smoothed[i - 1];
+      const curr = smoothed[i];
+      distance += haversineDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
     }
 
-    return interpolatedDistance;
+    return distance;
   }
 
   getDuration(): number {

@@ -1,19 +1,20 @@
 import { usePrivy } from '@privy-io/expo';
 import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useProfileStore } from '@/stores/profileStore';
 
 const PUBLIC_ROUTES = ['login', 'onboarding'];
-const SETUP_ROUTES = ['registering'];
+const SETUP_ROUTES = ['registering', 'profile-setup'];
 
 export function useProtectedRoute() {
   const segments = useSegments();
   const router = useRouter();
   const navigationState = useRootNavigationState();
   const { isReady, user } = usePrivy();
-  const isSetup = useProfileStore((s) => s.username.length > 0);
+  const isSetup = useProfileStore((s) => s.firstName.length > 0 || s.username.length > 0);
   const [ready, setReady] = useState(false);
+  const lastRoutedKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!navigationState?.key) return;
@@ -24,20 +25,26 @@ export function useProtectedRoute() {
     const isSetupRoute = SETUP_ROUTES.includes(currentRoute);
     const isAuthenticated = user !== null;
 
+    let target: string | null = null;
+
     if (!isAuthenticated && !isPublicRoute) {
-      router.replace('/onboarding' as never);
+      target = '/onboarding';
     } else if (isAuthenticated && isPublicRoute) {
-      if (isSetup) {
-        router.replace('/(tabs)' as never);
-      } else {
-        router.replace('/registering' as never);
-      }
+      target = isSetup ? '/(tabs)' : '/registering';
     } else if (isAuthenticated && !isPublicRoute && !isSetupRoute && !isSetup) {
-      router.replace('/registering' as never);
+      target = '/registering';
+    }
+
+    const routeKey = target ?? 'ok';
+    if (routeKey === lastRoutedKey.current) return;
+    lastRoutedKey.current = routeKey;
+
+    if (target) {
+      router.replace(target as never);
     }
 
     setReady(true);
-  }, [user, isReady, segments, navigationState?.key, isSetup, router.replace]);
+  }, [navigationState?.key, isReady, isSetup, segments, user, router.replace]);
 
   return ready;
 }
