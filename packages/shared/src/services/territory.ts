@@ -77,7 +77,7 @@ export async function claimTerritory(
     areaSqm: number;
     strength?: number;
   }
-): Promise<{ txHash: `0x${string}` }> {
+): Promise<{ territoryId: `0x${string}`; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const addresses = await wallet.getAddresses();
@@ -112,5 +112,8 @@ export async function claimTerritory(
     chain: config.chain,
   });
 
-  return { txHash: hash };
+  const client = getPublicClient();
+  const receipt = await client.waitForTransactionReceipt({ hash });
+
+  return { territoryId: polygonHash, txHash: hash, confirmed: receipt.status === 'success' };
 }

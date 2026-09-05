@@ -1,4 +1,4 @@
-import { keccak256, toBytes } from 'viem';
+import { keccak256, parseEventLogs, toBytes } from 'viem';
 import { ACTIVITY_TYPE_MAP } from '../constants';
 import type { ActivityType } from '../types';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
@@ -81,7 +81,7 @@ export async function recordActivity(
     territoryArea: number;
     metadata?: string;
   }
-): Promise<{ activityId: bigint; txHash: `0x${string}` }> {
+): Promise<{ activityId: bigint; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const addresses = await wallet.getAddresses();
@@ -110,5 +110,21 @@ export async function recordActivity(
     chain: config.chain,
   });
 
-  return { activityId: 0n, txHash: hash };
+  const client = getPublicClient();
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') {
+    return { activityId: 0n, txHash: hash, confirmed: false };
+  }
+
+  const [event] = parseEventLogs({
+    abi: contracts.activityRegistry.abi,
+    eventName: 'ActivityRecorded',
+    logs: receipt.logs,
+  });
+
+  return {
+    activityId: (event?.args as { activityId?: bigint } | undefined)?.activityId ?? 0n,
+    txHash: hash,
+    confirmed: true,
+  };
 }

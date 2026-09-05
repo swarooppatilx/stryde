@@ -1,3 +1,4 @@
+import { decodeEventLog, parseEventLogs } from 'viem';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
 
 export async function isRegistered(wallet: `0x${string}`): Promise<boolean> {
@@ -39,10 +40,60 @@ export async function totalProfiles(): Promise<bigint> {
   }) as Promise<bigint>;
 }
 
+export interface RegisteredUser {
+  wallet: string;
+  username: string;
+}
+
+const PROFILE_CREATED_EVENT = {
+  type: 'event',
+  name: 'ProfileCreated',
+  inputs: [
+    { type: 'uint256', name: 'profileId', indexed: true },
+    { type: 'address', name: 'wallet', indexed: true },
+    { type: 'string', name: 'username', indexed: false },
+    { type: 'uint256', name: 'joinedAt', indexed: false },
+  ],
+} as const;
+
+export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
+  const client = getPublicClient();
+  const contracts = getContracts();
+
+  try {
+    const logs = await client.getLogs({
+      address: contracts.profileRegistry.address,
+      event: PROFILE_CREATED_EVENT,
+      fromBlock: 0n,
+      toBlock: 'latest',
+    });
+
+    return logs.map((log) => {
+      const parsed = decodeEventLog({
+        abi: contracts.profileRegistry.abi,
+        data: log.data,
+        topics: log.topics,
+      });
+      const args = parsed.args as unknown as {
+        profileId: bigint;
+        wallet: `0x${string}`;
+        username: string;
+        joinedAt: bigint;
+      };
+      return {
+        wallet: args.wallet,
+        username: args.username,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function register(
   wallet: ReturnType<typeof getWalletClient>,
   username: string
-): Promise<{ txHash: `0x${string}` }> {
+): Promise<{ profileId: bigint; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const addresses = await wallet.getAddresses();
@@ -57,5 +108,21 @@ export async function register(
     chain: config.chain,
   });
 
-  return { txHash: hash };
+  const client = getPublicClient();
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') {
+    return { profileId: 0n, txHash: hash, confirmed: false };
+  }
+
+  const [event] = parseEventLogs({
+    abi: contracts.profileRegistry.abi,
+    eventName: 'ProfileCreated',
+    logs: receipt.logs,
+  });
+
+  return {
+    profileId: (event?.args as { profileId?: bigint } | undefined)?.profileId ?? 0n,
+    txHash: hash,
+    confirmed: true,
+  };
 }
