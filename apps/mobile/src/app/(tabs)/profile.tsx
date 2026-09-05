@@ -1,9 +1,10 @@
-import { Input, List, Toast } from '@ant-design/react-native';
+import { Input, List, SwipeAction, Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEmbeddedEthereumWallet, usePrivy } from '@privy-io/expo';
+import { services } from '@repo/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,9 +13,10 @@ import { ListIcon } from '@/components/list-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
-import { getCurrentUserId } from '@/constants/config';
+import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { useActivityStore } from '@/stores/activityStore';
@@ -50,11 +52,15 @@ export default function ProfileScreen() {
   const setAvatarCid = useProfileStore((s) => s.setAvatarCid);
   const setUsername = useProfileStore((s) => s.setUsername);
   const activities = useActivityStore((s) => s.activities);
-  const totalTerritoryArea = useTerritoryStore((s) => s.getTotalArea(getCurrentUserId()));
+  const deleteActivity = useActivityStore((s) => s.deleteActivity);
+  const getTotalArea = useTerritoryStore((s) => s.getTotalArea);
+  const totalTerritoryArea = useMemo(() => getTotalArea(getCurrentUserId()), [getTotalArea]);
+  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
 
   const [activeTab, setActiveTab] = useState<TabKey>('Progress');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
+  const [mintedAchievementIds, setMintedAchievementIds] = useState<Set<string>>(new Set());
 
   const walletAddress = wallets?.[0]?.address;
 
@@ -73,11 +79,58 @@ export default function ProfileScreen() {
     () => computeAchievements(activities, totalTerritoryArea),
     [activities, totalTerritoryArea]
   );
-  const unlockedAchievements = achievements.filter((a) => a.unlocked);
+  const unlockedAchievements = useMemo(
+    () => achievements.filter((a) => a.unlocked),
+    [achievements]
+  );
   const streak = useMemo(() => computeStreak(activities), [activities]);
   const records = useMemo(() => computePersonalRecords(activities), [activities]);
 
-  const initials = username ? username.slice(0, 2).toUpperCase() : '??';
+  // Mint any newly-unlocked achievement as a soulbound badge. Best-effort: minting is
+  // role-gated on-chain and only succeeds today in local dev (shared owner/minter account).
+  useEffect(() => {
+    if (!wallet || !address || unlockedAchievements.length === 0) return;
+    const activeWallet = wallet;
+    const activeAddress = address;
+    let cancelled = false;
+
+    async function syncMintedBadges() {
+      const unlockedIds = unlockedAchievements.map((a) => a.id);
+      let minted: Set<string>;
+      try {
+        minted = await services.achievement.getMintedAchievementIds(activeAddress, unlockedIds);
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+      setMintedAchievementIds(minted);
+
+      for (const a of unlockedAchievements) {
+        if (minted.has(a.id) || cancelled) continue;
+        try {
+          await services.achievement.mintAchievement(activeWallet, a.id, a.title);
+          if (!cancelled) setMintedAchievementIds((prev) => new Set(prev).add(a.id));
+        } catch (err) {
+          console.warn('[Profile] Achievement mint failed', a.id, err);
+        }
+      }
+    }
+
+    syncMintedBadges();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet, address, unlockedAchievements]);
+
+  const firstName = useProfileStore((s) => s.firstName);
+  const lastName = useProfileStore((s) => s.lastName);
+
+  const displayName = firstName || username || 'Unknown';
+  const initials = firstName
+    ? (lastName ? `${firstName[0]}${lastName[0]}` : firstName.slice(0, 2)).toUpperCase()
+    : username
+      ? username.slice(0, 2).toUpperCase()
+      : '??';
 
   const memberSince = createdAt
     ? new Date(createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -184,6 +237,24 @@ export default function ProfileScreen() {
             <ThemedText type="headline">You</ThemedText>
             <ThemedView style={styles.topBarActions}>
               <TouchableOpacity
+                onPress={() => router.push('/leaderboard')}
+                style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Leaderboard"
+              >
+                <Ionicons name="trophy-outline" size={18} color={theme.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/profile-edit')}
+                style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Edit Profile"
+              >
+                <Ionicons name="create-outline" size={18} color={theme.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => router.push('/settings')}
                 style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
                 activeOpacity={0.7}
@@ -244,7 +315,7 @@ export default function ProfileScreen() {
               />
             ) : (
               <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
-                <ThemedText style={styles.username}>{username || 'Runner'}</ThemedText>
+                <ThemedText style={styles.username}>{displayName}</ThemedText>
               </TouchableOpacity>
             )}
 
@@ -475,40 +546,118 @@ export default function ProfileScreen() {
                   </ThemedText>
                 </Card>
               ) : (
-                <List>
+                <>
+                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                    {activities.length} {activities.length === 1 ? 'activity' : 'activities'} ·
+                    swipe to delete
+                  </ThemedText>
                   {activities
                     .slice()
                     .sort(
                       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
                     )
-                    .map((activity) => (
-                      <List.Item
-                        key={activity.id}
-                        thumb={
-                          <ListIcon
-                            name={
-                              (SPORT_ICONS[activity.activityType] ||
-                                'walk-outline') as keyof typeof Ionicons.glyphMap
-                            }
-                          />
-                        }
-                        extra={
-                          <ThemedView style={styles.activityExtra}>
-                            <ThemedText type="smallBold">
-                              {formatDistance(activity.distance)}
-                            </ThemedText>
-                            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                              {formatDuration(activity.duration)}
-                            </ThemedText>
-                          </ThemedView>
-                        }
-                      >
-                        {activity.name ||
-                          activity.activityType.charAt(0).toUpperCase() +
-                            activity.activityType.slice(1)}
-                      </List.Item>
-                    ))}
-                </List>
+                    .map((activity) => {
+                      const icon = (SPORT_ICONS[activity.activityType] ||
+                        'walk-outline') as keyof typeof Ionicons.glyphMap;
+                      const date = new Date(activity.createdAt);
+                      const dateStr = date.toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      });
+                      const timeStr = date.toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      });
+                      return (
+                        <SwipeAction
+                          key={activity.id}
+                          right={[
+                            {
+                              text: 'Delete',
+                              color: Brand.white,
+                              backgroundColor: theme.brand.danger,
+                              onPress: () => {
+                                Alert.alert(
+                                  'Delete Activity',
+                                  `Are you sure you want to delete "${activity.name || 'Activity'}"?`,
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                      text: 'Delete',
+                                      style: 'destructive',
+                                      onPress: () => {
+                                        deleteActivity(activity.id);
+                                        Toast.info('Activity deleted', 1.2);
+                                      },
+                                    },
+                                  ]
+                                );
+                              },
+                            },
+                          ]}
+                        >
+                          <TouchableOpacity
+                            style={[
+                              styles.activityCard,
+                              { backgroundColor: theme.backgroundElement },
+                            ]}
+                            onPress={() => router.push(`/activity-summary?id=${activity.id}`)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name={icon} size={22} color={theme.textSecondary} />
+                            <ThemedView style={styles.activityInfo}>
+                              <ThemedText type="small" style={styles.activityName}>
+                                {activity.name || 'Activity'}
+                              </ThemedText>
+                              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                                {dateStr} at {timeStr}
+                              </ThemedText>
+                              <ThemedView style={styles.activityStats}>
+                                <ThemedView style={styles.activityStat}>
+                                  <Ionicons
+                                    name="resize-outline"
+                                    size={12}
+                                    color={theme.textSecondary}
+                                  />
+                                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                                    {formatDistance(activity.distance)}
+                                  </ThemedText>
+                                </ThemedView>
+                                <ThemedView style={styles.activityStat}>
+                                  <Ionicons
+                                    name="time-outline"
+                                    size={12}
+                                    color={theme.textSecondary}
+                                  />
+                                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                                    {formatDuration(activity.duration)}
+                                  </ThemedText>
+                                </ThemedView>
+                                <ThemedView style={styles.activityStat}>
+                                  <Ionicons
+                                    name="map-outline"
+                                    size={12}
+                                    color={theme.textSecondary}
+                                  />
+                                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                                    {activity.territory
+                                      ? formatArea(activity.territoryArea)
+                                      : 'No territory'}
+                                  </ThemedText>
+                                </ThemedView>
+                              </ThemedView>
+                            </ThemedView>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={14}
+                              color={theme.textSecondary}
+                            />
+                          </TouchableOpacity>
+                        </SwipeAction>
+                      );
+                    })}
+                </>
               )}
             </ThemedView>
           )}
@@ -675,6 +824,15 @@ export default function ProfileScreen() {
                         key={a.id}
                         style={[styles.achievementCard, { borderColor: theme.border }]}
                       >
+                        {mintedAchievementIds.has(a.id) && (
+                          <View style={styles.achievementBadge}>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={14}
+                              color={theme.brand.success}
+                            />
+                          </View>
+                        )}
                         <Ionicons
                           name={a.icon as keyof typeof Ionicons.glyphMap}
                           size={22}
@@ -869,7 +1027,30 @@ const styles = StyleSheet.create({
   },
 
   /* Activity */
-  activityExtra: { alignItems: 'flex-end', gap: 2 },
+  activityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.three,
+    borderRadius: BorderRadius.sm,
+    gap: Spacing.two,
+  },
+  activityInfo: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  activityName: {
+    fontWeight: '600',
+  },
+  activityStats: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    marginTop: Spacing.one,
+  },
+  activityStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
 
   /* Weekly Stats */
   weekStatsRow: {
@@ -924,6 +1105,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     gap: Spacing.two,
+  },
+  achievementBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
   },
   achievementTitle: { textAlign: 'center' },
 
