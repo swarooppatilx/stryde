@@ -10,7 +10,7 @@ import { SPORT_ICONS } from '@/constants/activity';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
-import { formatDistance, formatDuration } from '@/utils/format';
+import { formatDistance, formatDuration, getDisplayName, getInitials } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 
 export default function UserProfileScreen() {
@@ -46,12 +46,8 @@ export default function UserProfileScreen() {
     );
   }
 
-  const initials = user.name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const displayName = getDisplayName(user);
+  const initials = getInitials(displayName);
 
   const handleFollow = () => {
     haptics.impactMedium();
@@ -81,7 +77,7 @@ export default function UserProfileScreen() {
               <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
             </View>
 
-            <ThemedText style={styles.name}>{user.name}</ThemedText>
+            <ThemedText style={styles.name}>{displayName}</ThemedText>
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               @{user.username}
             </ThemedText>
@@ -143,7 +139,7 @@ export default function UserProfileScreen() {
               onPress={handleFollow}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={isFollowing ? `Unfollow ${user.name}` : `Follow ${user.name}`}
+              accessibilityLabel={isFollowing ? `Unfollow ${displayName}` : `Follow ${displayName}`}
               accessibilityState={{ selected: isFollowing }}
             >
               <Ionicons

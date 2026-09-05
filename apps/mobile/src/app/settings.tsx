@@ -4,6 +4,7 @@ import { useEmbeddedEthereumWallet, usePrivy } from '@privy-io/expo';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/shallow';
 
 import { ListIcon } from '@/components/list-icon';
 import { ThemedText } from '@/components/themed-text';
@@ -72,7 +73,14 @@ export default function SettingsScreen() {
   const settings = useProfileStore((s) => s.settings);
   const updateSettings = useProfileStore((s) => s.updateSettings);
   const { useGyroscopeAssist, sensorUpdateRate, setGyroscopeAssist, setSensorUpdateRate } =
-    useSettingsStore();
+    useSettingsStore(
+      useShallow((s) => ({
+        useGyroscopeAssist: s.useGyroscopeAssist,
+        sensorUpdateRate: s.sensorUpdateRate,
+        setGyroscopeAssist: s.setGyroscopeAssist,
+        setSensorUpdateRate: s.setSensorUpdateRate,
+      }))
+    );
   const { user } = usePrivy();
   const { wallets } = useEmbeddedEthereumWallet();
 
