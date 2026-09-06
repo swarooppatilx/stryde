@@ -2,6 +2,7 @@ export * as achievement from './achievement';
 export * as activity from './activity';
 export * as challenge from './challenge';
 export * as client from './client';
+export * as ens from './ens';
 export * as profile from './profile';
 export * as season from './season';
 export * as sync from './sync';

@@ -41,7 +41,7 @@ describe('getChainConfig', () => {
   it('returns ethereum-sepolia config', () => {
     const config = getChainConfig('ethereum-sepolia');
     expect(config.chainId).toBe(11155111);
-    expect(config.rpcUrl).toBe('https://rpc.ankr.com/eth_sepolia');
+    expect(config.rpcUrl).toBe('https://ethereum-sepolia-rpc.publicnode.com');
   });
 
   it('returns base-sepolia config', () => {

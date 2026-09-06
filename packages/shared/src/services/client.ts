@@ -9,6 +9,18 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { type ChainMode, DEFAULT_CHAIN_MODE, getChainConfig } from '../constants';
 import { ABIS } from '../contracts';
 
+// A bit more resilience against transient RPC failures (rate limits, brief
+// outages) than viem's default 150ms retry delay. Public HTTP RPC endpoints
+// occasionally reject/drop requests without warning (see: Ankr's free
+// eth_sepolia tier started requiring an API key mid-hackathon).
+const rpcTransport = (url: string) =>
+  http(url, {
+    retryCount: 3,
+    retryDelay: 1000,
+  });
+
+const warnedZeroAddressModes = new Set<ChainMode>();
+
 let currentMode: ChainMode = DEFAULT_CHAIN_MODE;
 
 export function setChainMode(mode: ChainMode): void {
@@ -27,7 +39,7 @@ export function getPublicClient(): PublicClient {
   const config = getChainConfig(currentMode);
   return createPublicClient({
     chain: config.chain,
-    transport: http(config.rpcUrl),
+    transport: rpcTransport(config.rpcUrl),
   }) as PublicClient;
 }
 
@@ -41,12 +53,27 @@ export function getWalletClient(privateKey: `0x${string}`): WalletClient {
   return createWalletClient({
     chain: config.chain,
     account: privateKeyToAccount(privateKey),
-    transport: http(config.rpcUrl),
+    transport: rpcTransport(config.rpcUrl),
   }) as WalletClient;
 }
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 export function getContracts() {
   const config = getChainConfig(currentMode);
+
+  if (
+    !warnedZeroAddressModes.has(currentMode) &&
+    Object.values(config.contracts).every((address) => address === ZERO_ADDRESS)
+  ) {
+    warnedZeroAddressModes.add(currentMode);
+    console.warn(
+      `[shared/client] All contract addresses for chain mode "${currentMode}" are the zero address — ` +
+        "reads will return empty/default data and writes will revert. Contracts likely aren't deployed " +
+        'for this mode yet; update packages/shared/src/constants.ts after deploying.'
+    );
+  }
+
   return {
     profileRegistry: {
       address: config.contracts.profileRegistry,

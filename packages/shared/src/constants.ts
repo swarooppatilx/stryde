@@ -34,7 +34,13 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
   'ethereum-sepolia': {
     chain: sepolia,
     chainId: 11155111,
-    rpcUrl: 'https://rpc.ankr.com/eth_sepolia',
+    // Ankr's free eth_sepolia endpoint now rejects eth_getTransactionReceipt
+    // and other calls with "Unauthorized: you must authenticate with an API
+    // key" — that silently broke confirmation polling for every on-chain
+    // write (activities, challenges, achievements, etc: they'd succeed
+    // on-chain but the app would spin for the full 3-minute viem timeout
+    // and then report failure). publicnode's endpoint has no such gate.
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
     contracts: {
       profileRegistry: ZERO_ADDRESS,
       activityRegistry: ZERO_ADDRESS,
