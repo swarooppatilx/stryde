@@ -1,16 +1,21 @@
 import { List, Switch } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useEmbeddedEthereumWallet, usePrivy } from '@privy-io/expo';
-import { useRouter } from 'expo-router';
+import { usePrivy } from '@privy-io/expo';
+import { services } from '@repo/shared';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { formatEther } from 'viem';
 import { useShallow } from 'zustand/shallow';
 
 import { ListIcon } from '@/components/list-icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useViemWallet } from '@/hooks/useViemWallet';
 import { useProfileStore } from '@/stores/profileStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { formatDistance, formatDuration } from '@/utils/format';
@@ -82,11 +87,34 @@ export default function SettingsScreen() {
       }))
     );
   const { user } = usePrivy();
-  const { wallets } = useEmbeddedEthereumWallet();
+  const { address } = useViemWallet(ENV.CHAIN_MODE);
 
   const emailAccount = user?.linked_accounts?.find((a) => a.type === 'email');
   const email = emailAccount && 'address' in emailAccount ? emailAccount.address : null;
-  const walletAddress = wallets?.[0]?.address;
+  // The on-chain identity address (from useViemWallet), not the Privy embedded
+  // auth wallet — in local dev mode these differ (see AGENTS.md).
+  const walletAddress = address;
+  const networkName = services.client.getActiveConfig().chain.name;
+
+  const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!walletAddress) return;
+      let cancelled = false;
+      services.client
+        .getBalance(walletAddress)
+        .then((wei) => {
+          if (!cancelled) setBalanceWei(wei);
+        })
+        .catch(() => {
+          if (!cancelled) setBalanceWei(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [walletAddress])
+  );
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -343,6 +371,22 @@ export default function SettingsScreen() {
                 extra={`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`}
               >
                 Wallet
+              </List.Item>
+              <List.Item
+                key="network"
+                thumb={<ListIcon name="globe-outline" />}
+                extra={networkName}
+              >
+                Network
+              </List.Item>
+              <List.Item
+                key="balance"
+                thumb={<ListIcon name="cash-outline" />}
+                extra={
+                  balanceWei !== null ? `${Number(formatEther(balanceWei)).toFixed(4)} ETH` : '—'
+                }
+              >
+                Balance
               </List.Item>
             </List>
           ) : null}

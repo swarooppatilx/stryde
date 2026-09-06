@@ -39,7 +39,7 @@ const GENDER_OPTIONS: { value: Gender; label: string; icon: string }[] = [
 export default function ProfileSetupScreen() {
   const { user } = usePrivy();
   const { wallets } = useEmbeddedEthereumWallet();
-  const { wallet } = useViemWallet(ENV.CHAIN_MODE);
+  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
   const hasWallet = wallets && wallets.length > 0;
   const router = useRouter();
   const theme = useTheme();
@@ -153,9 +153,8 @@ export default function ProfileSetupScreen() {
         try {
           const { profileId, confirmed } = await services.profile.register(wallet, trimmed);
 
-          const embeddedWallet = wallets?.[0];
-          if (embeddedWallet) {
-            setWallet(embeddedWallet.address);
+          if (address) {
+            setWallet(address);
           }
           if (confirmed) {
             setProfileId(profileId.toString());

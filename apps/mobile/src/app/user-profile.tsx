@@ -24,7 +24,11 @@ export default function UserProfileScreen() {
   const following = useSocialStore((s) => s.following);
 
   const user = getUserById(id ?? '');
-  const activities = useMemo(() => (id ? getUserActivities(id) : []), [id, getUserActivities]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: following is a recompute trigger for getUserActivities()'s privacy filter, not read in this callback
+  const activities = useMemo(
+    () => (id ? getUserActivities(id) : []),
+    [id, getUserActivities, following]
+  );
   const isFollowing = user ? following.includes(user.id) : false;
 
   const totalDistance = useMemo(
