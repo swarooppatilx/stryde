@@ -10669,6 +10669,7 @@ __metadata:
     expo-web-browser: "npm:~57.0.2"
     fast-base64-decode: "npm:^1.0.0"
     fast-text-encoding: "npm:^1.0.6"
+    permissionless: "npm:^0.2.47"
     react: "npm:19.2.8"
     react-dom: "npm:19.2.8"
     react-native: "npm:0.86.3"
@@ -11392,6 +11393,19 @@ __metadata:
   version: 4.0.0
   resolution: "path-type@npm:4.0.0"
   checksum: 10c0/666f6973f332f27581371efaf303fd6c272cc43c2057b37aa99e3643158c7e4b2626549555d88626e99ea9e046f82f32e41bbde5f1508547e9a11b149b52387c
+  languageName: node
+  linkType: hard
+
+"permissionless@npm:^0.2.47":
+  version: 0.2.57
+  resolution: "permissionless@npm:0.2.57"
+  peerDependencies:
+    ox: ^0.8.0
+    viem: ^2.28.1
+  peerDependenciesMeta:
+    ox:
+      optional: true
+  checksum: 10c0/b0c11a511809df3db7da5b22aad82c45481c43f8d14d558ebb2a6c449a2f5593eb5d7fcc9bb4e9fd57f20dd787e35d2d2de22be4760b41a1b317df526377d710
   languageName: node
   linkType: hard
 
