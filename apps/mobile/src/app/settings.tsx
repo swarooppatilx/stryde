@@ -15,6 +15,7 @@ import { ThemedView } from '@/components/themed-view';
 import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useProfileStore } from '@/stores/profileStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -87,7 +88,8 @@ export default function SettingsScreen() {
       }))
     );
   const { user } = usePrivy();
-  const { address } = useViemWallet(ENV.CHAIN_MODE);
+  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const { transact } = useTransactor();
 
   const emailAccount = user?.linked_accounts?.find((a) => a.type === 'email');
   const email = emailAccount && 'address' in emailAccount ? emailAccount.address : null;
@@ -115,6 +117,25 @@ export default function SettingsScreen() {
       };
     }, [walletAddress])
   );
+
+  // Dev-only: proves the smart-account/paymaster wiring actually sponsors
+  // gas, without needing any of this app's contracts deployed. Remove once
+  // the Privy track submission is done.
+  const handleTestGaslessTx = async () => {
+    if (!wallet || !address) return;
+    await transact(
+      async () => {
+        const hash = await wallet.sendTransaction({
+          to: address,
+          value: 0n,
+        } as Parameters<typeof wallet.sendTransaction>[0]);
+        const client = services.client.getPublicClient();
+        const receipt = await client.waitForTransactionReceipt({ hash });
+        return { confirmed: receipt.status === 'success', txHash: hash };
+      },
+      { pending: 'Sending gasless test tx...', success: 'Gasless tx confirmed' }
+    );
+  };
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -390,6 +411,18 @@ export default function SettingsScreen() {
               </List.Item>
             </List>
           ) : null}
+          {ENV.USE_SMART_WALLET && (
+            <List>
+              <List.Item
+                key="test-gasless"
+                thumb={<ListIcon name="flash-outline" />}
+                onPress={handleTestGaslessTx}
+                arrow="horizontal"
+              >
+                Send test gasless transaction
+              </List.Item>
+            </List>
+          )}
           <List>
             <List.Item
               key="version"

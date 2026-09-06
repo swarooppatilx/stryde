@@ -80,7 +80,7 @@ export default function RegisteringScreen() {
 
         if (!confirmed) {
           if (!cancelled) {
-            setStatus("Registration didn't confirm on-chain");
+            setStatus("Setup didn't finish — please try again");
             setFailed(true);
           }
           return;

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,10 +21,35 @@ export default function SearchScreen() {
   const searchActivities = useSocialStore((s) => s.searchActivities);
 
   const trimmedQuery = query.trim();
-  const users = useMemo(
-    () => (trimmedQuery.length > 0 ? searchUsers(trimmedQuery) : []),
-    [trimmedQuery, searchUsers]
-  );
+
+  // If the query looks like an ENS name (e.g. "vitalik.eth"), resolve it to
+  // an address and fold any matching registered user into the results.
+  const [ensResolvedAddress, setEnsResolvedAddress] = useState<string | null>(null);
+  useEffect(() => {
+    if (!trimmedQuery.includes('.')) {
+      setEnsResolvedAddress(null);
+      return;
+    }
+    let cancelled = false;
+    services.ens.resolveEnsAddress(trimmedQuery).then((addr) => {
+      if (!cancelled) setEnsResolvedAddress(addr);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmedQuery]);
+
+  const users = useMemo(() => {
+    if (trimmedQuery.length === 0) return [];
+    const textResults = searchUsers(trimmedQuery);
+    if (!ensResolvedAddress) return textResults;
+    const ensMatches = searchUsers(ensResolvedAddress);
+    const merged = [...textResults];
+    for (const u of ensMatches) {
+      if (!merged.some((m) => m.id === u.id)) merged.push(u);
+    }
+    return merged;
+  }, [trimmedQuery, searchUsers, ensResolvedAddress]);
   const activities = useMemo(
     () => (trimmedQuery.length > 0 ? searchActivities(trimmedQuery) : []),
     [trimmedQuery, searchActivities]
