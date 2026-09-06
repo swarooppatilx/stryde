@@ -3,9 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 
 import { MapBottomSheet } from '@/components/map-bottom-sheet';
-import { MapFilterChips } from '@/components/map-filter-chips';
 import { MapRoute } from '@/components/map-route';
-import { MapSearchBar } from '@/components/map-search-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MAP_STYLES } from '@/constants/config';
@@ -49,9 +47,6 @@ export default function MapScreen() {
             mapStyleUrl={theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager}
             activityRoutes={routes}
           />
-
-          <MapSearchBar />
-          <MapFilterChips />
 
           {/* Map Controls */}
           <ThemedView style={styles.controls}>

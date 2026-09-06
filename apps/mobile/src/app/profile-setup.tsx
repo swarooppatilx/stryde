@@ -232,9 +232,7 @@ export default function ProfileSetupScreen() {
                   {hasWallet ? 'Welcome back!' : 'Welcome!'}
                 </ThemedText>
                 <ThemedText numberOfLines={2} themeColor="textSecondary" style={styles.subtitle}>
-                  {hasWallet
-                    ? 'Set up your profile to continue'
-                    : 'Choose a username for your onchain identity'}
+                  {hasWallet ? 'Set up your profile to continue' : 'Choose your username'}
                 </ThemedText>
 
                 <View style={styles.form}>

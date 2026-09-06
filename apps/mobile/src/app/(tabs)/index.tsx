@@ -136,15 +136,6 @@ export default function HomeScreen() {
                 style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="Messages"
-                onPress={() => Toast.show({ content: 'Messages coming soon', duration: 1 })}
-              >
-                <Ionicons name="chatbubbles-outline" size={18} color={theme.text} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
-                activeOpacity={0.7}
-                accessibilityRole="button"
                 accessibilityLabel="Search"
                 onPress={() => router.push('/search')}
               >

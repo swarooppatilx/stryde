@@ -1,4 +1,5 @@
 import { PrivyProvider } from '@privy-io/expo';
+import { SmartWalletsProvider } from '@privy-io/expo/smart-wallets';
 import { setChainMode } from '@repo/shared';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -71,9 +72,11 @@ export default function RootLayout() {
           },
         }}
       >
-        <ThemeProvider>
-          <RootLayoutNav />
-        </ThemeProvider>
+        <SmartWalletsProvider>
+          <ThemeProvider>
+            <RootLayoutNav />
+          </ThemeProvider>
+        </SmartWalletsProvider>
       </PrivyProvider>
     </GestureHandlerRootView>
   );

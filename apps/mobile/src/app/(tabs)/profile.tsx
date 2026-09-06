@@ -17,11 +17,13 @@ import { SPORT_ICONS } from '@/constants/activity';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useEnsName } from '@/hooks/useEnsName';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
+import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
 import { computeAchievements } from '@/utils/achievements';
 import {
@@ -66,6 +68,7 @@ export default function ProfileScreen() {
   // The on-chain identity address (from useViemWallet), not the Privy embedded
   // auth wallet — in local dev mode these differ (see AGENTS.md).
   const walletAddress = address;
+  const ensName = useEnsName(walletAddress);
 
   useFocusEffect(
     useCallback(() => {
@@ -169,6 +172,7 @@ export default function ProfileScreen() {
             resetProfile();
             useActivityStore.getState().reset();
             useTerritoryStore.getState().reset();
+            useSocialStore.getState().reset();
             router.replace('/login');
           } catch (error) {
             console.error('[Profile] Logout failed', error);
@@ -338,6 +342,12 @@ export default function ProfileScreen() {
               <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
                 <ThemedText style={styles.username}>{displayName}</ThemedText>
               </TouchableOpacity>
+            )}
+
+            {ensName && (
+              <ThemedText type="small" style={{ color: theme.brand.primary }}>
+                {ensName}
+              </ThemedText>
             )}
 
             <ThemedText type="small" style={{ color: theme.textSecondary }}>

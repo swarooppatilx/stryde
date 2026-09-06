@@ -22,13 +22,13 @@ const SLIDES = [
   },
   {
     icon: 'shield-checkmark' as const,
-    title: 'Own it onchain',
-    body: 'Activities and territory are yours - verified onchain, not locked in someone else’s app.',
+    title: 'Own your data. Forever.',
+    body: 'Activities and territory are yours - verified and portable, not locked in someone else’s app.',
   },
   {
     icon: 'wallet' as const,
-    title: 'One identity, no friction',
-    body: 'Sign in with email. We create and manage your wallet automatically.',
+    title: "Sign in with email, that's it.",
+    body: 'No passwords, no seed phrases, no extensions to install.',
   },
 ];
 

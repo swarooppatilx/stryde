@@ -17,12 +17,45 @@ import { ThemedView } from '@/components/themed-view';
 import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useEnsName } from '@/hooks/useEnsName';
 import { formatDistance } from '@/utils/format';
 
 interface LeaderboardRow {
   wallet: string;
   username: string;
   distance: number;
+}
+
+function LeaderboardRowItem({
+  row,
+  rank,
+  isMe,
+  theme,
+}: {
+  row: LeaderboardRow;
+  rank: number;
+  isMe: boolean;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  const ensName = useEnsName(row.wallet);
+  return (
+    <ThemedView
+      style={[
+        styles.row,
+        { backgroundColor: isMe ? theme.brand.primaryTint : theme.backgroundElement },
+      ]}
+    >
+      <ThemedText type="smallBold" style={styles.rank}>
+        {rank}
+      </ThemedText>
+      <ThemedView style={styles.rowInfo}>
+        <ThemedText type="smallBold" numberOfLines={1}>
+          {isMe ? 'You' : ensName || row.username}
+        </ThemedText>
+      </ThemedView>
+      <ThemedText type="smallBold">{formatDistance(row.distance)}</ThemedText>
+    </ThemedView>
+  );
 }
 
 export default function LeaderboardScreen() {
@@ -111,23 +144,13 @@ export default function LeaderboardScreen() {
             {rows.map((row, index) => {
               const isMe = row.wallet.toLowerCase() === currentUserId.toLowerCase();
               return (
-                <ThemedView
+                <LeaderboardRowItem
                   key={row.wallet}
-                  style={[
-                    styles.row,
-                    { backgroundColor: isMe ? theme.brand.primaryTint : theme.backgroundElement },
-                  ]}
-                >
-                  <ThemedText type="smallBold" style={styles.rank}>
-                    {index + 1}
-                  </ThemedText>
-                  <ThemedView style={styles.rowInfo}>
-                    <ThemedText type="smallBold" numberOfLines={1}>
-                      {isMe ? 'You' : row.username}
-                    </ThemedText>
-                  </ThemedView>
-                  <ThemedText type="smallBold">{formatDistance(row.distance)}</ThemedText>
-                </ThemedView>
+                  row={row}
+                  rank={index + 1}
+                  isMe={isMe}
+                  theme={theme}
+                />
               );
             })}
           </ScrollView>
