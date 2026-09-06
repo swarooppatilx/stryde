@@ -19,6 +19,28 @@ export interface SocialActivity extends Activity {
   comments: SocialComment[];
 }
 
+/**
+ * Privacy is set and persisted purely on the poster's own device — there's no
+ * backend/subgraph to propagate it, so a chain-sourced activity with no local
+ * record on this device has no privacy data to enforce and defaults to visible.
+ * The poster's own device always sees everything they posted regardless.
+ */
+function isVisibleToViewer(
+  activity: SocialActivity,
+  viewerId: string,
+  following: string[]
+): boolean {
+  if (activity.userId === viewerId) return true;
+  switch (activity.privacy) {
+    case 'only_me':
+      return false;
+    case 'followers':
+      return following.includes(activity.userId);
+    default:
+      return true;
+  }
+}
+
 export interface SocialComment {
   id: string;
   userId: string;
@@ -213,10 +235,11 @@ export const useSocialStore = create<SocialState>()(
       isFollowing: (userId: string) => get().following.includes(userId),
 
       getFeed: () => {
-        const { activities } = get();
-        return [...activities].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        const { activities, following } = get();
+        const viewerId = getCurrentUserId();
+        return activities
+          .filter((a) => isVisibleToViewer(a, viewerId, following))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       },
 
       searchUsers: (query: string) => {
@@ -228,9 +251,13 @@ export const useSocialStore = create<SocialState>()(
       },
 
       searchActivities: (query: string) => {
-        const { activities } = get();
+        const { activities, following } = get();
+        const viewerId = getCurrentUserId();
         const q = query.toLowerCase();
-        return activities.filter((a) => (a.name || '').toLowerCase().includes(q));
+        return activities.filter(
+          (a) =>
+            (a.name || '').toLowerCase().includes(q) && isVisibleToViewer(a, viewerId, following)
+        );
       },
 
       getUserById: (id: string) => {
@@ -239,9 +266,10 @@ export const useSocialStore = create<SocialState>()(
       },
 
       getUserActivities: (userId: string) => {
-        const { activities } = get();
-        return [...activities]
-          .filter((a) => a.userId === userId)
+        const { activities, following } = get();
+        const viewerId = getCurrentUserId();
+        return activities
+          .filter((a) => a.userId === userId && isVisibleToViewer(a, viewerId, following))
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       },
     }),

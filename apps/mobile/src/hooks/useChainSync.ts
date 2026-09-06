@@ -1,3 +1,4 @@
+import { Toast } from '@ant-design/react-native';
 import { services, setLocalRpcUrl } from '@repo/shared';
 import { useEffect, useRef, useState } from 'react';
 import { ENV, getLocalRpcUrl } from '@/constants/config';
@@ -15,7 +16,11 @@ export function useChainSync() {
   useEffect(() => {
     if (ENV.CHAIN_MODE === 'local') {
       setLocalRpcUrl(getLocalRpcUrl());
-      ensureLocalWalletFunded();
+      ensureLocalWalletFunded().then((result) => {
+        if (result === 'funded') {
+          Toast.info('Funded with 100 ETH for local testing', 2);
+        }
+      });
     }
   }, []);
 
