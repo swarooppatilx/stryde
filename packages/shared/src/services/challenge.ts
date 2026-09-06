@@ -1,3 +1,4 @@
+import { parseEventLogs } from 'viem';
 import { ACTIVITY_TYPE_MAP } from '../constants';
 import type { ActivityType } from '../types';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
@@ -107,12 +108,17 @@ export async function createChallenge(
     return { challengeId: 0n, confirmed: false };
   }
 
-  const count = (await client.readContract({
-    ...contracts.challengeRegistry,
-    functionName: 'getChallengeCount',
-  })) as bigint;
+  // Read the id from this tx's own ChallengeCreated event rather than the global
+  // getChallengeCount() — a concurrent createChallenge would shift that counter
+  // and hand back a stranger's challenge.
+  const [event] = parseEventLogs({
+    abi: contracts.challengeRegistry.abi,
+    eventName: 'ChallengeCreated',
+    logs: receipt.logs,
+  });
 
-  return { challengeId: count, confirmed: true };
+  const challengeId = (event?.args as { challengeId?: bigint } | undefined)?.challengeId ?? 0n;
+  return { challengeId, confirmed: true };
 }
 
 export async function acceptChallenge(
