@@ -6,13 +6,18 @@ interface IpfsUploadResult {
   size: number;
 }
 
+const API_HEADERS: Record<string, string> = {
+  'Content-Type': 'application/json',
+  ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
+};
+
 export async function uploadToIpfs(
   name: string,
   content: Record<string, unknown>
 ): Promise<IpfsUploadResult> {
   const response = await fetch(`${ENV.API_URL}/api/ipfs/upload`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: API_HEADERS,
     body: JSON.stringify({ name, content }),
   });
 
@@ -31,7 +36,7 @@ export async function uploadImageToIpfs(name: string, imageUri: string): Promise
 
   const response = await fetch(`${ENV.API_URL}/api/ipfs/upload`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: API_HEADERS,
     body: JSON.stringify({
       name,
       imageBase64: base64,

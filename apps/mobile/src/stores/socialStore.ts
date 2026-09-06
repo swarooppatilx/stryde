@@ -68,6 +68,7 @@ interface SocialState {
   searchActivities: (query: string) => SocialActivity[];
   getUserById: (id: string) => SocialUser | undefined;
   getUserActivities: (userId: string) => SocialActivity[];
+  reset: () => void;
 }
 
 export const useSocialStore = create<SocialState>()(
@@ -272,6 +273,8 @@ export const useSocialStore = create<SocialState>()(
           .filter((a) => a.userId === userId && isVisibleToViewer(a, viewerId, following))
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       },
+
+      reset: () => set({ users: [], activities: [], currentUserKudos: [], following: [] }),
     }),
     {
       name: 'stryde-social',
