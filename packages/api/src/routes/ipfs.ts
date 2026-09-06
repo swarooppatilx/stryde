@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 
 export const ipfs = new Hono();
 
+const MAX_BASE64_LENGTH = 14_000_000; // ~10MB decoded
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 ipfs.post('/upload', async (c) => {
   const pinataApiKey = process.env.PINATA_API_KEY;
   const pinataSecretKey = process.env.PINATA_SECRET_KEY;
@@ -16,8 +19,14 @@ ipfs.post('/upload', async (c) => {
   const formData = new FormData();
 
   if (imageBase64) {
+    if (typeof imageBase64 !== 'string' || imageBase64.length > MAX_BASE64_LENGTH) {
+      return c.json({ error: 'Image payload too large (max 10MB)' }, 413);
+    }
+    if (mimeType && !ALLOWED_MIME_TYPES.has(mimeType)) {
+      return c.json({ error: 'Unsupported image type' }, 400);
+    }
     const bytes = Buffer.from(imageBase64, 'base64');
-    const ext = mimeType?.includes('png') ? 'png' : 'jpg';
+    const ext = mimeType?.includes('png') ? 'png' : mimeType?.includes('webp') ? 'webp' : 'jpg';
     const blob = new Blob([bytes], { type: mimeType || 'image/jpeg' });
     formData.append('file', blob, `${name || `stryde-${Date.now()}`}.${ext}`);
   } else if (content) {
@@ -40,7 +49,8 @@ ipfs.post('/upload', async (c) => {
 
   if (!response.ok) {
     const error = await response.text();
-    return c.json({ error: `Pinata error: ${error}` }, 500);
+    console.error('[ipfs/upload] Pinata error:', error);
+    return c.json({ error: 'Failed to pin content to IPFS' }, 502);
   }
 
   const result = await response.json();

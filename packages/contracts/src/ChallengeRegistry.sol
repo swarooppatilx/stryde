@@ -63,6 +63,7 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
     function settleChallenge(uint256 challengeId, address winner) external override whenNotPaused {
         Challenge storage c = _challenges[challengeId];
         if (c.challenger == address(0)) revert NotParticipant();
+        if (msg.sender != c.challenger && msg.sender != c.opponent) revert NotParticipant();
         if (c.status == ChallengeStatus.Settled) revert AlreadySettled();
         if (c.status != ChallengeStatus.Accepted) revert NotSettled();
         if (block.timestamp > c.deadline) revert DeadlinePassed();

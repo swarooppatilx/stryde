@@ -155,6 +155,7 @@ contract ChallengeRegistryTest is Test {
         vm.expectEmit(true, true, true, false);
         emit ChallengeSettled(id, alice, bob, 0.2 ether);
 
+        vm.prank(alice);
         registry.settleChallenge(id, alice);
 
         IChallengeRegistry.Challenge memory c = registry.getChallenge(id);
@@ -165,6 +166,7 @@ contract ChallengeRegistryTest is Test {
     function test_SettleChallenge_RevertNotAccepted() public {
         uint256 id = _createChallenge();
 
+        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.NotSettled.selector);
         registry.settleChallenge(id, alice);
     }
@@ -172,15 +174,26 @@ contract ChallengeRegistryTest is Test {
     function test_SettleChallenge_RevertNonParticipantWinner() public {
         uint256 id = _createAndAccept();
 
+        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.NotParticipant.selector);
         registry.settleChallenge(id, carol);
+    }
+
+    function test_SettleChallenge_RevertNonParticipantCaller() public {
+        uint256 id = _createAndAccept();
+
+        vm.prank(carol);
+        vm.expectRevert(IChallengeRegistry.NotParticipant.selector);
+        registry.settleChallenge(id, alice);
     }
 
     function test_SettleChallenge_RevertDoubleSettle() public {
         uint256 id = _createAndAccept();
 
+        vm.prank(alice);
         registry.settleChallenge(id, alice);
 
+        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.AlreadySettled.selector);
         registry.settleChallenge(id, alice);
     }
@@ -190,6 +203,7 @@ contract ChallengeRegistryTest is Test {
 
         vm.warp(block.timestamp + 8 days);
 
+        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.DeadlinePassed.selector);
         registry.settleChallenge(id, alice);
     }
@@ -199,6 +213,7 @@ contract ChallengeRegistryTest is Test {
     function test_WithdrawWinnerGetsStake() public {
         uint256 id = _createAndAccept();
 
+        vm.prank(alice);
         registry.settleChallenge(id, alice);
 
         uint256 aliceBalanceBefore = alice.balance;
@@ -211,6 +226,7 @@ contract ChallengeRegistryTest is Test {
     function test_WithdrawLoserGetsNothing() public {
         uint256 id = _createAndAccept();
 
+        vm.prank(alice);
         registry.settleChallenge(id, alice);
 
         // Loser (bob) can't withdraw
@@ -234,6 +250,7 @@ contract ChallengeRegistryTest is Test {
 
     function test_Withdraw_RevertDoubleWithdraw() public {
         uint256 id = _createAndAccept();
+        vm.prank(alice);
         registry.settleChallenge(id, alice);
 
         vm.prank(alice);
