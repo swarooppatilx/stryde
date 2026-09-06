@@ -1,12 +1,13 @@
 import { Input, List, SwipeAction, Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useEmbeddedEthereumWallet, usePrivy } from '@privy-io/expo';
+import { usePrivy } from '@privy-io/expo';
 import { services } from '@repo/shared';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import { type ReactElement, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { formatEther } from 'viem';
 
 import { Card } from '@/components/card';
 import { ListIcon } from '@/components/list-icon';
@@ -39,7 +40,6 @@ type TabKey = (typeof TABS)[number];
 
 export default function ProfileScreen() {
   const { logout, user } = usePrivy();
-  const { wallets } = useEmbeddedEthereumWallet();
   const router = useRouter();
   const theme = useTheme();
   const username = useProfileStore((s) => s.username);
@@ -61,8 +61,29 @@ export default function ProfileScreen() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [mintedAchievementIds, setMintedAchievementIds] = useState<Set<string>>(new Set());
+  const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
 
-  const walletAddress = wallets?.[0]?.address;
+  // The on-chain identity address (from useViemWallet), not the Privy embedded
+  // auth wallet — in local dev mode these differ (see AGENTS.md).
+  const walletAddress = address;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!walletAddress) return;
+      let cancelled = false;
+      services.client
+        .getBalance(walletAddress)
+        .then((wei) => {
+          if (!cancelled) setBalanceWei(wei);
+        })
+        .catch(() => {
+          if (!cancelled) setBalanceWei(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [walletAddress])
+  );
 
   const totalDistance = useMemo(
     () => activities.reduce((sum, a) => sum + a.distance, 0),
@@ -371,6 +392,18 @@ export default function ProfileScreen() {
                   </ThemedText>
                   <Ionicons name="copy-outline" size={11} color={theme.brand.primary} />
                 </TouchableOpacity>
+              )}
+
+              {walletAddress && balanceWei !== null && (
+                <ThemedView style={[styles.pillButton, { borderColor: theme.backgroundElement }]}>
+                  <Ionicons name="cash-outline" size={13} color={theme.textSecondary} />
+                  <ThemedText
+                    type="small"
+                    style={[styles.badgeText, { color: theme.textSecondary }]}
+                  >
+                    {Number(formatEther(balanceWei)).toFixed(4)} ETH
+                  </ThemedText>
+                </ThemedView>
               )}
             </ThemedView>
           </ThemedView>

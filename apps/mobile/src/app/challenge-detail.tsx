@@ -19,6 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useSocialStore } from '@/stores/socialStore';
 import { formatDistance, getDisplayName } from '@/utils/format';
@@ -33,6 +34,7 @@ export default function ChallengeDetailScreen() {
   const router = useRouter();
   const theme = useTheme();
   const { wallet } = useViemWallet(ENV.CHAIN_MODE);
+  const { transact } = useTransactor();
   const getUserById = useSocialStore((s) => s.getUserById);
 
   const [challenge, setChallenge] = useState<OnchainChallenge | null>(null);
@@ -82,16 +84,15 @@ export default function ChallengeDetailScreen() {
     (isChallenger || isOpponent) &&
     challenge.winner.toLowerCase() !== currentUserId;
 
-  const runAction = async (action: () => Promise<{ confirmed: boolean }>, failMessage: string) => {
+  const runAction = async (
+    action: () => Promise<{ confirmed: boolean }>,
+    labels: { pending: string; success: string }
+  ) => {
     if (!wallet) return;
     setIsBusy(true);
     try {
-      const { confirmed } = await action();
-      if (!confirmed) throw new Error('not confirmed');
-      await load();
-    } catch (err) {
-      console.warn('[ChallengeDetail] action failed', err);
-      Alert.alert('Action failed', failMessage);
+      const result = await transact(action, labels);
+      if (result?.confirmed) await load();
     } finally {
       setIsBusy(false);
     }
@@ -100,16 +101,19 @@ export default function ChallengeDetailScreen() {
   const handleAccept = () => {
     haptics.impactMedium();
     if (!wallet) return;
-    runAction(
-      () => services.challenge.acceptChallenge(wallet, challenge.id, challenge.stake),
-      'Could not accept the challenge. Make sure you have enough ETH to match the stake.'
-    );
+    runAction(() => services.challenge.acceptChallenge(wallet, challenge.id, challenge.stake), {
+      pending: 'Accepting challenge...',
+      success: 'Challenge accepted',
+    });
   };
 
   const handleCancel = () => {
     haptics.tap();
     if (!wallet) return;
-    runAction(() => services.challenge.cancelChallenge(wallet, challenge.id), 'Could not cancel.');
+    runAction(() => services.challenge.cancelChallenge(wallet, challenge.id), {
+      pending: 'Cancelling...',
+      success: 'Challenge cancelled',
+    });
   };
 
   const handleSettle = async () => {
@@ -125,12 +129,11 @@ export default function ChallengeDetailScreen() {
         );
         return;
       }
-      const { confirmed } = await services.challenge.settleChallenge(wallet, challenge.id, winner);
-      if (!confirmed) throw new Error('not confirmed');
-      await load();
-    } catch (err) {
-      console.warn('[ChallengeDetail] settle failed', err);
-      Alert.alert('Settle failed', 'Could not settle the challenge.');
+      const result = await transact(
+        () => services.challenge.settleChallenge(wallet, challenge.id, winner),
+        { pending: 'Settling challenge...', success: 'Challenge settled' }
+      );
+      if (result?.confirmed) await load();
     } finally {
       setIsBusy(false);
     }
@@ -139,10 +142,10 @@ export default function ChallengeDetailScreen() {
   const handleWithdraw = () => {
     haptics.success();
     if (!wallet) return;
-    runAction(
-      () => services.challenge.withdrawStake(wallet, challenge.id),
-      'Could not withdraw. It may already be claimed.'
-    );
+    runAction(() => services.challenge.withdrawStake(wallet, challenge.id), {
+      pending: 'Withdrawing...',
+      success: 'Withdrawn',
+    });
   };
 
   return (

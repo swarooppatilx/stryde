@@ -40,6 +40,8 @@ export default function HomeScreen() {
   const theme = useTheme();
   const activities = useActivityStore((s) => s.activities);
   const socialActivities = useSocialStore((s) => s.activities);
+  const following = useSocialStore((s) => s.following);
+  const getFeed = useSocialStore((s) => s.getFeed);
   const fetchActivities = useSocialStore((s) => s.fetchActivities);
   const getUserById = useSocialStore((s) => s.getUserById);
   const toggleKudos = useSocialStore((s) => s.toggleKudos);
@@ -53,13 +55,11 @@ export default function HomeScreen() {
     return { count: weekly.activityCount, distance: weekly.totalDistance };
   }, [activities]);
 
-  const feed = useMemo(
-    () =>
-      [...socialActivities].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ),
-    [socialActivities]
-  );
+  // getFeed() reads activities/following from the store's own get() internally,
+  // so socialActivities/following are triggers for recomputation, not values read
+  // in this callback — biome can't see through that closure.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: socialActivities/following are recompute triggers for getFeed(), not read in this callback
+  const feed = useMemo(() => getFeed(), [getFeed, socialActivities, following]);
 
   const onRefresh = useCallback(() => {
     haptics.selection();
@@ -297,8 +297,8 @@ export default function HomeScreen() {
               activeOpacity={0.7}
               onPress={() => handleFabAction('photo')}
             >
-              <View style={[styles.actionIcon, { backgroundColor: tint('#8B5CF6', 0.12) }]}>
-                <Ionicons name="camera" size={22} color="#8B5CF6" />
+              <View style={[styles.actionIcon, { backgroundColor: tint(theme.brand.info, 0.12) }]}>
+                <Ionicons name="camera" size={22} color={theme.brand.info} />
               </View>
               <View style={styles.actionText}>
                 <ThemedText type="smallBold">Post Photo</ThemedText>

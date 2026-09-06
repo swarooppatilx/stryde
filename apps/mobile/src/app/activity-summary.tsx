@@ -2,7 +2,7 @@ import { Input } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,10 +16,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { getSportIcon } from '@/constants/activity';
 import { MAP_STYLES } from '@/constants/config';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActivity } from '@/hooks/useActivity';
+import { useActivityStore } from '@/stores/activityStore';
 import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
+import { computePersonalRecords } from '@/utils/profile';
 
 export default function ActivitySummaryScreen() {
   const theme = useTheme();
@@ -38,6 +40,33 @@ export default function ActivitySummaryScreen() {
     handleShare,
     goBack,
   } = useActivity();
+
+  const allActivities = useActivityStore((s) => s.activities);
+  const newRecords = useMemo(() => {
+    if (!activity) return [];
+    const priorSameSport = allActivities.filter(
+      (a) => a.id !== activity.id && a.activityType === activity.activityType
+    );
+    if (priorSameSport.length === 0) return [];
+    const prior = computePersonalRecords(priorSameSport);
+    const records: string[] = [];
+    if (prior.longestDistance && activity.distance > prior.longestDistance.distance) {
+      records.push('longest distance');
+    }
+    if (
+      prior.fastestPace &&
+      activity.distance > 0 &&
+      prior.fastestPace.distance > 0 &&
+      activity.duration / activity.distance <
+        prior.fastestPace.duration / prior.fastestPace.distance
+    ) {
+      records.push('fastest pace');
+    }
+    if (prior.longestDuration && activity.duration > prior.longestDuration.duration) {
+      records.push('longest duration');
+    }
+    return records;
+  }, [activity, allActivities]);
 
   useEffect(() => {
     if (coordinates.length < 2 || !cameraRef.current) return;
@@ -161,6 +190,18 @@ export default function ActivitySummaryScreen() {
                 </ThemedView>
               </ThemedView>
             </ThemedView>
+
+            {newRecords.length > 0 && (
+              <ThemedView
+                style={[styles.prBanner, { backgroundColor: tint(theme.brand.warning, 0.15) }]}
+              >
+                <Ionicons name="trophy" size={16} color={theme.brand.warning} />
+                <ThemedText type="smallBold" style={{ color: theme.brand.warning }}>
+                  {`New ${newRecords[0]}!`}
+                  {newRecords.length > 1 ? ` +${newRecords.length - 1} more record` : ''}
+                </ThemedText>
+              </ThemedView>
+            )}
 
             <ThemedView style={styles.stats}>
               <ThemedView style={styles.stat}>
@@ -349,6 +390,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  prBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.three,
   },
   statsOverlay: {
     position: 'absolute',
