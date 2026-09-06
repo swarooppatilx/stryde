@@ -5,6 +5,7 @@ import {
   type PublicClient,
   type WalletClient,
 } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { type ChainMode, DEFAULT_CHAIN_MODE, getChainConfig } from '../constants';
 import { ABIS } from '../contracts';
 
@@ -30,11 +31,16 @@ export function getPublicClient(): PublicClient {
   }) as PublicClient;
 }
 
+export function getBalance(address: `0x${string}`): Promise<bigint> {
+  const client = getPublicClient();
+  return client.getBalance({ address });
+}
+
 export function getWalletClient(privateKey: `0x${string}`): WalletClient {
   const config = getChainConfig(currentMode);
   return createWalletClient({
     chain: config.chain,
-    account: privateKey,
+    account: privateKeyToAccount(privateKey),
     transport: http(config.rpcUrl),
   }) as WalletClient;
 }
