@@ -1,11 +1,12 @@
 import { useEmbeddedEthereumWallet } from '@privy-io/expo';
+import { useSmartWallets } from '@privy-io/expo/smart-wallets';
 import type { ChainMode } from '@repo/shared';
 import { useEffect, useRef, useState } from 'react';
 import { type Chain, createWalletClient, custom, http, type WalletClient } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { baseSepolia, sepolia } from 'viem/chains';
 import { anvil } from '@/config/privyChains';
-import { getLocalRpcUrl, setCurrentUserId } from '@/constants/config';
+import { ENV, getLocalRpcUrl, setCurrentUserId } from '@/constants/config';
 
 const ANVIL_PRIVATE_KEY =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as const;
@@ -23,6 +24,7 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
   isLoading: boolean;
 } {
   const { wallets } = useEmbeddedEthereumWallet();
+  const { getClientForChain } = useSmartWallets();
   const [wallet, setWallet] = useState<WalletClient | null>(null);
   const [address, setAddress] = useState<`0x${string}` | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,6 +55,19 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
     async function init() {
       try {
         const chain = CHAIN_MAP[mode];
+
+        if (ENV.USE_SMART_WALLET) {
+          // Gasless path: a Privy smart account (ERC-4337), sponsored via
+          // whatever paymaster policy is configured in the Privy Dashboard.
+          const smartClient = await getClientForChain({ chainId: chain.id });
+          if (!cancelled) {
+            setWallet(smartClient as unknown as WalletClient);
+            setAddress(smartClient.account.address);
+            setCurrentUserId(smartClient.account.address);
+          }
+          return;
+        }
+
         const embeddedWallet = wallets?.[0];
 
         if (!embeddedWallet) {
@@ -88,7 +103,7 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
     return () => {
       cancelled = true;
     };
-  }, [wallets, mode]);
+  }, [wallets, mode, getClientForChain]);
 
   return { wallet, address, isLoading };
 }
