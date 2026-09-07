@@ -55,5 +55,19 @@ forge script script/DeployChallengeRegistry.s.sol \
   --verify 2>&1 | tee /tmp/deploy-challenge.log
 
 echo ""
+echo "=== Deploying TerritoryNFT ==="
+forge script script/DeployTerritoryNFT.s.sol \
+  --rpc-url "$RPC_URL" \
+  --broadcast \
+  --verify 2>&1 | tee /tmp/deploy-territorynft.log
+
+echo ""
+echo "=== Deploying MoveToEarnToken ==="
+forge script script/DeployMoveToEarnToken.s.sol \
+  --rpc-url "$RPC_URL" \
+  --broadcast \
+  --verify 2>&1 | tee /tmp/deploy-movetoearn.log
+
+echo ""
 echo "=== Deployment Complete ==="
 echo "Check /tmp/deploy-*.log for transaction hashes"

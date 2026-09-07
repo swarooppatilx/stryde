@@ -14,6 +14,8 @@ CONTRACTS=(
   SeasonManager
   AchievementRegistry
   ChallengeRegistry
+  TerritoryNFT
+  MoveToEarnToken
 )
 
 for contract in "${CONTRACTS[@]}"; do

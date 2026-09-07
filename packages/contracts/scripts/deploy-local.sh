@@ -84,6 +84,24 @@ CHALLENGE_ADDRESS=$(echo "$OUTPUT" | grep -oP 'ChallengeRegistry deployed at: \K
 CONTRACT_ADDRESSES+=("challengeRegistry=$CHALLENGE_ADDRESS")
 
 echo ""
+echo "--- TerritoryNFT ---"
+OUTPUT=$(forge script script/DeployTerritoryNFT.s.sol \
+  --rpc-url "$ANVIL_RPC" \
+  --broadcast 2>&1)
+echo "$OUTPUT"
+TERRITORY_NFT_ADDRESS=$(echo "$OUTPUT" | grep -oP 'TerritoryNFT deployed at: \K0x[a-fA-F0-9]{40}')
+CONTRACT_ADDRESSES+=("territoryNFT=$TERRITORY_NFT_ADDRESS")
+
+echo ""
+echo "--- MoveToEarnToken ---"
+OUTPUT=$(forge script script/DeployMoveToEarnToken.s.sol \
+  --rpc-url "$ANVIL_RPC" \
+  --broadcast 2>&1)
+echo "$OUTPUT"
+MOVE_TO_EARN_ADDRESS=$(echo "$OUTPUT" | grep -oP 'MoveToEarnToken deployed at: \K0x[a-fA-F0-9]{40}')
+CONTRACT_ADDRESSES+=("moveToEarnToken=$MOVE_TO_EARN_ADDRESS")
+
+echo ""
 echo "=== Local Deployment Complete ==="
 echo ""
 echo "Contract Addresses:"
