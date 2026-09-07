@@ -2,6 +2,7 @@ import { services } from '@repo/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { getCurrentUserId } from '@/constants/config';
+import { ipfsToHttpUrl } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
 import type { Activity, User } from '@/types';
 import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
@@ -91,7 +92,7 @@ export const useSocialStore = create<SocialState>()(
             birthday: null,
             wallet: u.wallet,
             ensName: undefined,
-            avatar: undefined,
+            avatar: u.avatarCid ? ipfsToHttpUrl(u.avatarCid) : undefined,
             createdAt: new Date(),
             followers: 0,
             following: 0,

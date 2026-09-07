@@ -44,14 +44,14 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     // and then report failure). publicnode's endpoint has no such gate.
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
     contracts: {
-      profileRegistry: '0xa180433C0818518eda0Ac8c3248dCEE388a689dd',
-      activityRegistry: '0xf786Fd52cfCc4c319aC5B43E2F8e856f454Dd5f2',
-      territoryRegistry: '0x52fB04Cf2AD5ed767fc66b0Fc70C70E185446B67',
-      seasonManager: '0xe36E17c1C61CE0cE5eF1c5EAF5eb17c60f6ce5Ba',
-      achievementRegistry: '0x60EcD3Cc3D29aC475E1d84969B442C41B6d0C91C',
-      challengeRegistry: '0xA8B8133550F7e9CA15164a3c97a822bdead3e7EE',
-      territoryNFT: '0x9AaF0D8f995F9Af99cdb9ab1c3dc599259Ff1643',
-      moveToEarnToken: '0x0AdcEfd61531D5fc62f1fFA09b3AcdE602f4C8f6',
+      profileRegistry: ZERO_ADDRESS,
+      activityRegistry: ZERO_ADDRESS,
+      territoryRegistry: ZERO_ADDRESS,
+      seasonManager: ZERO_ADDRESS,
+      achievementRegistry: ZERO_ADDRESS,
+      challengeRegistry: ZERO_ADDRESS,
+      territoryNFT: ZERO_ADDRESS,
+      moveToEarnToken: ZERO_ADDRESS,
     },
   },
   'base-sepolia': {

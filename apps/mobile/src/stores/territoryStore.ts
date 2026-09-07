@@ -7,6 +7,10 @@ import { asyncStorageAdapter, isoDateReviver } from '../utils/storage';
 const DUPLICATE_COORD_TOLERANCE_DEG = 0.0001;
 const DUPLICATE_AREA_TOLERANCE_SQM = 1;
 
+// Stable reference so callers using this as a Zustand selector value don't
+// re-render on every read just because `[]` !== `[]`.
+const EMPTY_POLYGONS: Ring[] = [];
+
 interface TerritoryMetadata {
   id: string;
   areaSqm: number;
@@ -48,7 +52,7 @@ export const useTerritoryStore = create<TerritoryState>()(
           if (isDuplicate) return state;
           return { polygons: { ...state.polygons, [owner]: [...existing, polygon] } };
         }),
-      getUserPolygons: (owner) => get().polygons[owner] || [],
+      getUserPolygons: (owner) => get().polygons[owner] || EMPTY_POLYGONS,
       getTotalArea: (owner) =>
         (get().polygons[owner] || []).reduce(
           (sum, polygon) => sum + territoryService.getPolygonArea(polygon),
