@@ -27,6 +27,11 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
         emit ProfileCreated(profileId, msg.sender, username, block.timestamp);
     }
 
+    function setAvatar(string calldata cid) external override whenNotPaused {
+        if (_profileIdOf[msg.sender] == 0) revert NotRegistered();
+        emit AvatarUpdated(msg.sender, cid);
+    }
+
     function isRegistered(address wallet) external view override returns (bool) {
         return _profileIdOf[wallet] != 0;
     }

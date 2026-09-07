@@ -122,6 +122,19 @@
   },
   {
     "type": "function",
+    "name": "setAvatar",
+    "inputs": [
+      {
+        "name": "cid",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "totalProfiles",
     "inputs": [],
     "outputs": [
@@ -152,6 +165,25 @@
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AvatarUpdated",
+    "inputs": [
+      {
+        "name": "wallet",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "cid",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",

@@ -12,6 +12,7 @@ contract ProfileRegistryTest is Test {
     address bob = makeAddr("bob");
 
     event ProfileCreated(uint256 indexed profileId, address indexed wallet, string username, uint256 joinedAt);
+    event AvatarUpdated(address indexed wallet, string cid);
 
     function setUp() public {
         registry = new ProfileRegistry();
@@ -70,6 +71,35 @@ contract ProfileRegistryTest is Test {
         assertEq(registry.getProfileId(bob), 2);
         assertEq(registry.getWallet(1), alice);
         assertEq(registry.getWallet(2), bob);
+    }
+
+    // ─── Avatar ─────────────────────────────────────────────────────
+
+    function test_SetAvatar() public {
+        vm.startPrank(alice);
+        registry.register("alice_run");
+
+        vm.expectEmit(true, false, false, true);
+        emit AvatarUpdated(alice, "ipfs://cid123");
+        registry.setAvatar("ipfs://cid123");
+        vm.stopPrank();
+    }
+
+    function test_SetAvatar_RevertNotRegistered() public {
+        vm.prank(alice);
+        vm.expectRevert(IProfileRegistry.NotRegistered.selector);
+        registry.setAvatar("ipfs://cid123");
+    }
+
+    function test_SetAvatar_RevertWhenPaused() public {
+        vm.prank(alice);
+        registry.register("alice_run");
+
+        registry.pause();
+
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.setAvatar("ipfs://cid123");
     }
 
     // ─── View functions ─────────────────────────────────────────────
