@@ -1,8 +1,5 @@
-import {
-  Territory,
-  type TerritoryClaimed,
-  type TerritoryReinforced,
-} from '../../generated/TerritoryRegistry/TerritoryRegistry';
+import { TerritoryClaimed, TerritoryReinforced } from '../../generated/TerritoryRegistry/TerritoryRegistry';
+import { Territory } from '../../generated/schema';
 
 export function handleTerritoryClaimed(event: TerritoryClaimed): void {
   const territory = new Territory(event.params.territoryId);

@@ -6,9 +6,12 @@ type Profile @entity {
   activities: [Activity!]! @derivedFrom(field: "user")
   territories: [Territory!]! @derivedFrom(field: "owner")
   contributions: [Contribution!]! @derivedFrom(field: "user")
+  achievements: [Achievement!]! @derivedFrom(field: "recipient")
+  challengesAsChallenger: [Challenge!]! @derivedFrom(field: "challenger")
+  challengesAsOpponent: [Challenge!]! @derivedFrom(field: "opponent")
 }
 
-type Activity @entity(timeseries: true) {
+type Activity @entity {
   id: Bytes! # txHash-logIndex
   user: Profile!
   activityHash: Bytes!
@@ -30,7 +33,7 @@ type Territory @entity {
 }
 
 type Season @entity {
-  id: BigInt!
+  id: String! # seasonId
   startTime: BigInt!
   endTime: BigInt!
   isActive: Boolean!
@@ -45,4 +48,32 @@ type Contribution @entity {
   user: Profile!
   distance: BigInt!
   recordedAt: BigInt!
+}
+
+type AchievementDefinition @entity {
+  id: Bytes! # achievementId
+  name: String!
+}
+
+type Achievement @entity {
+  id: String! # tokenId
+  recipient: Profile!
+  achievementId: Bytes!
+  definition: AchievementDefinition
+  mintedAt: BigInt!
+}
+
+type Challenge @entity {
+  id: String! # challengeId
+  challenger: Profile!
+  opponent: Profile!
+  activityType: Int!
+  targetMetric: BigInt!
+  deadline: BigInt!
+  stake: BigInt!
+  status: String! # Open | Accepted | Settled | Cancelled
+  winner: Bytes
+  loser: Bytes
+  payout: BigInt
+  createdAt: BigInt!
 }

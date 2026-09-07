@@ -1,4 +1,5 @@
-import { Profile, type ProfileCreated } from '../../generated/ProfileRegistry/ProfileRegistry';
+import { ProfileCreated } from '../../generated/ProfileRegistry/ProfileRegistry';
+import { Profile } from '../../generated/schema';
 
 export function handleProfileCreated(event: ProfileCreated): void {
   const profile = new Profile(event.params.wallet);

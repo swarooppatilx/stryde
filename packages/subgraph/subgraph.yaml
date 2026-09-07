@@ -1,14 +1,14 @@
 specVersion: 1.0.0
-indexerVersion: 1.0.0
-schema: schema.graphql
+schema:
+  file: schema.graphql
 dataSources:
   - kind: ethereum/contract
     name: ProfileRegistry
-    network: base-sepolia
+    network: sepolia
     source:
-      address: "0x0000000000000000000000000000000000000000"
+      address: "0xa180433C0818518eda0Ac8c3248dCEE388a689dd"
       abi: ProfileRegistry
-      startBlock: 0
+      startBlock: 11681035
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -19,16 +19,16 @@ dataSources:
         - name: ProfileRegistry
           file: ../contracts/out/ProfileRegistry.sol/ProfileRegistry.json
       eventHandlers:
-        - event: ProfileCreated(uint256 indexed profileId, address indexed wallet, string username, uint256 joinedAt)
+        - event: ProfileCreated(indexed uint256,indexed address,string,uint256)
           handler: handleProfileCreated
       file: src/mappings/ProfileRegistry.ts
   - kind: ethereum/contract
     name: ActivityRegistry
-    network: base-sepolia
+    network: sepolia
     source:
-      address: "0x0000000000000000000000000000000000000000"
+      address: "0xf786Fd52cfCc4c319aC5B43E2F8e856f454Dd5f2"
       abi: ActivityRegistry
-      startBlock: 0
+      startBlock: 11681042
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -39,16 +39,16 @@ dataSources:
         - name: ActivityRegistry
           file: ../contracts/out/ActivityRegistry.sol/ActivityRegistry.json
       eventHandlers:
-        - event: ActivityRecorded(uint256 indexed activityId, address indexed owner, bytes32 indexed activityHash, uint8 activityType, uint256 distance, uint256 duration, uint256 timestamp, uint256 territoryArea)
+        - event: ActivityRecorded(indexed uint256,indexed address,indexed bytes32,uint8,uint256,uint256,uint256,uint256)
           handler: handleActivityRecorded
       file: src/mappings/ActivityRegistry.ts
   - kind: ethereum/contract
     name: TerritoryRegistry
-    network: base-sepolia
+    network: sepolia
     source:
-      address: "0x0000000000000000000000000000000000000000"
+      address: "0x52fB04Cf2AD5ed767fc66b0Fc70C70E185446B67"
       abi: TerritoryRegistry
-      startBlock: 0
+      startBlock: 11681049
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -59,18 +59,18 @@ dataSources:
         - name: TerritoryRegistry
           file: ../contracts/out/TerritoryRegistry.sol/TerritoryRegistry.json
       eventHandlers:
-        - event: TerritoryClaimed(bytes32 indexed territoryId, address indexed controller, uint256 areaSqm, bytes32 polygonHash, int32 minLng, int32 minLat, int32 maxLng, int32 maxLat, uint256 capturedAt, uint256 strength)
+        - event: TerritoryClaimed(indexed bytes32,indexed address,uint256,bytes32,int32,int32,int32,int32,uint256,uint256)
           handler: handleTerritoryClaimed
-        - event: TerritoryReinforced(bytes32 indexed territoryId, address indexed controller, uint256 reinforcedAt, uint256 strength)
+        - event: TerritoryReinforced(indexed bytes32,indexed address,uint256,uint256)
           handler: handleTerritoryReinforced
       file: src/mappings/TerritoryRegistry.ts
   - kind: ethereum/contract
     name: SeasonManager
-    network: base-sepolia
+    network: sepolia
     source:
-      address: "0x0000000000000000000000000000000000000000"
+      address: "0xe36E17c1C61CE0cE5eF1c5EAF5eb17c60f6ce5Ba"
       abi: SeasonManager
-      startBlock: 0
+      startBlock: 11681057
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -82,8 +82,57 @@ dataSources:
         - name: SeasonManager
           file: ../contracts/out/SeasonManager.sol/SeasonManager.json
       eventHandlers:
-        - event: SeasonStarted(uint256 indexed seasonId, uint256 startTime, uint256 endTime)
+        - event: SeasonStarted(indexed uint256,uint256,uint256)
           handler: handleSeasonStarted
-        - event: ContributionRecorded(uint256 indexed seasonId, address indexed participant, uint256 contribution, uint256 total)
+        - event: ContributionRecorded(indexed uint256,indexed address,uint256,uint256)
           handler: handleContributionRecorded
       file: src/mappings/SeasonManager.ts
+  - kind: ethereum/contract
+    name: AchievementRegistry
+    network: sepolia
+    source:
+      address: "0x60EcD3Cc3D29aC475E1d84969B442C41B6d0C91C"
+      abi: AchievementRegistry
+      startBlock: 11681064
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Achievement
+        - AchievementDefinition
+      abis:
+        - name: AchievementRegistry
+          file: ../contracts/out/AchievementRegistry.sol/AchievementRegistry.json
+      eventHandlers:
+        - event: AchievementMinted(indexed uint256,indexed address,indexed bytes32)
+          handler: handleAchievementMinted
+        - event: AchievementDefined(indexed bytes32,string)
+          handler: handleAchievementDefined
+      file: src/mappings/AchievementRegistry.ts
+  - kind: ethereum/contract
+    name: ChallengeRegistry
+    network: sepolia
+    source:
+      address: "0xA8B8133550F7e9CA15164a3c97a822bdead3e7EE"
+      abi: ChallengeRegistry
+      startBlock: 11681074
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Challenge
+      abis:
+        - name: ChallengeRegistry
+          file: ../contracts/out/ChallengeRegistry.sol/ChallengeRegistry.json
+      eventHandlers:
+        - event: ChallengeCreated(indexed uint256,indexed address,indexed address,uint8,uint256,uint256,uint256)
+          handler: handleChallengeCreated
+        - event: ChallengeAccepted(indexed uint256,indexed address)
+          handler: handleChallengeAccepted
+        - event: ChallengeSettled(indexed uint256,indexed address,indexed address,uint256)
+          handler: handleChallengeSettled
+        - event: ChallengeCancelled(indexed uint256,indexed address)
+          handler: handleChallengeCancelled
+      file: src/mappings/ChallengeRegistry.ts

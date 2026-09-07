@@ -1,4 +1,5 @@
-import { Activity, type ActivityRecorded } from '../../generated/ActivityRegistry/ActivityRegistry';
+import { ActivityRecorded } from '../../generated/ActivityRegistry/ActivityRegistry';
+import { Activity } from '../../generated/schema';
 
 export function handleActivityRecorded(event: ActivityRecorded): void {
   const activity = new Activity(event.transaction.hash.concatI32(event.logIndex.toI32()));
