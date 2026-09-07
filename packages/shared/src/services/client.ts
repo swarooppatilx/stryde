@@ -21,6 +21,11 @@ const rpcTransport = (url: string) =>
 
 const warnedZeroAddressModes = new Set<ChainMode>();
 
+// Keyed on mode + rpcUrl (not just mode) so a runtime RPC override — e.g.
+// setLocalRpcUrl() picking up a new LAN IP — still invalidates the cache
+// instead of serving a client pointed at a stale URL.
+let cachedPublicClient: { key: string; client: PublicClient } | null = null;
+
 let currentMode: ChainMode = DEFAULT_CHAIN_MODE;
 
 export function setChainMode(mode: ChainMode): void {
@@ -37,10 +42,18 @@ export function getActiveConfig() {
 
 export function getPublicClient(): PublicClient {
   const config = getChainConfig(currentMode);
-  return createPublicClient({
+  const key = `${currentMode}:${config.rpcUrl}`;
+
+  if (cachedPublicClient?.key === key) {
+    return cachedPublicClient.client;
+  }
+
+  const client = createPublicClient({
     chain: config.chain,
     transport: rpcTransport(config.rpcUrl),
   }) as PublicClient;
+  cachedPublicClient = { key, client };
+  return client;
 }
 
 export function getBalance(address: `0x${string}`): Promise<bigint> {
