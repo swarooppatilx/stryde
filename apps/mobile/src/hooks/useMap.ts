@@ -1,6 +1,7 @@
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { getCurrentUserId } from '@/constants/config';
 import { useActivityStore } from '@/stores/activityStore';
@@ -69,6 +70,19 @@ export function useMap() {
   useEffect(() => {
     loadLocation();
   }, [loadLocation]);
+
+  // Granting permission or turning on GPS both send the app to the background
+  // (Android's own system dialogs for these) and back. Retry silently on
+  // return instead of leaving the user to tap "Try Again" as a third prompt
+  // on top of the two system ones they just handled.
+  const hasLocation = location !== null;
+  useEffect(() => {
+    if (hasLocation) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadLocation();
+    });
+    return () => subscription.remove();
+  }, [hasLocation, loadLocation]);
 
   const recenter = () => {
     if (location) {

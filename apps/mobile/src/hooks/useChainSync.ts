@@ -9,9 +9,20 @@ import { ensureLocalWalletFunded } from '@/utils/anvilFaucet';
 import { useViemWallet } from './useViemWallet';
 
 export function useChainSync() {
-  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const { wallet, address, isLoading: walletLoading } = useViemWallet(ENV.CHAIN_MODE);
   const [syncing, setSyncing] = useState(true);
   const syncedAddress = useRef<string | null>(null);
+
+  // The sync effect below only runs once a wallet exists — for a logged-out
+  // user (no wallet to sync), it never runs at all, so `syncing` would stay
+  // true forever. Since RootLayoutNav gates the whole navigator (including
+  // the login/onboarding screens) behind `!syncing`, that left a logged-out
+  // user stuck on the splash screen permanently, unable to even reach login.
+  useEffect(() => {
+    if (!walletLoading && !wallet) {
+      setSyncing(false);
+    }
+  }, [walletLoading, wallet]);
 
   useEffect(() => {
     if (ENV.CHAIN_MODE === 'local') {

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { ColorSchemeName } from 'react-native';
 
 import { Brand, Colors } from '@/constants/theme';
@@ -20,5 +21,5 @@ export function useTheme() {
   const scheme = useColorScheme();
   const mode = resolveMode(preference, scheme);
 
-  return { ...Colors[mode], brand: Brand, mode, isDark: mode === 'dark' };
+  return useMemo(() => ({ ...Colors[mode], brand: Brand, mode, isDark: mode === 'dark' }), [mode]);
 }
