@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/shallow';
 import { type MapMarker, MapRoute } from '@/components/map-route';
@@ -324,7 +324,11 @@ export default function TrackingScreen() {
               Choose an activity
             </ThemedText>
 
-            <View style={styles.sportRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.sportRow}
+            >
               {ACTIVITY_TYPES.map((item) => {
                 const active = activityType === item.type;
                 return (
@@ -366,7 +370,7 @@ export default function TrackingScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.startButton}
@@ -578,7 +582,8 @@ const styles = StyleSheet.create({
   },
   sportRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: Spacing.four,
+    paddingHorizontal: Spacing.four,
     marginBottom: Spacing.four,
   },
   sportItem: {
@@ -600,6 +605,7 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.primary,
     borderRadius: BorderRadius.full,
     paddingVertical: Spacing.three,
+    marginHorizontal: Spacing.four,
     gap: Spacing.two,
   },
   startButtonLabel: {

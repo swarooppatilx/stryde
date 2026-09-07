@@ -8,6 +8,8 @@ import {TerritoryRegistry} from "../src/TerritoryRegistry.sol";
 import {SeasonManager} from "../src/SeasonManager.sol";
 import {AchievementRegistry} from "../src/AchievementRegistry.sol";
 import {ChallengeRegistry} from "../src/ChallengeRegistry.sol";
+import {TerritoryNFT} from "../src/TerritoryNFT.sol";
+import {MoveToEarnToken} from "../src/MoveToEarnToken.sol";
 
 contract DeployAll is Script {
     function run() external {
@@ -32,6 +34,12 @@ contract DeployAll is Script {
         ChallengeRegistry challengeRegistry = new ChallengeRegistry();
         console.log("ChallengeRegistry:", address(challengeRegistry));
 
+        TerritoryNFT territoryNFT = new TerritoryNFT();
+        console.log("TerritoryNFT:", address(territoryNFT));
+
+        MoveToEarnToken moveToEarnToken = new MoveToEarnToken();
+        console.log("MoveToEarnToken:", address(moveToEarnToken));
+
         vm.stopBroadcast();
 
         console.log("\n=== All contracts deployed ===");
@@ -41,5 +49,7 @@ contract DeployAll is Script {
         console.log("seasonManager=", address(seasonManager));
         console.log("achievementRegistry=", address(achievementRegistry));
         console.log("challengeRegistry=", address(challengeRegistry));
+        console.log("territoryNFT=", address(territoryNFT));
+        console.log("moveToEarnToken=", address(moveToEarnToken));
     }
 }
