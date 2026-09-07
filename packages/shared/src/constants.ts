@@ -14,6 +14,8 @@ export interface ChainConfig {
     seasonManager: `0x${string}`;
     achievementRegistry: `0x${string}`;
     challengeRegistry: `0x${string}`;
+    territoryNFT: `0x${string}`;
+    moveToEarnToken: `0x${string}`;
   };
 }
 
@@ -48,6 +50,8 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       seasonManager: ZERO_ADDRESS,
       achievementRegistry: ZERO_ADDRESS,
       challengeRegistry: ZERO_ADDRESS,
+      territoryNFT: ZERO_ADDRESS,
+      moveToEarnToken: ZERO_ADDRESS,
     },
   },
   'base-sepolia': {
@@ -61,6 +65,8 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       seasonManager: ZERO_ADDRESS,
       achievementRegistry: ZERO_ADDRESS,
       challengeRegistry: ZERO_ADDRESS,
+      territoryNFT: ZERO_ADDRESS,
+      moveToEarnToken: ZERO_ADDRESS,
     },
   },
   local: {
@@ -74,6 +80,8 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       seasonManager: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9',
       achievementRegistry: '0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9',
       challengeRegistry: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707',
+      territoryNFT: '0x0165878A594ca255338adfa4d48449f69242Eb8F',
+      moveToEarnToken: '0xa513E6E4b8f2a923D98304ec87F64353C4D5C853',
     },
   },
 };

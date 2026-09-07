@@ -99,5 +99,13 @@ export function getContracts() {
       address: config.contracts.challengeRegistry,
       abi: ABIS.challengeRegistry,
     },
+    territoryNFT: {
+      address: config.contracts.territoryNFT,
+      abi: ABIS.territoryNFT,
+    },
+    moveToEarnToken: {
+      address: config.contracts.moveToEarnToken,
+      abi: ABIS.moveToEarnToken,
+    },
   } as const;
 }

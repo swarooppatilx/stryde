@@ -33,6 +33,8 @@ export const ABIS = {
   seasonManager: seasonManagerAbi,
   achievementRegistry: achievementRegistryAbi,
   challengeRegistry: challengeRegistryAbi,
+  territoryNFT: territoryNFTAbi,
+  moveToEarnToken: moveToEarnTokenAbi,
 } as const;
 
 export type ContractName = keyof typeof ABIS;
