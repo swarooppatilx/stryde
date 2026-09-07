@@ -19,6 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useEnsName } from '@/hooks/useEnsName';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useSocialStore } from '@/stores/socialStore';
@@ -53,6 +54,9 @@ export default function ChallengeDetailScreen() {
     load();
   }, [load]);
 
+  const challengerEnsName = useEnsName(challenge?.challenger);
+  const opponentEnsName = useEnsName(challenge?.opponent);
+
   if (!challenge) {
     return (
       <ThemedView type="background" style={styles.container}>
@@ -70,12 +74,12 @@ export default function ChallengeDetailScreen() {
   const isOpponent = challenge.opponent.toLowerCase() === currentUserId;
   const challengerUser = getUserById(challenge.challenger);
   const opponentUser = getUserById(challenge.opponent);
-  const challengerName = challengerUser
-    ? getDisplayName(challengerUser)
-    : `${challenge.challenger.slice(0, 6)}...`;
-  const opponentName = opponentUser
-    ? getDisplayName(opponentUser)
-    : `${challenge.opponent.slice(0, 6)}...`;
+  const challengerName =
+    challengerEnsName ||
+    (challengerUser ? getDisplayName(challengerUser) : `${challenge.challenger.slice(0, 6)}...`);
+  const opponentName =
+    opponentEnsName ||
+    (opponentUser ? getDisplayName(opponentUser) : `${challenge.opponent.slice(0, 6)}...`);
   const statusLabel = STATUS_LABEL[challenge.status] ?? 'Unknown';
   const deadlinePassed = Date.now() / 1000 > challenge.deadline;
   const isWinner = challenge.status === 2 && challenge.winner.toLowerCase() === currentUserId;
