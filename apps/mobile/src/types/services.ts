@@ -29,7 +29,10 @@ export interface IActivityService {
   updateActivity(
     id: string,
     updates: Partial<
-      Pick<Activity, 'name' | 'description' | 'feel' | 'privacy' | 'images' | 'txHash'>
+      Pick<
+        Activity,
+        'name' | 'description' | 'feel' | 'privacy' | 'images' | 'txHash' | 'strdEarned'
+      >
     >
   ): void;
   getActivityById(id: string): Activity | undefined;

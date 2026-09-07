@@ -70,6 +70,8 @@ export interface Activity {
   kudos?: string[];
   comments?: Comment[];
   txHash?: string;
+  /** STRD tokens earned for this activity's distance, once the mint confirms. */
+  strdEarned?: number;
   createdAt: Date;
 }
 
