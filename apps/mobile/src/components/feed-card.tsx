@@ -59,8 +59,26 @@ function formatElevation(meters: number): string {
   return `${Math.round(meters)}m`;
 }
 
-function UserAvatar({ name, size = 36 }: { name: string; size?: number }) {
+function UserAvatar({
+  name,
+  avatarUrl,
+  size = 36,
+}: {
+  name: string;
+  avatarUrl?: string;
+  size?: number;
+}) {
   const theme = useTheme();
+
+  if (avatarUrl) {
+    return (
+      <Image
+        source={{ uri: avatarUrl }}
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+      />
+    );
+  }
+
   const initials = name
     .split(' ')
     .map((n) => n[0])
@@ -283,7 +301,7 @@ export function FeedCard({
           accessibilityRole="button"
           accessibilityLabel={`${user.username}'s activity`}
         >
-          <UserAvatar name={user.username} />
+          <UserAvatar name={user.username} avatarUrl={user.avatar} />
           <ThemedView style={styles.headerText}>
             <ThemedText type="smallBold" numberOfLines={1}>
               {ensName || user.username}
