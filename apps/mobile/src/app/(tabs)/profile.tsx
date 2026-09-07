@@ -49,7 +49,9 @@ export default function ProfileScreen() {
   const avatar = useProfileStore((s) => s.avatar);
   const avatarCid = useProfileStore((s) => s.avatarCid);
   const createdAt = useProfileStore((s) => s.createdAt);
-  const settings = useProfileStore((s) => s.settings);
+  const weeklyGoalDistance = useProfileStore((s) => s.settings.weeklyGoalDistance);
+  const weeklyGoalActivities = useProfileStore((s) => s.settings.weeklyGoalActivities);
+  const weeklyGoalTime = useProfileStore((s) => s.settings.weeklyGoalTime);
   const resetProfile = useProfileStore((s) => s.reset);
   const setAvatar = useProfileStore((s) => s.setAvatar);
   const setAvatarCid = useProfileStore((s) => s.setAvatarCid);
@@ -273,6 +275,14 @@ export default function ProfileScreen() {
           const { cid } = await uploadImageToIpfs(`avatar-${usernameForName}`, localUri);
           setAvatarCid(cid);
           setAvatar(ipfsToHttpUrl(cid));
+
+          if (wallet) {
+            try {
+              await services.profile.setAvatar(wallet, cid);
+            } catch (chainError) {
+              console.warn('[Profile] Publishing avatar on-chain failed', chainError);
+            }
+          }
         } catch (ipfsError) {
           console.warn('[Profile] IPFS upload failed, keeping local avatar', ipfsError);
         }
@@ -307,9 +317,9 @@ export default function ProfileScreen() {
     }
   };
 
-  const weekDistProgress = Math.min(weeklyStats.totalDistance / settings.weeklyGoalDistance, 1);
-  const weekActProgress = Math.min(weeklyStats.activityCount / settings.weeklyGoalActivities, 1);
-  const weekTimeProgress = Math.min(weeklyStats.totalDuration / settings.weeklyGoalTime, 1);
+  const weekDistProgress = Math.min(weeklyStats.totalDistance / weeklyGoalDistance, 1);
+  const weekActProgress = Math.min(weeklyStats.activityCount / weeklyGoalActivities, 1);
+  const weekTimeProgress = Math.min(weeklyStats.totalDuration / weeklyGoalTime, 1);
 
   const weeklyMax = Math.max(...weeklyStats.dailyActivityCount, 1);
 
@@ -432,19 +442,6 @@ export default function ProfileScreen() {
 
             {/* ── Pill Actions ── */}
             <ThemedView style={styles.pillRow}>
-              <TouchableOpacity
-                style={[styles.pillButton, { borderColor: theme.brand.primary }]}
-                onPress={handleStartEditName}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Edit profile name"
-              >
-                <Ionicons name="pencil-outline" size={13} color={theme.brand.primary} />
-                <ThemedText type="small" style={[styles.badgeText, { color: theme.brand.primary }]}>
-                  Edit
-                </ThemedText>
-              </TouchableOpacity>
-
               {walletAddress && (
                 <TouchableOpacity
                   style={[styles.pillButton, { borderColor: theme.brand.primary }]}

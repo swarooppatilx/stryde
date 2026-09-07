@@ -23,6 +23,7 @@ import { ThemedView } from '@/components/themed-view';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useEnsName } from '@/hooks/useEnsName';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import type { ActivityType } from '@/types';
@@ -52,6 +53,7 @@ export default function CreateChallengeScreen() {
   const [stakeEth, setStakeEth] = useState('0.01');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
+  const selectedOpponentEnsName = useEnsName(selectedOpponent?.wallet);
 
   useEffect(() => {
     if (!address) return;
@@ -251,7 +253,7 @@ export default function CreateChallengeScreen() {
                             </ThemedText>
                           </View>
                           <ThemedText type="small" numberOfLines={1}>
-                            {o.username}
+                            {isSelected ? selectedOpponentEnsName || o.username : o.username}
                           </ThemedText>
                         </TouchableOpacity>
                       );
