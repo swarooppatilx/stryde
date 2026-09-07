@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { formatUnits } from 'viem';
 
 import { AppButton } from '@/components/button';
 import { PhotoPicker } from '@/components/photo-picker';
@@ -163,6 +164,25 @@ export default function CreateActivityScreen() {
             // account has the owner/permission to start seasons or record contributions.
             console.warn('[CreateActivity] Season contribution failed', err);
           }
+
+          try {
+            // Move-to-earn reward is best-effort and fires for every recorded
+            // activity, regardless of territory capture.
+            if (address) {
+              const { amount, confirmed: rewardConfirmed } =
+                await services.moveToEarnToken.mintTokenForActivity(
+                  wallet,
+                  address,
+                  activityHash,
+                  distance
+                );
+              if (rewardConfirmed && amount > 0n) {
+                updateActivity(activity.id, { strdEarned: Number(formatUnits(amount, 18)) });
+              }
+            }
+          } catch (err) {
+            console.warn('[CreateActivity] Move-to-earn mint failed', err);
+          }
         }
       } catch (err) {
         console.warn('[CreateActivity] recordActivity failed', err);
@@ -171,11 +191,19 @@ export default function CreateActivityScreen() {
 
       if (territory) {
         try {
-          const { confirmed } = await services.territory.claimTerritory(wallet, {
+          const { territoryId, confirmed } = await services.territory.claimTerritory(wallet, {
             polygon: territory,
             areaSqm: territoryArea,
           });
-          if (!confirmed) onchainFailed = true;
+          if (!confirmed) {
+            onchainFailed = true;
+          } else if (address) {
+            try {
+              await services.territoryNFT.mintTerritoryNFT(wallet, territoryId, address);
+            } catch (err) {
+              console.warn('[CreateActivity] Territory NFT mint failed', err);
+            }
+          }
         } catch (err) {
           console.warn('[CreateActivity] claimTerritory failed', err);
           onchainFailed = true;

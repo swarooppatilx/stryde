@@ -7,7 +7,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatEther } from 'viem';
+import { formatEther, formatUnits } from 'viem';
 
 import { Card } from '@/components/card';
 import { ListIcon } from '@/components/list-icon';
@@ -21,6 +21,7 @@ import { useEnsName } from '@/hooks/useEnsName';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { updatePrivyMetadata } from '@/services/profileService';
+import { territoryService } from '@/services/territoryService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
 import { useSocialStore } from '@/stores/socialStore';
@@ -56,14 +57,18 @@ export default function ProfileScreen() {
   const activities = useActivityStore((s) => s.activities);
   const deleteActivity = useActivityStore((s) => s.deleteActivity);
   const getTotalArea = useTerritoryStore((s) => s.getTotalArea);
+  const getUserPolygons = useTerritoryStore((s) => s.getUserPolygons);
   const totalTerritoryArea = useMemo(() => getTotalArea(getCurrentUserId()), [getTotalArea]);
+  const userPolygons = useMemo(() => getUserPolygons(getCurrentUserId()), [getUserPolygons]);
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
 
   const [activeTab, setActiveTab] = useState<TabKey>('Progress');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [mintedAchievementIds, setMintedAchievementIds] = useState<Set<string>>(new Set());
+  const [mintedTerritoryIds, setMintedTerritoryIds] = useState<Set<string>>(new Set());
   const [balanceWei, setBalanceWei] = useState<bigint | null>(null);
+  const [strdBalanceWei, setStrdBalanceWei] = useState<bigint | null>(null);
 
   // The on-chain identity address (from useViemWallet), not the Privy embedded
   // auth wallet — in local dev mode these differ (see AGENTS.md).
@@ -81,6 +86,24 @@ export default function ProfileScreen() {
         })
         .catch(() => {
           if (!cancelled) setBalanceWei(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [walletAddress])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!walletAddress) return;
+      let cancelled = false;
+      services.moveToEarnToken
+        .getTokenBalance(walletAddress)
+        .then((wei) => {
+          if (!cancelled) setStrdBalanceWei(wei);
+        })
+        .catch(() => {
+          if (!cancelled) setStrdBalanceWei(null);
         });
       return () => {
         cancelled = true;
@@ -145,6 +168,43 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [wallet, address, unlockedAchievements]);
+
+  // Redundant safety-net auto-mint for territory NFTs — the primary mint already
+  // happens right after capture in create-activity.tsx; this just catches any that
+  // failed there. Same best-effort/local-dev-only caveat as achievement minting.
+  useEffect(() => {
+    if (!wallet || !address || userPolygons.length === 0) return;
+    const activeWallet = wallet;
+    const activeAddress = address;
+    let cancelled = false;
+
+    async function syncTerritoryNFTs() {
+      const hashes = userPolygons.map((polygon) => services.territory.computePolygonHash(polygon));
+      let minted: Set<`0x${string}`>;
+      try {
+        minted = await services.territoryNFT.getMintedTerritoryIds(hashes);
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+      setMintedTerritoryIds(new Set(minted));
+
+      for (const hash of hashes) {
+        if (minted.has(hash) || cancelled) continue;
+        try {
+          await services.territoryNFT.mintTerritoryNFT(activeWallet, hash, activeAddress);
+          if (!cancelled) setMintedTerritoryIds((prev) => new Set(prev).add(hash));
+        } catch (err) {
+          console.warn('[Profile] Territory NFT mint failed', hash, err);
+        }
+      }
+    }
+
+    syncTerritoryNFTs();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet, address, userPolygons]);
 
   const firstName = useProfileStore((s) => s.firstName);
   const lastName = useProfileStore((s) => s.lastName);
@@ -412,6 +472,19 @@ export default function ProfileScreen() {
                     style={[styles.badgeText, { color: theme.textSecondary }]}
                   >
                     {Number(formatEther(balanceWei)).toFixed(4)} ETH
+                  </ThemedText>
+                </ThemedView>
+              )}
+
+              {walletAddress && strdBalanceWei !== null && (
+                <ThemedView style={[styles.pillButton, { borderColor: theme.backgroundElement }]}>
+                  {/* Placeholder icon — swap for the custom STRD coin icon once ready */}
+                  <Ionicons name="disc-outline" size={13} color={theme.textSecondary} />
+                  <ThemedText
+                    type="small"
+                    style={[styles.badgeText, { color: theme.textSecondary }]}
+                  >
+                    {Number(formatUnits(strdBalanceWei, 18)).toFixed(2)} STRD
                   </ThemedText>
                 </ThemedView>
               )}
@@ -893,6 +966,46 @@ export default function ProfileScreen() {
                 </ThemedView>
               )}
 
+              {/* Territory NFTs */}
+              {userPolygons.length > 0 && (
+                <ThemedView style={styles.listSection}>
+                  <ThemedText
+                    type="eyebrow"
+                    style={[styles.sectionLabel, { color: theme.textSecondary }]}
+                  >
+                    Territories
+                  </ThemedText>
+                  <ThemedView style={styles.achievementsGrid}>
+                    {userPolygons.map((polygon) => {
+                      const hash = services.territory.computePolygonHash(polygon);
+                      return (
+                        <ThemedView
+                          key={hash}
+                          style={[styles.achievementCard, { borderColor: theme.border }]}
+                        >
+                          {mintedTerritoryIds.has(hash) && (
+                            <View style={styles.achievementBadge}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={14}
+                                color={theme.brand.success}
+                              />
+                            </View>
+                          )}
+                          <Ionicons name="flag-outline" size={22} color={theme.text} />
+                          <ThemedText
+                            type="caption"
+                            style={[styles.achievementTitle, { color: theme.textSecondary }]}
+                          >
+                            {formatArea(territoryService.getPolygonArea(polygon))}
+                          </ThemedText>
+                        </ThemedView>
+                      );
+                    })}
+                  </ThemedView>
+                </ThemedView>
+              )}
+
               {/* Logout */}
               <TouchableOpacity
                 style={styles.logoutBtn}
@@ -1001,6 +1114,8 @@ const styles = StyleSheet.create({
   /* Pill Actions */
   pillRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: Spacing.two,
     marginTop: Spacing.one,
   },

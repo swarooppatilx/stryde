@@ -191,15 +191,37 @@ export default function ActivitySummaryScreen() {
               </ThemedView>
             </ThemedView>
 
-            {newRecords.length > 0 && (
-              <ThemedView
-                style={[styles.prBanner, { backgroundColor: tint(theme.brand.warning, 0.15) }]}
-              >
-                <Ionicons name="trophy" size={16} color={theme.brand.warning} />
-                <ThemedText type="smallBold" style={{ color: theme.brand.warning }}>
-                  {`New ${newRecords[0]}!`}
-                  {newRecords.length > 1 ? ` +${newRecords.length - 1} more record` : ''}
-                </ThemedText>
+            {(newRecords.length > 0 || (!!activity.strdEarned && activity.strdEarned > 0)) && (
+              <ThemedView style={styles.highlightsRow}>
+                {newRecords.length > 0 && (
+                  <ThemedView
+                    style={[
+                      styles.highlightChip,
+                      { backgroundColor: tint(theme.brand.warning, 0.15) },
+                    ]}
+                  >
+                    <Ionicons name="trophy" size={14} color={theme.brand.warning} />
+                    <ThemedText type="caption" style={{ color: theme.brand.warning }}>
+                      {`New ${newRecords[0]}!`}
+                      {newRecords.length > 1 ? ` +${newRecords.length - 1}` : ''}
+                    </ThemedText>
+                  </ThemedView>
+                )}
+
+                {!!activity.strdEarned && activity.strdEarned > 0 && (
+                  <ThemedView
+                    style={[
+                      styles.highlightChip,
+                      { backgroundColor: tint(theme.brand.warning, 0.15) },
+                    ]}
+                  >
+                    {/* Placeholder icon — swap for the custom STRD coin icon once ready */}
+                    <Ionicons name="disc" size={14} color={theme.brand.warning} />
+                    <ThemedText type="caption" style={{ color: theme.brand.warning }}>
+                      {`+${activity.strdEarned.toFixed(2)} STRD`}
+                    </ThemedText>
+                  </ThemedView>
+                )}
               </ThemedView>
             )}
 
@@ -232,24 +254,25 @@ export default function ActivitySummaryScreen() {
                   {activity.territory ? formatArea(activity.territoryArea) : '—'}
                 </ThemedText>
               </ThemedView>
-              {activity.txHash && (
-                <ThemedView style={styles.stat}>
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    Tx Hash
-                  </ThemedText>
-                  <TouchableOpacity
-                    onPress={() => Clipboard.setStringAsync(activity.txHash!)}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel="Copy transaction hash"
-                  >
-                    <ThemedText type="small" style={{ color: theme.brand.primary }}>
-                      {activity.txHash.slice(0, 10)}...{activity.txHash.slice(-8)}
-                    </ThemedText>
-                  </TouchableOpacity>
-                </ThemedView>
-              )}
             </ThemedView>
+
+            {activity.txHash && (
+              <ThemedView style={styles.txRow}>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Tx Hash
+                </ThemedText>
+                <TouchableOpacity
+                  onPress={() => Clipboard.setStringAsync(activity.txHash!)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy transaction hash"
+                >
+                  <ThemedText type="small" style={{ color: theme.brand.primary }}>
+                    {activity.txHash.slice(0, 10)}...{activity.txHash.slice(-8)}
+                  </ThemedText>
+                </TouchableOpacity>
+              </ThemedView>
+            )}
 
             {elevationData && (
               <ThemedView style={styles.elevationSection}>
@@ -391,14 +414,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  prBanner: {
+  highlightsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  highlightChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.one,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.three,
+    paddingVertical: Spacing.one + 2,
+    borderRadius: BorderRadius.full,
   },
   statsOverlay: {
     position: 'absolute',
@@ -438,6 +465,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
   },
   stat: {
+    alignItems: 'center',
+  },
+  txRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   elevationSection: {

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   Modal,
   RefreshControl,
   ScrollView,
@@ -21,10 +22,10 @@ import { CommentsSheet } from '@/components/comments-sheet';
 import { FeedCard } from '@/components/feed-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
+import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActivityStore } from '@/stores/activityStore';
-import { useSocialStore } from '@/stores/socialStore';
+import { type SocialActivity, type SocialUser, useSocialStore } from '@/stores/socialStore';
 import { getWeeklyStats } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 
@@ -60,6 +61,16 @@ export default function HomeScreen() {
   // in this callback — biome can't see through that closure.
   // biome-ignore lint/correctness/useExhaustiveDependencies: socialActivities/following are recompute triggers for getFeed(), not read in this callback
   const feed = useMemo(() => getFeed(), [getFeed, socialActivities, following]);
+  // Activities whose author can't be resolved are skipped at render time — filter
+  // them out here too, so the empty state reflects what's actually shown.
+  const feedItems = useMemo(() => {
+    const items: { activity: SocialActivity; user: SocialUser }[] = [];
+    for (const activity of feed) {
+      const user = getUserById(activity.userId);
+      if (user) items.push({ activity, user });
+    }
+    return items;
+  }, [feed, getUserById]);
 
   const onRefresh = useCallback(() => {
     haptics.selection();
@@ -147,7 +158,11 @@ export default function HomeScreen() {
           {/* ── Week Banner ── */}
           <Animated.View entering={FadeInUp.delay(100).duration(300)}>
             <ThemedView style={[styles.weekBanner, { backgroundColor: theme.backgroundElement }]}>
-              <Ionicons name="flash" size={14} color={theme.brand.primary} />
+              <Image
+                source={require('@/assets/images/stryde-emblem.png')}
+                style={styles.weekBannerEmblem}
+                resizeMode="contain"
+              />
               <ThemedText type="small" style={{ color: theme.textSecondary }}>
                 This week: {weekStats.count} {weekStats.count === 1 ? 'activity' : 'activities'} ·{' '}
                 {formatDistanceLocal(weekStats.distance)}
@@ -172,27 +187,23 @@ export default function HomeScreen() {
               <ThemedText type="sectionTitle">Feed</ThemedText>
             </ThemedView>
 
-            {feed.length > 0 ? (
-              feed.map((activity, index) => {
-                const user = getUserById(activity.userId);
-                if (!user) return null;
-                return (
-                  <Animated.View
-                    key={activity.id}
-                    entering={FadeInUp.delay(300 + index * 80).duration(300)}
-                  >
-                    <FeedCard
-                      activity={activity}
-                      user={user}
-                      onKudos={() => toggleKudos(activity.id)}
-                      onComment={() => setCommentActivityId(activity.id)}
-                      onPress={() => router.push(`/activity-summary?id=${activity.id}`)}
-                      onMapPress={() => router.push(`/activity-summary?id=${activity.id}`)}
-                      onUserPress={() => router.push(`/user-profile?id=${activity.userId}`)}
-                    />
-                  </Animated.View>
-                );
-              })
+            {feedItems.length > 0 ? (
+              feedItems.map(({ activity, user }, index) => (
+                <Animated.View
+                  key={activity.id}
+                  entering={FadeInUp.delay(300 + index * 80).duration(300)}
+                >
+                  <FeedCard
+                    activity={activity}
+                    user={user}
+                    onKudos={() => toggleKudos(activity.id)}
+                    onComment={() => setCommentActivityId(activity.id)}
+                    onPress={() => router.push(`/activity-summary?id=${activity.id}`)}
+                    onMapPress={() => router.push(`/activity-summary?id=${activity.id}`)}
+                    onUserPress={() => router.push(`/user-profile?id=${activity.userId}`)}
+                  />
+                </Animated.View>
+              ))
             ) : (
               <Card style={styles.emptyCard}>
                 <Ionicons name="people-outline" size={48} color={theme.textSecondary} />
@@ -250,11 +261,7 @@ export default function HomeScreen() {
               activeOpacity={0.7}
               onPress={() => handleFabAction('record')}
             >
-              <View
-                style={[styles.actionIcon, { backgroundColor: tint(theme.brand.primary, 0.12) }]}
-              >
-                <Ionicons name="navigate" size={22} color={theme.brand.primary} />
-              </View>
+              <Ionicons name="navigate-outline" size={22} color={theme.text} />
               <View style={styles.actionText}>
                 <ThemedText type="smallBold">Record Activity</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -269,11 +276,7 @@ export default function HomeScreen() {
               activeOpacity={0.7}
               onPress={() => handleFabAction('manual')}
             >
-              <View
-                style={[styles.actionIcon, { backgroundColor: tint(theme.brand.success, 0.12) }]}
-              >
-                <Ionicons name="create-outline" size={22} color={theme.brand.success} />
-              </View>
+              <Ionicons name="create-outline" size={22} color={theme.text} />
               <View style={styles.actionText}>
                 <ThemedText type="smallBold">Manual Entry</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -288,9 +291,7 @@ export default function HomeScreen() {
               activeOpacity={0.7}
               onPress={() => handleFabAction('photo')}
             >
-              <View style={[styles.actionIcon, { backgroundColor: tint(theme.brand.info, 0.12) }]}>
-                <Ionicons name="camera" size={22} color={theme.brand.info} />
-              </View>
+              <Ionicons name="camera-outline" size={22} color={theme.text} />
               <View style={styles.actionText}>
                 <ThemedText type="smallBold">Post Photo</ThemedText>
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -348,6 +349,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
     borderRadius: BorderRadius.sm,
+  },
+  weekBannerEmblem: {
+    width: 10,
+    height: 14,
   },
 
   /* Start Button */
@@ -407,13 +412,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingVertical: Spacing.three,
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  actionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   actionText: {
     flex: 1,
