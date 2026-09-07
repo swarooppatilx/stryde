@@ -2106,6 +2106,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@graphprotocol/graph-ts@npm:^0.38.1":
+  version: 0.38.2
+  resolution: "@graphprotocol/graph-ts@npm:0.38.2"
+  dependencies:
+    assemblyscript: "npm:0.27.31"
+  checksum: 10c0/7edd69067354bfc29eabf5a235255eca50e7658bf277f1b34072ee530cd9bed20b7f1babfac37bd661db3c891de7e611c6fb657259d240bc4663998b2db3cb7b
+  languageName: node
+  linkType: hard
+
 "@hono/node-server@npm:^1.14.1":
   version: 1.19.17
   resolution: "@hono/node-server@npm:1.19.17"
@@ -4059,6 +4068,7 @@ __metadata:
   resolution: "@repo/subgraph@workspace:packages/subgraph"
   dependencies:
     "@graphprotocol/graph-cli": "npm:^0.93.2"
+    "@graphprotocol/graph-ts": "npm:^0.38.1"
   languageName: unknown
   linkType: soft
 
@@ -5137,6 +5147,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"assemblyscript@npm:0.27.31":
+  version: 0.27.31
+  resolution: "assemblyscript@npm:0.27.31"
+  dependencies:
+    binaryen: "npm:116.0.0-nightly.20240114"
+    long: "npm:^5.2.1"
+  bin:
+    asc: bin/asc.js
+    asinit: bin/asinit.js
+  checksum: 10c0/56b17b57c589625f7683508a2c457e01677e5c2943d08f29b0d6a56e021c2a8ac37e71541771c2659f7b05a672c816a15e0d23fe37e002a700f74efda08440cf
+  languageName: node
+  linkType: hard
+
 "assertion-error@npm:^2.0.1":
   version: 2.0.1
   resolution: "assertion-error@npm:2.0.1"
@@ -5453,6 +5476,16 @@ __metadata:
   bin:
     wasm-opt: bin/wasm-opt
   checksum: 10c0/bb9314d8de107d42dc2a233c8b394e92008656af43f23a5b903be11068a88f7a984c64a9a728be5ee3f7223d583b5b4b8a97bab66a3a389644bdc5165845b53c
+  languageName: node
+  linkType: hard
+
+"binaryen@npm:116.0.0-nightly.20240114":
+  version: 116.0.0-nightly.20240114
+  resolution: "binaryen@npm:116.0.0-nightly.20240114"
+  bin:
+    wasm-opt: bin/wasm-opt
+    wasm2js: bin/wasm2js
+  checksum: 10c0/95e14b87c27fef94fb4008dcd63fa61ea66f69bcb179f7f73f56dfb39aed58afec6957ef18acacfce15e4874a0da402b0fc3d47ee392a9b906a97e7634bbbad3
   languageName: node
   linkType: hard
 
@@ -9608,7 +9641,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"long@npm:^5.2.0":
+"long@npm:^5.2.0, long@npm:^5.2.1":
   version: 5.3.2
   resolution: "long@npm:5.3.2"
   checksum: 10c0/7130fe1cbce2dca06734b35b70d380ca3f70271c7f8852c922a7c62c86c4e35f0c39290565eca7133c625908d40e126ac57c02b1b1a4636b9457d77e1e60b981
