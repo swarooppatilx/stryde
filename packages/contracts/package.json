@@ -1,0 +1,21 @@
+{
+  "name": "@repo/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "react-native": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/abis/*.json": "./src/abis/*.json"
+  },
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test -vvv",
+    "lint": "forge fmt --check",
+    "fmt": "forge fmt",
+    "sizes": "forge build --sizes",
+    "generate:abi": "./scripts/generate-abis.sh",
+    "deploy:local": "./scripts/deploy-local.sh",
+    "deploy:all": "./scripts/deploy-all.sh"
+  }
+}
