@@ -1,0 +1,48 @@
+type Profile @entity {
+  id: Bytes! # address
+  username: String!
+  profileId: BigInt!
+  createdAt: BigInt!
+  activities: [Activity!]! @derivedFrom(field: "user")
+  territories: [Territory!]! @derivedFrom(field: "owner")
+  contributions: [Contribution!]! @derivedFrom(field: "user")
+}
+
+type Activity @entity(timeseries: true) {
+  id: Bytes! # txHash-logIndex
+  user: Profile!
+  activityHash: Bytes!
+  activityType: Int!
+  distance: BigInt!
+  duration: BigInt!
+  territoryArea: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
+
+type Territory @entity {
+  id: Bytes! # territoryId
+  owner: Profile!
+  area: BigInt!
+  strength: BigInt!
+  capturedAt: BigInt!
+  lastReinforced: BigInt!
+}
+
+type Season @entity {
+  id: BigInt!
+  startTime: BigInt!
+  endTime: BigInt!
+  isActive: Boolean!
+  totalContributions: BigInt!
+  participantCount: BigInt!
+  contributions: [Contribution!]! @derivedFrom(field: "season")
+}
+
+type Contribution @entity {
+  id: Bytes! # txHash-logIndex
+  season: Season!
+  user: Profile!
+  distance: BigInt!
+  recordedAt: BigInt!
+}
