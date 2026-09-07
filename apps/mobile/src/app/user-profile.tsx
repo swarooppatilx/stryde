@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -77,9 +77,13 @@ export default function UserProfileScreen() {
 
           {/* Profile */}
           <ThemedView style={styles.profileSection}>
-            <View style={[styles.avatar, { backgroundColor: theme.brand.primary }]}>
-              <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
-            </View>
+            {user.avatar ? (
+              <Image source={{ uri: user.avatar }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: theme.brand.primary }]}>
+                <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
+              </View>
+            )}
 
             <ThemedText style={styles.name}>{displayName}</ThemedText>
             <ThemedText type="small" style={{ color: theme.textSecondary }}>

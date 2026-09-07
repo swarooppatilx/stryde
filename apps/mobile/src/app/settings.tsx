@@ -76,7 +76,11 @@ function Stepper({ value, step, min, max, onChange, format, accessibilityLabel }
 export default function SettingsScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const settings = useProfileStore((s) => s.settings);
+  const themePreference = useProfileStore((s) => s.settings.theme);
+  const units = useProfileStore((s) => s.settings.units);
+  const weeklyGoalDistance = useProfileStore((s) => s.settings.weeklyGoalDistance);
+  const weeklyGoalActivities = useProfileStore((s) => s.settings.weeklyGoalActivities);
+  const weeklyGoalTime = useProfileStore((s) => s.settings.weeklyGoalTime);
   const updateSettings = useProfileStore((s) => s.updateSettings);
   const { useGyroscopeAssist, sensorUpdateRate, setGyroscopeAssist, setSensorUpdateRate } =
     useSettingsStore(
@@ -166,7 +170,7 @@ export default function SettingsScreen() {
           </ThemedText>
           <View style={styles.toggleRow}>
             {(['system', 'light', 'dark'] as const).map((pref) => {
-              const active = settings.theme === pref;
+              const active = themePreference === pref;
               return (
                 <TouchableOpacity
                   key={pref}
@@ -204,7 +208,7 @@ export default function SettingsScreen() {
           </ThemedText>
           <View style={styles.toggleRow}>
             {(['metric', 'imperial'] as const).map((unit) => {
-              const active = settings.units === unit;
+              const active = units === unit;
               return (
                 <TouchableOpacity
                   key={unit}
@@ -245,7 +249,7 @@ export default function SettingsScreen() {
               thumb={<ListIcon name="resize-outline" />}
               extra={
                 <Stepper
-                  value={settings.weeklyGoalDistance}
+                  value={weeklyGoalDistance}
                   step={WEEKLY_GOAL_STEPS.distance.step}
                   min={WEEKLY_GOAL_STEPS.distance.min}
                   max={WEEKLY_GOAL_STEPS.distance.max}
@@ -261,7 +265,7 @@ export default function SettingsScreen() {
               thumb={<ListIcon name="footsteps-outline" />}
               extra={
                 <Stepper
-                  value={settings.weeklyGoalActivities}
+                  value={weeklyGoalActivities}
                   step={WEEKLY_GOAL_STEPS.activities.step}
                   min={WEEKLY_GOAL_STEPS.activities.min}
                   max={WEEKLY_GOAL_STEPS.activities.max}
@@ -277,7 +281,7 @@ export default function SettingsScreen() {
               thumb={<ListIcon name="time-outline" />}
               extra={
                 <Stepper
-                  value={settings.weeklyGoalTime}
+                  value={weeklyGoalTime}
                   step={WEEKLY_GOAL_STEPS.time.step}
                   min={WEEKLY_GOAL_STEPS.time.min}
                   max={WEEKLY_GOAL_STEPS.time.max}

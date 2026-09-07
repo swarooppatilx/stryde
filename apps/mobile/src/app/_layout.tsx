@@ -3,9 +3,10 @@ import { SmartWalletsProvider } from '@privy-io/expo/smart-wallets';
 import { setChainMode } from '@repo/shared';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { AppErrorBoundary, AppErrorFallback } from '@/components/error-boundary';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ENV } from '@/constants/config';
 import { useChainSync } from '@/hooks/useChainSync';
@@ -16,12 +17,26 @@ import { useSocialStore } from '@/stores/socialStore';
 SplashScreen.preventAutoHideAsync();
 setChainMode(ENV.CHAIN_MODE);
 
-function RootLayoutNav() {
+// Privy's own init fetch (getAppConfig) has no timeout in the SDK — if the
+// underlying React Native fetch() promise never settles (a known class of RN
+// networking bug, more likely on a device that's mid network transition),
+// `isReady` never flips and the app would otherwise hang on a blank screen
+// forever with no error and no way to recover. This bounds that wait.
+const PRIVY_INIT_TIMEOUT_MS = 10_000;
+
+function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
   const ready = useProtectedRoute();
   const syncing = useChainSync();
   usePrivyMetadataSync();
   const fetchUsers = useSocialStore((s) => s.fetchUsers);
   const fetchActivities = useSocialStore((s) => s.fetchActivities);
+  const [slowInit, setSlowInit] = useState(false);
+
+  useEffect(() => {
+    if (ready) return;
+    const timer = setTimeout(() => setSlowInit(true), PRIVY_INIT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [ready]);
 
   useEffect(() => {
     if (!syncing) {
@@ -29,6 +44,17 @@ function RootLayoutNav() {
       fetchActivities();
     }
   }, [syncing, fetchUsers, fetchActivities]);
+
+  if (!ready && slowInit) {
+    return (
+      <AppErrorFallback
+        title="Taking longer than expected"
+        subtitle="We couldn't reach the server. Check your connection and try again."
+        buttonLabel="Retry"
+        onRetry={onSlowInitRetry}
+      />
+    );
+  }
 
   if (!ready || syncing) {
     // Render nothing until the auth guard has decided the first route so the
@@ -59,9 +85,17 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  // Bumping this fully remounts PrivyProvider (and everything below it),
+  // discarding whatever hung fetch/state it was stuck in — a plain state
+  // reset wouldn't do that, since the stuck promise lives inside Privy's
+  // client instance, not in our component state.
+  const [privyInstanceKey, setPrivyInstanceKey] = useState(0);
+  const retryPrivyInit = useCallback(() => setPrivyInstanceKey((k) => k + 1), []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PrivyProvider
+        key={privyInstanceKey}
         appId={ENV.PRIVY_APP_ID}
         clientId={ENV.PRIVY_CLIENT_ID}
         config={{
@@ -74,7 +108,9 @@ export default function RootLayout() {
       >
         <SmartWalletsProvider>
           <ThemeProvider>
-            <RootLayoutNav />
+            <AppErrorBoundary>
+              <RootLayoutNav onSlowInitRetry={retryPrivyInit} />
+            </AppErrorBoundary>
           </ThemeProvider>
         </SmartWalletsProvider>
       </PrivyProvider>
