@@ -13,6 +13,7 @@ type Profile @entity {
 
 type Activity @entity {
   id: Bytes! # txHash-logIndex
+  activityId: BigInt!
   user: Profile!
   activityHash: Bytes!
   activityType: Int!

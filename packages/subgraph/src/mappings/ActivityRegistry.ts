@@ -3,6 +3,7 @@ import { Activity } from '../../generated/schema';
 
 export function handleActivityRecorded(event: ActivityRecorded): void {
   const activity = new Activity(event.transaction.hash.concatI32(event.logIndex.toI32()));
+  activity.activityId = event.params.activityId;
   activity.user = event.params.owner;
   activity.activityHash = event.params.activityHash;
   activity.activityType = event.params.activityType;
