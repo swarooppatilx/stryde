@@ -91,6 +91,7 @@ contract AchievementRegistryTest is Test {
         assertEq(registry.ownerOf(1), alice);
         assertEq(registry.getTokenCount(alice), 1);
         assertEq(registry.getTokenAchievement(1), FIRST_ACTIVITY);
+        assertTrue(registry.hasMinted(alice, FIRST_ACTIVITY));
 
         uint256[] memory tokens = registry.getTokenIds(alice);
         assertEq(tokens.length, 1);
@@ -141,6 +142,20 @@ contract AchievementRegistryTest is Test {
 
         vm.expectRevert(IAchievementRegistry.ZeroAddress.selector);
         registry.mintAchievement(address(0), FIRST_ACTIVITY);
+    }
+
+    function test_MintAchievement_RevertAlreadyMinted() public {
+        _defineAchievements();
+
+        registry.mintAchievement(alice, FIRST_ACTIVITY);
+        assertTrue(registry.hasMinted(alice, FIRST_ACTIVITY));
+
+        vm.expectRevert(IAchievementRegistry.AlreadyMinted.selector);
+        registry.mintAchievement(alice, FIRST_ACTIVITY);
+
+        // The failed re-mint didn't mint a second token.
+        assertEq(registry.balanceOf(alice), 1);
+        assertEq(registry.getTokenCount(alice), 1);
     }
 
     // ─── Soulbound ──────────────────────────────────────────────────
@@ -205,6 +220,10 @@ contract AchievementRegistryTest is Test {
         assertEq(registry.getTokenAchievement(1), bytes32(0));
     }
 
+    function test_HasMinted_Default() public {
+        assertFalse(registry.hasMinted(alice, FIRST_ACTIVITY));
+    }
+
     // ─── Pausable ───────────────────────────────────────────────────
 
     function test_Pause_PreventsMint() public {
@@ -229,15 +248,13 @@ contract AchievementRegistryTest is Test {
 
     function testFuzz_MintAchievement(uint8 count) public {
         vm.assume(count > 0 && count < 100);
-        _defineAchievements();
 
-        bytes32[] memory ids = new bytes32[](3);
-        ids[0] = FIRST_ACTIVITY;
-        ids[1] = FIVE_K;
-        ids[2] = TERRITORY_PIONEER;
-
+        // Each achievement id is unique per iteration so the per-(recipient, achievementId)
+        // idempotency check doesn't reject any of these mints.
         for (uint8 i = 0; i < count; i++) {
-            registry.mintAchievement(alice, ids[i % 3]);
+            bytes32 id = keccak256(abi.encodePacked("ACHIEVEMENT", i));
+            registry.defineAchievement(id, "Achievement");
+            registry.mintAchievement(alice, id);
         }
 
         assertEq(registry.getTokenCount(alice), count);
@@ -246,10 +263,13 @@ contract AchievementRegistryTest is Test {
 
     function testFuzz_GetTokenIdsLength(uint8 count) public {
         vm.assume(count > 0 && count < 100);
-        _defineAchievements();
 
+        // Each achievement id is unique per iteration so the per-(recipient, achievementId)
+        // idempotency check doesn't reject any of these mints.
         for (uint8 i = 0; i < count; i++) {
-            registry.mintAchievement(alice, FIRST_ACTIVITY);
+            bytes32 id = keccak256(abi.encodePacked("ACHIEVEMENT", i));
+            registry.defineAchievement(id, "Achievement");
+            registry.mintAchievement(alice, id);
         }
 
         uint256[] memory tokens = registry.getTokenIds(alice);
