@@ -24,6 +24,7 @@ import { SPORT_ICONS } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
 import type { SocialActivity, SocialUser } from '@/stores/socialStore';
 import { useSocialStore } from '@/stores/socialStore';
@@ -259,6 +260,7 @@ export function FeedCard({
   onUserPress,
 }: FeedCardProps) {
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const getUserById = useSocialStore((s) => s.getUserById);
   const ensName = useEnsName(user.wallet);
   const hasKudoed = activity.kudos.includes(getCurrentUserId());
@@ -324,7 +326,9 @@ export function FeedCard({
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                   Distance
                 </ThemedText>
-                <ThemedText type="smallBold">{formatDistance(activity.distance)}</ThemedText>
+                <ThemedText type="smallBold">
+                  {formatDistance(activity.distance, unitSystem)}
+                </ThemedText>
               </ThemedView>
             )}
             {activity.duration > 0 && (

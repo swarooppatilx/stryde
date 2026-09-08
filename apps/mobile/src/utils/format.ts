@@ -7,7 +7,18 @@ export function getDisplayName(user: User): string {
   return user.username || 'Unknown';
 }
 
-export function formatDistance(meters: number): string {
+export type UnitSystem = 'metric' | 'imperial';
+
+const METERS_PER_MILE = 1609.34;
+const FEET_PER_METER = 3.28084;
+const SQUARE_FEET_PER_SQUARE_METER = 10.7639;
+
+export function formatDistance(meters: number, unitSystem: UnitSystem = 'metric'): string {
+  if (unitSystem === 'imperial') {
+    const feet = meters * FEET_PER_METER;
+    if (feet < 5280) return `${Math.round(feet)}ft`;
+    return `${(meters / METERS_PER_MILE).toFixed(2)}mi`;
+  }
   if (meters < 1000) return `${Math.round(meters)}m`;
   return `${(meters / 1000).toFixed(2)}km`;
 }
@@ -23,10 +34,15 @@ export function parsePolyline(polyline: string): [number, number][] {
     .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
 }
 
-export function formatArea(squareMeters: number): string {
-  if (squareMeters === 0) return '0 acres';
+export function formatArea(squareMeters: number, unitSystem: UnitSystem = 'metric'): string {
+  if (squareMeters === 0) return unitSystem === 'imperial' ? '0 sq ft' : '0 acres';
   const acres = squareMeters / 4046.86;
-  if (acres < 0.01) return `${squareMeters.toFixed(0)} m²`;
+  if (acres < 0.01) {
+    if (unitSystem === 'imperial') {
+      return `${(squareMeters * SQUARE_FEET_PER_SQUARE_METER).toFixed(0)} sq ft`;
+    }
+    return `${squareMeters.toFixed(0)} m²`;
+  }
   return `${acres.toFixed(2)} acres`;
 }
 
@@ -46,12 +62,19 @@ export function formatDurationLong(ms: number): string {
   return `${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 }
 
-export function formatPace(distanceMeters: number, durationMs: number): string {
+export function formatPace(
+  distanceMeters: number,
+  durationMs: number,
+  unitSystem: UnitSystem = 'metric'
+): string {
   if (distanceMeters === 0) return '--:--';
-  const paceSeconds = (durationMs / 1000 / distanceMeters) * 1000;
+  const distanceInUnit =
+    unitSystem === 'imperial' ? distanceMeters / METERS_PER_MILE : distanceMeters / 1000;
+  const paceSeconds = durationMs / 1000 / distanceInUnit;
   const min = Math.floor(paceSeconds / 60);
   const sec = Math.floor(paceSeconds % 60);
-  return `${min}:${sec.toString().padStart(2, '0')}`;
+  const suffix = unitSystem === 'imperial' ? '/mi' : '/km';
+  return `${min}:${sec.toString().padStart(2, '0')}${suffix}`;
 }
 
 export function getActivityName(type: string, hour: number): string {
