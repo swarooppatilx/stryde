@@ -3,14 +3,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePrivy } from '@privy-io/expo';
 import { services } from '@repo/shared';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther, formatUnits } from 'viem';
 
+import { AchievementBadge } from '@/components/achievement-badge';
 import { Card } from '@/components/card';
 import { ListIcon } from '@/components/list-icon';
+import {
+  AnimatedScrollView,
+  HeaderComponentWrapper,
+  HeaderNavBar,
+} from '@/components/parallax-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
@@ -48,6 +55,7 @@ export default function ProfileScreen() {
   const username = useProfileStore((s) => s.username);
   const avatar = useProfileStore((s) => s.avatar);
   const avatarCid = useProfileStore((s) => s.avatarCid);
+  const headerImage = useProfileStore((s) => s.headerImage);
   const createdAt = useProfileStore((s) => s.createdAt);
   const weeklyGoalDistance = useProfileStore((s) => s.settings.weeklyGoalDistance);
   const weeklyGoalActivities = useProfileStore((s) => s.settings.weeklyGoalActivities);
@@ -55,6 +63,8 @@ export default function ProfileScreen() {
   const resetProfile = useProfileStore((s) => s.reset);
   const setAvatar = useProfileStore((s) => s.setAvatar);
   const setAvatarCid = useProfileStore((s) => s.setAvatarCid);
+  const setHeaderImage = useProfileStore((s) => s.setHeaderImage);
+  const setHeaderImageCid = useProfileStore((s) => s.setHeaderImageCid);
   const setUsername = useProfileStore((s) => s.setUsername);
   const activities = useActivityStore((s) => s.activities);
   const deleteActivity = useActivityStore((s) => s.deleteActivity);
@@ -65,6 +75,8 @@ export default function ProfileScreen() {
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
 
   const [activeTab, setActiveTab] = useState<TabKey>('Progress');
+  const [avatarUploadStatus, setAvatarUploadStatus] = useState<string | null>(null);
+  const [headerUploading, setHeaderUploading] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [mintedAchievementIds, setMintedAchievementIds] = useState<Set<string>>(new Set());
@@ -258,6 +270,7 @@ export default function ProfileScreen() {
   };
 
   const handlePickImage = async () => {
+    if (avatarUploadStatus) return;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -268,6 +281,8 @@ export default function ProfileScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const localUri = result.assets[0].uri;
+        setAvatarUploadStatus('Uploading profile photo…');
+        setAvatarCid('');
         setAvatar(localUri);
 
         try {
@@ -277,14 +292,24 @@ export default function ProfileScreen() {
           setAvatar(ipfsToHttpUrl(cid));
 
           if (wallet) {
+            setAvatarUploadStatus('Saving profile photo…');
             try {
               await services.profile.setAvatar(wallet, cid);
             } catch (chainError) {
               console.warn('[Profile] Publishing avatar on-chain failed', chainError);
+              Toast.info('Photo uploaded, but profile sync failed. Try again later.', 4);
+              return;
             }
           }
+          Toast.success('Profile photo uploaded', 2);
         } catch (ipfsError) {
           console.warn('[Profile] IPFS upload failed, keeping local avatar', ipfsError);
+          Toast.fail(
+            'Upload failed. Photo is only on this device. Tap the camera to try again.',
+            5
+          );
+        } finally {
+          setAvatarUploadStatus(null);
         }
       }
     } catch (error) {
@@ -293,10 +318,81 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleRemoveAvatar = () => {
-    Alert.alert('Remove Avatar', 'Remove your profile picture?', [
+  const handleAvatarPress = () => {
+    if (avatarUploadStatus) return;
+    if (!avatar) {
+      handlePickImage();
+      return;
+    }
+    Alert.alert('Profile Photo', undefined, [
+      { text: 'Change Photo', onPress: handlePickImage },
+      {
+        text: 'Remove Photo',
+        style: 'destructive',
+        onPress: () => {
+          setAvatar('');
+          setAvatarCid('');
+        },
+      },
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => setAvatar('') },
+    ]);
+  };
+
+  const handlePickHeaderImage = async () => {
+    if (headerUploading) return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const localUri = result.assets[0].uri;
+        setHeaderUploading(true);
+        setHeaderImageCid('');
+        setHeaderImage(localUri);
+
+        try {
+          const usernameForName = username || 'user';
+          const { cid } = await uploadImageToIpfs(`header-${usernameForName}`, localUri);
+          setHeaderImageCid(cid);
+          setHeaderImage(ipfsToHttpUrl(cid));
+          Toast.success('Header photo uploaded', 2);
+        } catch (ipfsError) {
+          console.warn('[Profile] Header image IPFS upload failed, keeping local copy', ipfsError);
+          Toast.fail(
+            'Upload failed. Photo is only on this device. Tap the camera to try again.',
+            5
+          );
+        } finally {
+          setHeaderUploading(false);
+        }
+      }
+    } catch (error) {
+      console.error('[Profile] Header image picker failed', error);
+      Toast.fail('Could not open photo library', 1);
+    }
+  };
+
+  const handleHeaderImagePress = () => {
+    if (headerUploading) return;
+    if (!headerImage) {
+      handlePickHeaderImage();
+      return;
+    }
+    Alert.alert('Header Photo', undefined, [
+      { text: 'Change Photo', onPress: handlePickHeaderImage },
+      {
+        text: 'Remove Photo',
+        style: 'destructive',
+        onPress: () => {
+          setHeaderImage('');
+          setHeaderImageCid('');
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   };
 
@@ -325,10 +421,124 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView type="background" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* ── Top Bar ── */}
-          <ThemedView style={styles.topBar}>
+      <AnimatedScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        headerMaxHeight={260}
+        topBarHeight={90}
+        renderHeaderComponent={() => (
+          <HeaderComponentWrapper>
+            {headerImage ? (
+              <Image
+                source={{ uri: headerImage }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+            ) : null}
+            <LinearGradient
+              colors={
+                headerImage
+                  ? ['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']
+                  : [Brand.primary, Brand.primaryPressed]
+              }
+              start={{ x: 0, y: 0 }}
+              end={headerImage ? { x: 0, y: 1 } : { x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <SafeAreaView edges={['top']} style={styles.headerImageBtnWrap}>
+              <TouchableOpacity
+                onPress={handleHeaderImagePress}
+                disabled={headerUploading}
+                accessibilityState={{ disabled: headerUploading, busy: headerUploading }}
+                activeOpacity={0.7}
+                style={styles.headerImageBtn}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  headerImage ? 'Change or remove header photo' : 'Add header photo'
+                }
+              >
+                {headerUploading ? (
+                  <ActivityIndicator size="small" color={Brand.white} />
+                ) : (
+                  <Ionicons name="camera-outline" size={16} color={Brand.white} />
+                )}
+              </TouchableOpacity>
+            </SafeAreaView>
+            <SafeAreaView style={styles.parallaxAvatarWrap} pointerEvents="box-none">
+              <TouchableOpacity
+                onPress={handleAvatarPress}
+                disabled={!!avatarUploadStatus}
+                accessibilityState={{ disabled: !!avatarUploadStatus, busy: !!avatarUploadStatus }}
+                activeOpacity={0.8}
+                accessibilityRole="imagebutton"
+                accessibilityLabel={
+                  avatar ? 'Change or remove profile avatar' : 'Add profile avatar'
+                }
+              >
+                {avatar ? (
+                  <ThemedView style={styles.avatarRing}>
+                    <Image
+                      source={{ uri: avatarCid ? ipfsToHttpUrl(avatarCid) : avatar }}
+                      style={styles.avatarImage}
+                    />
+                    <ThemedView
+                      style={[styles.avatarBadge, { backgroundColor: theme.brand.primary }]}
+                    >
+                      {avatarUploadStatus ? (
+                        <ActivityIndicator size="small" color={Brand.white} />
+                      ) : (
+                        <Ionicons name="camera" size={10} color={Brand.white} />
+                      )}
+                    </ThemedView>
+                  </ThemedView>
+                ) : (
+                  <ThemedView style={styles.avatarRing}>
+                    <ThemedView
+                      style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+                    >
+                      <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
+                    </ThemedView>
+                    <ThemedView
+                      style={[styles.avatarBadge, { backgroundColor: theme.backgroundElement }]}
+                    >
+                      <Ionicons name="camera" size={10} color={theme.brand.primary} />
+                    </ThemedView>
+                  </ThemedView>
+                )}
+              </TouchableOpacity>
+            </SafeAreaView>
+          </HeaderComponentWrapper>
+        )}
+        renderOveralComponent={() => (
+          <View style={styles.parallaxOverlay}>
+            {isEditingName ? (
+              <Input
+                value={editedName}
+                onChangeText={setEditedName}
+                onBlur={handleSaveName}
+                onSubmitEditing={handleSaveName}
+                autoFocus
+                selectTextOnFocus
+                maxLength={20}
+                style={[styles.usernameInput, { borderColor: 'rgba(255,255,255,0.5)' }]}
+                inputStyle={[styles.usernameInputText, { color: Brand.white }]}
+              />
+            ) : (
+              <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
+                <ThemedText style={[styles.username, { color: Brand.white }]}>
+                  {displayName}
+                </ThemedText>
+              </TouchableOpacity>
+            )}
+            {ensName && (
+              <ThemedText type="small" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                {ensName}
+              </ThemedText>
+            )}
+          </View>
+        )}
+        renderTopNavBarComponent={() => (
+          <HeaderNavBar headerHeight={90} tint={theme.isDark ? 'dark' : 'light'} intensity={80}>
             <ThemedText type="headline">You</ThemedText>
             <ThemedView style={styles.topBarActions}>
               <TouchableOpacity
@@ -359,67 +569,23 @@ export default function ProfileScreen() {
                 <Ionicons name="settings-outline" size={18} color={theme.text} />
               </TouchableOpacity>
             </ThemedView>
-          </ThemedView>
-
-          {/* ── Header ── */}
-          <ThemedView style={styles.header}>
-            <TouchableOpacity
-              onPress={handlePickImage}
-              onLongPress={avatar ? handleRemoveAvatar : undefined}
-              activeOpacity={0.8}
-              accessibilityRole="imagebutton"
-              accessibilityLabel="Change profile avatar"
-            >
-              {avatar ? (
-                <ThemedView style={styles.avatarRing}>
-                  <Image
-                    source={{ uri: avatarCid ? ipfsToHttpUrl(avatarCid) : avatar }}
-                    style={styles.avatarImage}
-                  />
-                  <ThemedView
-                    style={[styles.avatarBadge, { backgroundColor: theme.brand.primary }]}
-                  >
-                    <Ionicons name="camera" size={10} color={Brand.white} />
-                  </ThemedView>
-                </ThemedView>
-              ) : (
-                <ThemedView style={styles.avatarRing}>
-                  <ThemedView style={[styles.avatar, { backgroundColor: theme.brand.primary }]}>
-                    <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
-                  </ThemedView>
-                  <ThemedView
-                    style={[styles.avatarBadge, { backgroundColor: theme.backgroundElement }]}
-                  >
-                    <Ionicons name="camera" size={10} color={theme.brand.primary} />
-                  </ThemedView>
-                </ThemedView>
-              )}
-            </TouchableOpacity>
-
-            {isEditingName ? (
-              <Input
-                value={editedName}
-                onChangeText={setEditedName}
-                onBlur={handleSaveName}
-                onSubmitEditing={handleSaveName}
-                autoFocus
-                selectTextOnFocus
-                maxLength={20}
-                style={[styles.usernameInput, { borderColor: theme.border }]}
-                inputStyle={[styles.usernameInputText, { color: theme.text }]}
-              />
-            ) : (
-              <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
-                <ThemedText style={styles.username}>{displayName}</ThemedText>
-              </TouchableOpacity>
-            )}
-
-            {ensName && (
-              <ThemedText type="small" style={{ color: theme.brand.primary }}>
-                {ensName}
-              </ThemedText>
-            )}
-
+          </HeaderNavBar>
+        )}
+      >
+        <View style={styles.bodyPadding}>
+          {(headerUploading || avatarUploadStatus) && (
+            <View style={styles.uploadStatus} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={theme.brand.primary} />
+              <View style={{ flex: 1 }}>
+                {headerUploading && <ThemedText type="small">Uploading header photo…</ThemedText>}
+                {avatarUploadStatus && <ThemedText type="small">{avatarUploadStatus}</ThemedText>}
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  You can keep browsing while we save your photo.
+                </ThemedText>
+              </View>
+            </View>
+          )}
+          <ThemedView style={styles.postHeaderContent}>
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               {activities.length} {activities.length === 1 ? 'activity' : 'activities'}
               {memberSince ? ` · Since ${memberSince}` : ''}
@@ -932,33 +1098,43 @@ export default function ProfileScreen() {
                     Achievements
                   </ThemedText>
                   <ThemedView style={styles.achievementsGrid}>
-                    {unlockedAchievements.map((a) => (
-                      <ThemedView
-                        key={a.id}
-                        style={[styles.achievementCard, { borderColor: theme.border }]}
-                      >
-                        {mintedAchievementIds.has(a.id) && (
-                          <View style={styles.achievementBadge}>
-                            <Ionicons
-                              name="checkmark-circle"
-                              size={14}
-                              color={theme.brand.success}
-                            />
-                          </View>
-                        )}
-                        <Ionicons
-                          name={a.icon as keyof typeof Ionicons.glyphMap}
-                          size={22}
-                          color={theme.text}
-                        />
-                        <ThemedText
-                          type="caption"
-                          style={[styles.achievementTitle, { color: theme.textSecondary }]}
+                    {unlockedAchievements.map((a) => {
+                      const minted = mintedAchievementIds.has(a.id);
+                      return (
+                        <ThemedView
+                          key={a.id}
+                          style={[styles.achievementCard, { borderColor: theme.border }]}
                         >
-                          {a.title}
-                        </ThemedText>
-                      </ThemedView>
-                    ))}
+                          {minted && (
+                            <View style={styles.achievementBadge}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={14}
+                                color={theme.brand.success}
+                              />
+                            </View>
+                          )}
+                          {minted ? (
+                            <AchievementBadge
+                              icon={a.icon as keyof typeof Ionicons.glyphMap}
+                              size={40}
+                            />
+                          ) : (
+                            <Ionicons
+                              name={a.icon as keyof typeof Ionicons.glyphMap}
+                              size={22}
+                              color={theme.text}
+                            />
+                          )}
+                          <ThemedText
+                            type="caption"
+                            style={[styles.achievementTitle, { color: theme.textSecondary }]}
+                          >
+                            {a.title}
+                          </ThemedText>
+                        </ThemedView>
+                      );
+                    })}
                   </ThemedView>
                 </ThemedView>
               )}
@@ -1020,16 +1196,16 @@ export default function ProfileScreen() {
           )}
 
           <ThemedView style={{ height: Spacing.six }} />
-        </ScrollView>
-      </SafeAreaView>
+        </View>
+      </AnimatedScrollView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scroll: { paddingHorizontal: Spacing.four, gap: Spacing.three },
+  scroll: { paddingBottom: Spacing.three },
+  bodyPadding: { paddingHorizontal: Spacing.four, gap: Spacing.three },
 
   /* Top Bar */
   topBar: {
@@ -1047,8 +1223,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  /* Header */
-  header: { alignItems: 'center', paddingTop: Spacing.two, gap: Spacing.one },
+  /* Parallax Header */
+  uploadStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingTop: Spacing.three,
+  },
+  headerImageBtnWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+  },
+  headerImageBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.two,
+    marginRight: Spacing.three,
+  },
+  parallaxAvatarWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  parallaxOverlay: {
+    alignItems: 'center',
+    gap: Spacing.half,
+    paddingBottom: Spacing.three,
+  },
+  postHeaderContent: {
+    alignItems: 'center',
+    paddingTop: Spacing.three,
+    gap: Spacing.one,
+  },
   avatarRing: { position: 'relative' },
   avatar: {
     width: 72,

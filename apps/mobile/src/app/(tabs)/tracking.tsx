@@ -1,11 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  type LayoutChangeEvent,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/shallow';
 import { type MapMarker, MapRoute } from '@/components/map-route';
+import { NumberFlow } from '@/components/number-flow';
 import { ThemedText } from '@/components/themed-text';
 import { SPORT_TYPES } from '@/constants/activity';
 import { DEFAULT_CENTER, MAP_STYLES } from '@/constants/config';
@@ -36,6 +51,8 @@ const SPEED_LIMITS_KMH: Record<ActivityType, number> = {
   row: 15,
 };
 
+const SHEET_SPRING = { damping: 22, stiffness: 200 };
+
 export default function TrackingScreen() {
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -45,6 +62,8 @@ export default function TrackingScreen() {
   const [activityType, setActivityType] = useState<ActivityType>('run');
   const [showTypePicker, setShowTypePicker] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [secondaryStatsHeight, setSecondaryStatsHeight] = useState(0);
+  const expandProgress = useSharedValue(0);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [trackedPolygon, setTrackedPolygon] = useState<Ring | null>(null);
   const [startLocation, setStartLocation] = useState<[number, number] | null>(null);
@@ -60,6 +79,34 @@ export default function TrackingScreen() {
   const wasLoopClosedRef = useRef(false);
 
   const isSessionActive = isTracking || isPaused;
+
+  useEffect(() => {
+    expandProgress.value = withSpring(expanded ? 1 : 0, SHEET_SPRING);
+  }, [expanded, expandProgress]);
+
+  const secondaryStatsStyle = useAnimatedStyle(() => ({
+    height: secondaryStatsHeight * expandProgress.value,
+    opacity: expandProgress.value,
+  }));
+
+  const onSecondaryStatsLayout = useCallback((event: LayoutChangeEvent) => {
+    setSecondaryStatsHeight(event.nativeEvent.layout.height);
+  }, []);
+
+  const setSheetExpanded = useCallback((next: boolean) => {
+    haptics.tap();
+    setExpanded(next);
+  }, []);
+
+  const sheetPanGesture = Gesture.Pan()
+    .activeOffsetY([-10, 10])
+    .onEnd((event) => {
+      if (event.translationY < -15 || event.velocityY < -400) {
+        runOnJS(setSheetExpanded)(true);
+      } else if (event.translationY > 15 || event.velocityY > 400) {
+        runOnJS(setSheetExpanded)(false);
+      }
+    });
 
   // Recording is meant to feel immersive and full-screen, like a dedicated
   // stopwatch - the tab bar competing for space (and being one accidental
@@ -411,47 +458,48 @@ export default function TrackingScreen() {
 
       <SafeAreaView edges={['bottom']} style={styles.sheetSafeArea}>
         <View style={[styles.bottomSheet, ShadowDark.lg]}>
-          <View style={styles.sheetHandle} />
+          <GestureDetector gesture={sheetPanGesture}>
+            <View>
+              <View style={styles.sheetHandle} />
+
+              <View style={styles.sheetHeader}>
+                <View style={styles.sheetHeaderLeft}>
+                  <View
+                    style={[
+                      styles.activityIconCircle,
+                      { backgroundColor: tint(Brand.primary, 0.15) },
+                    ]}
+                  >
+                    <Ionicons name={activeType?.icon || 'walk'} size={16} color={Brand.primary} />
+                  </View>
+                  <ThemedText type="default" style={styles.sheetTitle}>
+                    {activeType?.label}
+                  </ThemedText>
+                  {isPaused && (
+                    <View style={styles.pausedBadge}>
+                      <ThemedText type="small" style={styles.pausedBadgeText}>
+                        Paused
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.expandButton}
+                  onPress={() => setSheetExpanded(!expanded)}
+                  accessibilityRole="button"
+                  accessibilityLabel={expanded ? 'Show fewer stats' : 'Show more stats'}
+                >
+                  <Ionicons
+                    name={expanded ? 'contract' : 'expand'}
+                    size={18}
+                    color={Colors.dark.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </GestureDetector>
 
           <View style={styles.sheetContent}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetHeaderLeft}>
-                <View
-                  style={[
-                    styles.activityIconCircle,
-                    { backgroundColor: tint(Brand.primary, 0.15) },
-                  ]}
-                >
-                  <Ionicons name={activeType?.icon || 'walk'} size={16} color={Brand.primary} />
-                </View>
-                <ThemedText type="default" style={styles.sheetTitle}>
-                  {activeType?.label}
-                </ThemedText>
-                {isPaused && (
-                  <View style={styles.pausedBadge}>
-                    <ThemedText type="small" style={styles.pausedBadgeText}>
-                      Paused
-                    </ThemedText>
-                  </View>
-                )}
-              </View>
-              <TouchableOpacity
-                style={styles.expandButton}
-                onPress={() => {
-                  haptics.tap();
-                  setExpanded((e) => !e);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={expanded ? 'Show fewer stats' : 'Show more stats'}
-              >
-                <Ionicons
-                  name={expanded ? 'contract' : 'expand'}
-                  size={18}
-                  color={Colors.dark.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-
             <View style={styles.statsRow}>
               <View style={styles.stat}>
                 <ThemedText type="default" style={styles.statValue}>
@@ -479,8 +527,8 @@ export default function TrackingScreen() {
               </View>
             </View>
 
-            {expanded && (
-              <View style={styles.statsRowSecondary}>
+            <Animated.View style={[styles.statsRowSecondary, secondaryStatsStyle]}>
+              <View style={styles.statsRowSecondaryInner} onLayout={onSecondaryStatsLayout}>
                 <View style={styles.stat}>
                   <Ionicons
                     name="shield-checkmark"
@@ -502,15 +550,18 @@ export default function TrackingScreen() {
                 </View>
                 <View style={styles.stat}>
                   <Ionicons name="location" size={16} color={Colors.dark.textSecondary} />
-                  <ThemedText type="default" style={styles.statValueSmall}>
-                    {routeCoordinates.length}
-                  </ThemedText>
+                  <NumberFlow
+                    value={routeCoordinates.length}
+                    fontSize={15}
+                    fontWeight="700"
+                    color={Colors.dark.text}
+                  />
                   <ThemedText type="small" style={styles.statLabel}>
                     GPS points
                   </ThemedText>
                 </View>
               </View>
-            )}
+            </Animated.View>
 
             <View style={styles.controls}>
               {isTracking ? (
@@ -630,12 +681,13 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
   },
   sheetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: Spacing.four,
+    marginBottom: Spacing.three,
   },
   sheetHeaderLeft: {
     flexDirection: 'row',
@@ -673,12 +725,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: Spacing.two,
+    marginBottom: Spacing.three,
   },
   statsRowSecondary: {
+    overflow: 'hidden',
+  },
+  statsRowSecondaryInner: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingTop: Spacing.two,
-    paddingBottom: Spacing.one,
+    paddingBottom: Spacing.two,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.dark.border,
   },

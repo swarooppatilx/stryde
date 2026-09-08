@@ -16,6 +16,7 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
     mapping(bytes32 => Achievement) private _achievements;
     mapping(uint256 => bytes32) private _tokenAchievement;
     mapping(address => uint256[]) private _userTokens;
+    mapping(address => mapping(bytes32 => bool)) private _hasMinted;
 
     constructor() ERC721("StrydeAchievement", "SACH") Ownable(msg.sender) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -38,8 +39,10 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
         if (recipient == address(0)) revert ZeroAddress();
         Achievement storage achievement = _achievements[achievementId];
         if (!achievement.exists) revert EmptyAchievement();
+        if (_hasMinted[recipient][achievementId]) revert AlreadyMinted();
 
         uint256 tokenId = _nextTokenId++;
+        _hasMinted[recipient][achievementId] = true;
         _mint(recipient, tokenId);
         _tokenAchievement[tokenId] = achievementId;
         _userTokens[recipient].push(tokenId);
@@ -61,6 +64,10 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
 
     function getTokenAchievement(uint256 tokenId) external view override returns (bytes32) {
         return _tokenAchievement[tokenId];
+    }
+
+    function hasMinted(address recipient, bytes32 achievementId) external view override returns (bool) {
+        return _hasMinted[recipient][achievementId];
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {

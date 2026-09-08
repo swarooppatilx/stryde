@@ -2,16 +2,14 @@ import { Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
-  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  View,
 } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,12 +17,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
 import { CommentsSheet } from '@/components/comments-sheet';
+import { EmptyInboxState } from '@/components/empty-inbox-v1';
 import { FeedCard } from '@/components/feed-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { UnfoldMenu } from '@/components/unfold-menu';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActivityStore } from '@/stores/activityStore';
+import { useProfileStore } from '@/stores/profileStore';
 import { type SocialActivity, type SocialUser, useSocialStore } from '@/stores/socialStore';
 import { getWeeklyStats } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -41,6 +42,9 @@ export default function HomeScreen() {
   const theme = useTheme();
   const activities = useActivityStore((s) => s.activities);
   const socialActivities = useSocialStore((s) => s.activities);
+  const socialUsers = useSocialStore((s) => s.users);
+  const profile = useProfileStore();
+  const syncLocalActivities = useSocialStore((s) => s.syncLocalActivities);
   const following = useSocialStore((s) => s.following);
   const getFeed = useSocialStore((s) => s.getFeed);
   const fetchActivities = useSocialStore((s) => s.fetchActivities);
@@ -49,7 +53,10 @@ export default function HomeScreen() {
 
   const [commentActivityId, setCommentActivityId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showActionSheet, setShowActionSheet] = useState(false);
+
+  // Local saves should appear immediately, including posts not yet recorded onchain.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activities triggers synchronization from the local store
+  useEffect(() => syncLocalActivities(), [activities, syncLocalActivities]);
 
   const weekStats = useMemo(() => {
     const weekly = getWeeklyStats(activities);
@@ -63,6 +70,7 @@ export default function HomeScreen() {
   const feed = useMemo(() => getFeed(), [getFeed, socialActivities, following]);
   // Activities whose author can't be resolved are skipped at render time — filter
   // them out here too, so the empty state reflects what's actually shown.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getUserById reads socialUsers/profile internally
   const feedItems = useMemo(() => {
     const items: { activity: SocialActivity; user: SocialUser }[] = [];
     for (const activity of feed) {
@@ -70,7 +78,7 @@ export default function HomeScreen() {
       if (user) items.push({ activity, user });
     }
     return items;
-  }, [feed, getUserById]);
+  }, [feed, getUserById, socialUsers, profile]);
 
   const onRefresh = useCallback(() => {
     haptics.selection();
@@ -78,9 +86,8 @@ export default function HomeScreen() {
     fetchActivities().finally(() => setRefreshing(false));
   }, [fetchActivities]);
 
-  const handleFabAction = (action: 'record' | 'manual' | 'photo') => {
+  const handleFabAction = (action?: string) => {
     haptics.tap();
-    setShowActionSheet(false);
 
     if (action === 'record') {
       router.push('/(tabs)/tracking');
@@ -205,104 +212,84 @@ export default function HomeScreen() {
                 </Animated.View>
               ))
             ) : (
-              <Card style={styles.emptyCard}>
-                <Ionicons name="people-outline" size={48} color={theme.textSecondary} />
-                <ThemedText type="sectionTitle" style={{ textAlign: 'center' }}>
-                  No posts yet
-                </ThemedText>
-                <ThemedText
-                  type="small"
-                  style={{ color: theme.textSecondary, textAlign: 'center' }}
-                >
-                  Activities from people you follow will appear here.
-                </ThemedText>
-              </Card>
+              <EmptyInboxState
+                title="No posts yet"
+                description="Your activities and posts from the community will appear here."
+                hideAction
+                animated={false}
+                colors={{
+                  screen: 'transparent',
+                  title: theme.text,
+                  description: theme.textSecondary,
+                  skeleton: theme.backgroundElement,
+                  skeletonStrong: theme.backgroundSelected,
+                }}
+                style={styles.emptyCard}
+              />
             )}
           </ThemedView>
         </ScrollView>
       </SafeAreaView>
 
       {/* ── FAB ── */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.brand.primary }]}
-        activeOpacity={0.8}
-        onPress={() => {
-          haptics.impactMedium();
-          setShowActionSheet(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Create new activity"
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
-
-      {/* ── Action Sheet Modal ── */}
-      <Modal
-        visible={showActionSheet}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowActionSheet(false)}
-      >
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={() => setShowActionSheet(false)}
+      <ThemedView style={styles.fab}>
+        <UnfoldMenu
+          theme={theme.isDark ? 'dark' : 'light'}
+          onSelect={handleFabAction}
+          extraBottomInset={64}
+          palette={{
+            surface: theme.backgroundElement,
+            border: theme.border,
+            text: theme.text,
+            mutedText: theme.textSecondary,
+          }}
         >
-          <ThemedView
-            style={[styles.actionSheet, { backgroundColor: theme.backgroundElement }]}
-            onStartShouldSetResponder={() => true}
-          >
-            <ThemedText type="sectionTitle" style={styles.actionSheetTitle}>
-              New Activity
-            </ThemedText>
+          <UnfoldMenu.Trigger>
+            <UnfoldMenu.Icon>
+              {({ color, size }) => <Ionicons name="add" size={size} color={color} />}
+            </UnfoldMenu.Icon>
+            <UnfoldMenu.Label>New</UnfoldMenu.Label>
+          </UnfoldMenu.Trigger>
 
-            <TouchableOpacity
-              style={[styles.actionItem, { borderBottomColor: theme.border }]}
-              activeOpacity={0.7}
-              onPress={() => handleFabAction('record')}
-            >
-              <Ionicons name="navigate-outline" size={22} color={theme.text} />
-              <View style={styles.actionText}>
-                <ThemedText type="smallBold">Record Activity</ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  GPS tracked run, ride, or walk
-                </ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-            </TouchableOpacity>
+          <UnfoldMenu.Content>
+            <UnfoldMenu.Header>
+              <UnfoldMenu.Title>New Activity</UnfoldMenu.Title>
+              <UnfoldMenu.Close>
+                {({ color, size }) => <Ionicons name="close" size={size} color={color} />}
+              </UnfoldMenu.Close>
+            </UnfoldMenu.Header>
 
-            <TouchableOpacity
-              style={[styles.actionItem, { borderBottomColor: theme.border }]}
-              activeOpacity={0.7}
-              onPress={() => handleFabAction('manual')}
-            >
-              <Ionicons name="create-outline" size={22} color={theme.text} />
-              <View style={styles.actionText}>
-                <ThemedText type="smallBold">Manual Entry</ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Log distance and duration
-                </ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-            </TouchableOpacity>
+            <UnfoldMenu.Grid columns={3}>
+              <UnfoldMenu.Item value="record">
+                <UnfoldMenu.Icon>
+                  {({ color, size }) => (
+                    <Ionicons name="navigate-outline" size={size} color={color} />
+                  )}
+                </UnfoldMenu.Icon>
+                <UnfoldMenu.Label>Record</UnfoldMenu.Label>
+              </UnfoldMenu.Item>
 
-            <TouchableOpacity
-              style={styles.actionItem}
-              activeOpacity={0.7}
-              onPress={() => handleFabAction('photo')}
-            >
-              <Ionicons name="camera-outline" size={22} color={theme.text} />
-              <View style={styles.actionText}>
-                <ThemedText type="smallBold">Post Photo</ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Share a photo from your activity
-                </ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-            </TouchableOpacity>
-          </ThemedView>
-        </TouchableOpacity>
-      </Modal>
+              <UnfoldMenu.Item value="manual">
+                <UnfoldMenu.Icon>
+                  {({ color, size }) => (
+                    <Ionicons name="create-outline" size={size} color={color} />
+                  )}
+                </UnfoldMenu.Icon>
+                <UnfoldMenu.Label>Manual</UnfoldMenu.Label>
+              </UnfoldMenu.Item>
+
+              <UnfoldMenu.Item value="photo">
+                <UnfoldMenu.Icon>
+                  {({ color, size }) => (
+                    <Ionicons name="camera-outline" size={size} color={color} />
+                  )}
+                </UnfoldMenu.Icon>
+                <UnfoldMenu.Label>Photo</UnfoldMenu.Label>
+              </UnfoldMenu.Item>
+            </UnfoldMenu.Grid>
+          </UnfoldMenu.Content>
+        </UnfoldMenu>
+      </ThemedView>
 
       {/* Comments sheet */}
       <CommentsSheet
@@ -378,43 +365,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 24,
     right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-
-  /* Action Sheet */
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-    paddingBottom: 34,
-  },
-  actionSheet: {
-    marginHorizontal: Spacing.four,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.four,
-    gap: Spacing.three,
-  },
-  actionSheetTitle: {
-    textAlign: 'center',
-  },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingVertical: Spacing.three,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  actionText: {
-    flex: 1,
-    gap: 2,
   },
 });

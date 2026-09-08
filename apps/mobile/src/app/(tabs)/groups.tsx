@@ -2,19 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-} from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
 
 import { AppButton } from '@/components/button';
 import { FilterChips, type SportFilter } from '@/components/filter-chips';
+import { Shimmer } from '@/components/Shimmer/Shimmer';
+import { SearchBar } from '@/components/search-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
@@ -118,7 +113,6 @@ export default function CommunityScreen() {
   const isEvents = activeTab === 'Events';
   const query = isClubs ? clubQuery : eventQuery;
   const setQuery = isClubs ? setClubQuery : setEventQuery;
-  const clearQuery = () => (isClubs ? setClubQuery('') : setEventQuery(''));
 
   const handleTabChange = (tab: TabKey) => {
     haptics.selection();
@@ -363,27 +357,11 @@ export default function CommunityScreen() {
 
           {/* Search Bar */}
           {(isClubs || isEvents) && (
-            <ThemedView
-              style={[
-                styles.searchBar,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-            >
-              <Ionicons name="search-outline" size={18} color={theme.textSecondary} />
-              <TextInput
-                style={[styles.searchInput, { color: theme.text }]}
-                placeholder={isClubs ? 'Search clubs...' : 'Search events...'}
-                placeholderTextColor={theme.textSecondary}
-                value={query}
-                onChangeText={setQuery}
-                returnKeyType="search"
-              />
-              {query.length > 0 && (
-                <TouchableOpacity onPress={clearQuery} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </ThemedView>
+            <SearchBar
+              value={query}
+              onChangeText={setQuery}
+              placeholder={isClubs ? 'Search clubs...' : 'Search events...'}
+            />
           )}
 
           {/* Sport Filter Chips */}
@@ -429,7 +407,34 @@ export default function CommunityScreen() {
               </AppButton>
 
               {challenges === null ? (
-                <ActivityIndicator style={styles.empty} />
+                <ThemedView style={styles.challengeSkeletonList}>
+                  {[0, 1, 2].map((i) => (
+                    <ThemedView
+                      key={i}
+                      style={[styles.card, { backgroundColor: theme.backgroundElement }]}
+                    >
+                      <ThemedView style={styles.cardRow}>
+                        <Shimmer
+                          isLoading
+                          preset={theme.isDark ? 'dark' : 'light'}
+                          style={styles.iconCircle}
+                        />
+                        <ThemedView style={styles.cardInfo}>
+                          <Shimmer
+                            isLoading
+                            preset={theme.isDark ? 'dark' : 'light'}
+                            style={styles.skeletonLine}
+                          />
+                          <Shimmer
+                            isLoading
+                            preset={theme.isDark ? 'dark' : 'light'}
+                            style={styles.skeletonLineShort}
+                          />
+                        </ThemedView>
+                      </ThemedView>
+                    </ThemedView>
+                  ))}
+                </ThemedView>
               ) : challenges.length === 0 ? (
                 <ThemedView style={styles.empty}>
                   <Ionicons name="flag-outline" size={32} color={theme.textSecondary} />
@@ -481,20 +486,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     marginTop: Spacing.two,
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    gap: Spacing.two,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    paddingVertical: 0,
-  },
   card: {
     borderRadius: BorderRadius.lg,
     padding: Spacing.three,
@@ -514,6 +505,19 @@ const styles = StyleSheet.create({
   cardInfo: {
     flex: 1,
     gap: 2,
+  },
+  challengeSkeletonList: {
+    gap: Spacing.three,
+  },
+  skeletonLine: {
+    width: '70%',
+    height: 14,
+    borderRadius: BorderRadius.sm,
+  },
+  skeletonLineShort: {
+    width: '40%',
+    height: 12,
+    borderRadius: BorderRadius.sm,
   },
   joinBtn: {
     paddingHorizontal: Spacing.three,
