@@ -19,6 +19,7 @@ import { AppButton } from '@/components/button';
 import { PhotoPicker } from '@/components/photo-picker';
 import { PrivacyPicker } from '@/components/privacy-picker';
 import { SportTypePicker } from '@/components/sport-type-picker';
+import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { FEEL_OPTIONS } from '@/constants/activity';
@@ -285,20 +286,11 @@ export default function CreateActivityScreen() {
             <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
               Title
             </ThemedText>
-            <View
-              style={[
-                styles.input,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-            >
-              {/* Using a plain TextInput since Ant Design Input may not be available */}
-              <_TitleInput
-                value={title}
-                onChangeText={setTitle}
-                placeholder={getActivityName(activityType, new Date().getHours())}
-                theme={theme}
-              />
-            </View>
+            <TextField
+              value={title}
+              onChangeText={setTitle}
+              placeholder={getActivityName(activityType, new Date().getHours())}
+            />
           </ThemedView>
 
           {/* Description */}
@@ -306,20 +298,12 @@ export default function CreateActivityScreen() {
             <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
               Description
             </ThemedText>
-            <View
-              style={[
-                styles.input,
-                styles.textArea,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-            >
-              <_DescInput
-                value={description}
-                onChangeText={setDescription}
-                placeholder="How did it feel?"
-                theme={theme}
-              />
-            </View>
+            <TextField
+              value={description}
+              onChangeText={setDescription}
+              placeholder="How did it feel?"
+              multiline
+            />
           </ThemedView>
 
           {/* Sport Type */}
@@ -458,56 +442,6 @@ export default function CreateActivityScreen() {
   );
 }
 
-// Simple inline text inputs to avoid Ant Design dependency issues
-import { TextInput } from 'react-native';
-
-function _TitleInput({
-  value,
-  onChangeText,
-  placeholder,
-  theme,
-}: {
-  value: string;
-  onChangeText: (t: string) => void;
-  placeholder: string;
-  theme: ReturnType<typeof useTheme>;
-}) {
-  return (
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={theme.textSecondary}
-      style={{ flex: 1, color: theme.text, fontSize: 16, padding: 0 }}
-    />
-  );
-}
-
-function _DescInput({
-  value,
-  onChangeText,
-  placeholder,
-  theme,
-}: {
-  value: string;
-  onChangeText: (t: string) => void;
-  placeholder: string;
-  theme: ReturnType<typeof useTheme>;
-}) {
-  return (
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor={theme.textSecondary}
-      multiline
-      numberOfLines={3}
-      textAlignVertical="top"
-      style={{ flex: 1, color: theme.text, fontSize: 14, padding: 0, minHeight: 60 }}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 0 },
@@ -532,18 +466,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: Spacing.two,
-  },
-  input: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  textArea: {
-    minHeight: 80,
-    alignItems: 'flex-start',
   },
   sportSelector: {
     flexDirection: 'row',

@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   statDivider: {

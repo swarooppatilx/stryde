@@ -111,7 +111,7 @@ export default function EventDetailScreen() {
             numberOfLines={1}
             style={{ flex: 1, textAlign: 'center' }}
           >
-            Challenge
+            Event
           </ThemedText>
           <View style={{ width: 24 }} />
         </ThemedView>

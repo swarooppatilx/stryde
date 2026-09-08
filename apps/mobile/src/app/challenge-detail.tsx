@@ -3,8 +3,8 @@ import { services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
 
 import { AppButton } from '@/components/button';
+import { Shimmer } from '@/components/Shimmer/Shimmer';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ENV, getCurrentUserId } from '@/constants/config';
@@ -40,6 +41,7 @@ export default function ChallengeDetailScreen() {
 
   const [challenge, setChallenge] = useState<OnchainChallenge | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -57,12 +59,24 @@ export default function ChallengeDetailScreen() {
   const challengerEnsName = useEnsName(challenge?.challenger);
   const opponentEnsName = useEnsName(challenge?.opponent);
 
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load().finally(() => setRefreshing(false));
+  }, [load]);
+
   if (!challenge) {
+    const shimmerPreset = theme.isDark ? 'dark' : 'light';
     return (
       <ThemedView type="background" style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
-          <ThemedView style={styles.empty}>
-            <ActivityIndicator size="large" />
+          <ThemedView style={styles.scroll}>
+            <ThemedView style={styles.vsRow}>
+              <Shimmer isLoading preset={shimmerPreset} style={styles.skeletonName} />
+              <Shimmer isLoading preset={shimmerPreset} style={styles.skeletonVs} />
+              <Shimmer isLoading preset={shimmerPreset} style={styles.skeletonName} />
+            </ThemedView>
+            <Shimmer isLoading preset={shimmerPreset} style={styles.skeletonStatsRow} />
+            <Shimmer isLoading preset={shimmerPreset} style={styles.skeletonCaption} />
           </ThemedView>
         </SafeAreaView>
       </ThemedView>
@@ -163,7 +177,18 @@ export default function ChallengeDetailScreen() {
           <View style={{ width: 24 }} />
         </ThemedView>
 
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.brand.primary}
+              colors={[theme.brand.primary]}
+            />
+          }
+        >
           <ThemedView style={styles.vsRow}>
             <ThemedText type="smallBold" numberOfLines={1} style={styles.vsSide}>
               {isChallenger ? 'You' : challengerName}
@@ -271,10 +296,26 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
     gap: Spacing.four,
   },
-  empty: {
+  skeletonName: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 20,
+    borderRadius: BorderRadius.sm,
+  },
+  skeletonVs: {
+    width: 28,
+    height: 20,
+    marginHorizontal: Spacing.two,
+    borderRadius: BorderRadius.sm,
+  },
+  skeletonStatsRow: {
+    height: 72,
+    borderRadius: BorderRadius.lg,
+  },
+  skeletonCaption: {
+    width: 160,
+    height: 14,
+    borderRadius: BorderRadius.sm,
+    alignSelf: 'center',
   },
   vsRow: {
     flexDirection: 'row',
@@ -295,7 +336,7 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   statValue: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   statDivider: {

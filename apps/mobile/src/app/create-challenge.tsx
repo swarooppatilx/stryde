@@ -9,7 +9,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -17,7 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther, parseEther } from 'viem';
 
 import { AppButton } from '@/components/button';
+import { SearchBar } from '@/components/search-bar';
 import { SportTypePicker } from '@/components/sport-type-picker';
+import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ENV, getCurrentUserId } from '@/constants/config';
@@ -151,7 +152,7 @@ export default function CreateChallengeScreen() {
     }
   };
 
-  const canSubmit = !!selectedOpponent && !isSubmitting;
+  const canSubmit = !!selectedOpponent && !isSubmitting && !insufficientBalance;
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -190,27 +191,12 @@ export default function CreateChallengeScreen() {
             ) : (
               <>
                 {opponents.length > 5 && (
-                  <ThemedView
-                    style={[
-                      styles.oppSearchBar,
-                      { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-                    ]}
-                  >
-                    <Ionicons name="search-outline" size={16} color={theme.textSecondary} />
-                    <TextInput
-                      style={[styles.oppSearchInput, { color: theme.text }]}
-                      placeholder="Search by username..."
-                      placeholderTextColor={theme.textSecondary}
-                      value={opponentQuery}
-                      onChangeText={setOpponentQuery}
-                      returnKeyType="search"
-                    />
-                    {opponentQuery.length > 0 && (
-                      <TouchableOpacity onPress={() => setOpponentQuery('')} hitSlop={8}>
-                        <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
-                      </TouchableOpacity>
-                    )}
-                  </ThemedView>
+                  <SearchBar
+                    value={opponentQuery}
+                    onChangeText={setOpponentQuery}
+                    placeholder="Search by username..."
+                    style={styles.oppSearchBar}
+                  />
                 )}
                 {filteredOpponents && filteredOpponents.length === 0 ? (
                   <ThemedText
@@ -305,7 +291,7 @@ export default function CreateChallengeScreen() {
             <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
               Target distance (km)
             </ThemedText>
-            <TextInputField value={targetKm} onChangeText={setTargetKm} theme={theme} />
+            <TextField value={targetKm} onChangeText={setTargetKm} keyboardType="decimal-pad" />
           </ThemedView>
 
           {/* Duration */}
@@ -351,7 +337,7 @@ export default function CreateChallengeScreen() {
             <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
               Stake (ETH, each side)
             </ThemedText>
-            <TextInputField value={stakeEth} onChangeText={setStakeEth} theme={theme} />
+            <TextField value={stakeEth} onChangeText={setStakeEth} keyboardType="decimal-pad" />
             {balanceWei !== null && (
               <ThemedText
                 type="small"
@@ -375,33 +361,6 @@ export default function CreateChallengeScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </ThemedView>
-  );
-}
-
-function TextInputField({
-  value,
-  onChangeText,
-  theme,
-}: {
-  value: string;
-  onChangeText: (t: string) => void;
-  theme: ReturnType<typeof useTheme>;
-}) {
-  return (
-    <View
-      style={[
-        styles.input,
-        { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-      ]}
-    >
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType="decimal-pad"
-        placeholderTextColor={theme.textSecondary}
-        style={{ flex: 1, color: theme.text, fontSize: 16, padding: 0 }}
-      />
-    </View>
   );
 }
 
@@ -431,19 +390,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   oppSearchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
     marginBottom: Spacing.two,
-  },
-  oppSearchInput: {
-    flex: 1,
-    fontSize: 14,
-    padding: 0,
   },
   oppRow: {
     flexGrow: 0,
@@ -473,14 +420,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-  },
-  input: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    minHeight: 44,
-    justifyContent: 'center',
   },
   pillRow: {
     flexDirection: 'row',
