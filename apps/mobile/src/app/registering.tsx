@@ -120,7 +120,7 @@ export default function RegisteringScreen() {
           <ThemedText type="headline" style={styles.title}>
             Setting up your profile
           </ThemedText>
-          <ThemedText type="small" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          <ThemedText type="small" style={[styles.status, { color: 'rgba(255,255,255,0.5)' }]}>
             {status}
           </ThemedText>
           {failed && (
@@ -144,8 +144,15 @@ export default function RegisteringScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  content: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
-  title: { marginTop: 16 },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 24,
+  },
+  title: { marginTop: 16, textAlign: 'center' },
+  status: { textAlign: 'center' },
   retryBtn: {
     marginTop: 8,
     paddingHorizontal: 24,

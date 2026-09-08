@@ -186,7 +186,10 @@ export default function LoginScreen() {
               <TextField
                 placeholder="Email address"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setError(null);
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
