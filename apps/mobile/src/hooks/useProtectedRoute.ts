@@ -3,6 +3,7 @@ import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { useProfileStore } from '@/stores/profileStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const PUBLIC_ROUTES = ['login', 'onboarding'];
 const SETUP_ROUTES = ['registering', 'profile-setup'];
@@ -13,6 +14,8 @@ export function useProtectedRoute() {
   const navigationState = useRootNavigationState();
   const { isReady, user } = usePrivy();
   const isSetup = useProfileStore((s) => s.firstName.length > 0 || s.username.length > 0);
+  const hasOnboarded = useSettingsStore((s) => s.hasOnboarded);
+  const setHasOnboarded = useSettingsStore((s) => s.setHasOnboarded);
   const [ready, setReady] = useState(false);
   const lastRoutedKey = useRef<string | null>(null);
 
@@ -25,10 +28,17 @@ export function useProtectedRoute() {
     const isSetupRoute = SETUP_ROUTES.includes(currentRoute);
     const isAuthenticated = user !== null;
 
+    // Anyone who has ever authenticated has necessarily seen onboarding -
+    // don't make a returning user replay the carousel just because they
+    // logged out.
+    if (isAuthenticated && !hasOnboarded) {
+      setHasOnboarded();
+    }
+
     let target: string | null = null;
 
     if (!isAuthenticated && !isPublicRoute) {
-      target = '/onboarding';
+      target = hasOnboarded ? '/login' : '/onboarding';
     } else if (isAuthenticated && isPublicRoute) {
       target = isSetup ? '/(tabs)' : '/registering';
     } else if (isAuthenticated && !isPublicRoute && !isSetupRoute && !isSetup) {
@@ -44,7 +54,16 @@ export function useProtectedRoute() {
     }
 
     setReady(true);
-  }, [navigationState?.key, isReady, isSetup, segments, user, router.replace]);
+  }, [
+    navigationState?.key,
+    isReady,
+    isSetup,
+    hasOnboarded,
+    setHasOnboarded,
+    segments,
+    user,
+    router.replace,
+  ]);
 
   return ready;
 }

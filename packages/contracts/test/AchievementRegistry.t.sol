@@ -248,17 +248,19 @@ contract AchievementRegistryTest is Test {
 
     function testFuzz_MintAchievement(uint8 count) public {
         vm.assume(count > 0 && count < 100);
+        _defineAchievements();
 
-        // Each achievement id is unique per iteration so the per-(recipient, achievementId)
-        // idempotency check doesn't reject any of these mints.
+        // The same achievementId is minted to many distinct recipients, exercising that
+        // _hasMinted is scoped per-(recipient, achievementId) rather than per achievementId.
         for (uint8 i = 0; i < count; i++) {
-            bytes32 id = keccak256(abi.encodePacked("ACHIEVEMENT", i));
-            registry.defineAchievement(id, "Achievement");
-            registry.mintAchievement(alice, id);
-        }
+            address recipient = address(uint160(uint256(i) + 1));
+            registry.mintAchievement(recipient, FIRST_ACTIVITY);
 
-        assertEq(registry.getTokenCount(alice), count);
-        assertEq(registry.balanceOf(alice), count);
+            assertEq(registry.balanceOf(recipient), 1);
+            assertEq(registry.getTokenCount(recipient), 1);
+            assertTrue(registry.hasMinted(recipient, FIRST_ACTIVITY));
+            assertEq(registry.ownerOf(uint256(i) + 1), recipient);
+        }
     }
 
     function testFuzz_GetTokenIdsLength(uint8 count) public {

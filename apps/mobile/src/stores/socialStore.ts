@@ -4,7 +4,9 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { getCurrentUserId } from '@/constants/config';
 import { ipfsToHttpUrl } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
+import { useProfileStore } from '@/stores/profileStore';
 import type { Activity, User } from '@/types';
+import { mergeLocalActivities } from '@/utils/socialFeed';
 import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
 
 export interface SocialUser extends User {
@@ -31,7 +33,7 @@ function isVisibleToViewer(
   viewerId: string,
   following: string[]
 ): boolean {
-  if (activity.userId === viewerId) return true;
+  if (activity.userId.toLowerCase() === viewerId.toLowerCase()) return true;
   switch (activity.privacy) {
     case 'only_me':
       return false;
@@ -58,6 +60,7 @@ interface SocialState {
 
   fetchUsers: () => Promise<void>;
   fetchActivities: () => Promise<void>;
+  syncLocalActivities: () => void;
   toggleKudos: (activityId: string) => void;
   addComment: (activityId: string, text: string) => void;
   toggleCommentLike: (activityId: string, commentId: string) => void;
@@ -79,6 +82,14 @@ export const useSocialStore = create<SocialState>()(
       activities: [],
       currentUserKudos: [],
       following: [],
+
+      syncLocalActivities: () =>
+        set((state) => ({
+          activities: mergeLocalActivities(
+            state.activities,
+            useActivityStore.getState().activities
+          ),
+        })),
 
       fetchUsers: async () => {
         try {
@@ -118,7 +129,9 @@ export const useSocialStore = create<SocialState>()(
           );
 
           set((state) => {
-            const existingByHash = new Map(state.activities.map((a) => [a.id, a]));
+            const existingByHash = new Map(
+              state.activities.map((a) => [a.activityHash || a.id, a])
+            );
 
             const socialActivities: SocialActivity[] = chainActivities.map((a) => {
               const local = localByHash.get(a.activityHash);
@@ -148,7 +161,19 @@ export const useSocialStore = create<SocialState>()(
               };
             });
 
-            return { activities: socialActivities };
+            // Keep local-only posts and their social interactions across refreshes.
+            const localKeys = new Set(
+              useActivityStore.getState().activities.map((a) => a.activityHash || a.id)
+            );
+            const localSocial = state.activities.filter((a) =>
+              localKeys.has(a.activityHash || a.id)
+            );
+            return {
+              activities: mergeLocalActivities(
+                [...localSocial, ...socialActivities],
+                useActivityStore.getState().activities
+              ),
+            };
           });
         } catch {
           // ignore — leave activities as-is
@@ -264,7 +289,25 @@ export const useSocialStore = create<SocialState>()(
 
       getUserById: (id: string) => {
         const { users } = get();
-        return users.find((u) => u.id === id);
+        const user = users.find((u) => u.id.toLowerCase() === id.toLowerCase());
+        if (id.toLowerCase() === getCurrentUserId().toLowerCase()) {
+          const profile = useProfileStore.getState();
+          return {
+            ...user,
+            id,
+            username: profile.username || user?.username || 'You',
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            gender: profile.gender,
+            birthday: profile.birthday,
+            wallet: profile.wallet || id,
+            avatar: profile.avatar || undefined,
+            createdAt: new Date(profile.createdAt ?? 0),
+            followers: user?.followers ?? 0,
+            following: get().following.length,
+          };
+        }
+        return user;
       },
 
       getUserActivities: (userId: string) => {

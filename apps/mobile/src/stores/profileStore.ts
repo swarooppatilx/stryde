@@ -15,6 +15,8 @@ interface ProfileState {
   profileId: string | null;
   avatar: string | null;
   avatarCid: string | null;
+  headerImage: string | null;
+  headerImageCid: string | null;
   createdAt: number | null;
   settings: ProfileSettings;
   setUsername: (username: string) => void;
@@ -27,6 +29,8 @@ interface ProfileState {
   setProfileId: (profileId: string) => void;
   setAvatar: (avatar: string) => void;
   setAvatarCid: (cid: string) => void;
+  setHeaderImage: (headerImage: string) => void;
+  setHeaderImageCid: (cid: string) => void;
   updateSettings: (updates: Partial<ProfileSettings>) => void;
   reset: () => void;
   syncFromChain: (data: { username?: string; profileId: string; createdAt?: number }) => void;
@@ -43,6 +47,8 @@ const INITIAL_STATE = {
   profileId: null as string | null,
   avatar: null as string | null,
   avatarCid: null as string | null,
+  headerImage: null as string | null,
+  headerImageCid: null as string | null,
   createdAt: null as number | null,
   settings: DEFAULT_SETTINGS,
 };
@@ -72,6 +78,8 @@ export const useProfileStore = create<ProfileState>()(
       setProfileId: (profileId) => set({ profileId }),
       setAvatar: (avatar) => set({ avatar }),
       setAvatarCid: (cid) => set({ avatarCid: cid }),
+      setHeaderImage: (headerImage) => set({ headerImage }),
+      setHeaderImageCid: (cid) => set({ headerImageCid: cid }),
       updateSettings: (updates) =>
         set((state) => ({
           settings: { ...state.settings, ...updates },
