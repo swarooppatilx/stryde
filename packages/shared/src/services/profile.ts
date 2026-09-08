@@ -1,5 +1,6 @@
 import { decodeEventLog, parseEventLogs } from 'viem';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { getProfileAvatarsFromSubgraph } from './subgraph';
 
 export async function isRegistered(wallet: `0x${string}`): Promise<boolean> {
   const client = getPublicClient();
@@ -66,9 +67,12 @@ const AVATAR_UPDATED_EVENT = {
   ],
 } as const;
 
-/** There's no backend/subgraph, so a wallet's current avatar is derived from
- * the latest AvatarUpdated log it emitted — last write wins. */
-async function getLatestAvatarByWallet(): Promise<Map<string, string>> {
+/** Last-resort fallback: derives a wallet's current avatar from the latest
+ * AvatarUpdated log it emitted — last write wins. This does an unbounded
+ * getLogs scan, which public RPC providers (e.g. the Sepolia publicnode
+ * endpoint) reject past a small block range, so it should only be reached
+ * when no subgraph is configured for the active chain mode. */
+async function getLatestAvatarByWalletFromLogs(): Promise<Map<string, string>> {
   const client = getPublicClient();
   const contracts = getContracts();
 
@@ -94,6 +98,19 @@ async function getLatestAvatarByWallet(): Promise<Map<string, string>> {
     // ignore — callers just won't get avatars this round
   }
   return byWallet;
+}
+
+/** Subgraph-first, falling back to the unbounded getLogs scan only when no
+ * subgraph is configured (or the subgraph query fails) for the active chain
+ * mode — mirrors the resilience pattern used elsewhere in this file. */
+async function getLatestAvatarByWallet(): Promise<Map<string, string>> {
+  try {
+    const fromSubgraph = await getProfileAvatarsFromSubgraph();
+    if (fromSubgraph) return fromSubgraph;
+  } catch (err) {
+    console.warn('getLatestAvatarByWallet: subgraph query failed, falling back to log scan', err);
+  }
+  return getLatestAvatarByWalletFromLogs();
 }
 
 export async function getRegisteredUsers(): Promise<RegisteredUser[]> {

@@ -24,6 +24,7 @@ const FRIENDLY_MESSAGES: Record<string, string> = {
   EmptyTerritoryId: 'Invalid territory.',
   NotController: "You don't control this territory.",
   Unowned: 'This territory is unclaimed.',
+  AlreadyOwned: 'This territory is already claimed by someone else.',
   InvalidArea: 'Invalid territory area.',
   // AchievementRegistry
   EmptyAchievement: 'Invalid achievement.',

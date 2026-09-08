@@ -21,6 +21,8 @@ dataSources:
       eventHandlers:
         - event: ProfileCreated(indexed uint256,indexed address,string,uint256)
           handler: handleProfileCreated
+        - event: AvatarUpdated(indexed address,string)
+          handler: handleAvatarUpdated
       file: src/mappings/ProfileRegistry.ts
   - kind: ethereum/contract
     name: ActivityRegistry

@@ -3,6 +3,7 @@ type Profile @entity {
   username: String!
   profileId: BigInt!
   createdAt: BigInt!
+  avatarCid: String
   activities: [Activity!]! @derivedFrom(field: "user")
   territories: [Territory!]! @derivedFrom(field: "owner")
   contributions: [Contribution!]! @derivedFrom(field: "user")
