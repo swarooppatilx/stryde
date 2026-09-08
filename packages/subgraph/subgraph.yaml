@@ -63,6 +63,10 @@ dataSources:
           handler: handleTerritoryClaimed
         - event: TerritoryReinforced(indexed bytes32,indexed address,uint256,uint256)
           handler: handleTerritoryReinforced
+        - event: TerritoryDecayed(indexed bytes32,uint256,uint256)
+          handler: handleTerritoryDecayed
+        - event: TerritoryLost(indexed bytes32,indexed address,uint256)
+          handler: handleTerritoryLost
       file: src/mappings/TerritoryRegistry.ts
   - kind: ethereum/contract
     name: SeasonManager
