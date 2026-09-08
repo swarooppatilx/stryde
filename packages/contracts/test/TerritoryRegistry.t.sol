@@ -90,7 +90,7 @@ contract TerritoryRegistryTest is Test {
         registry.claimTerritory(HASH_1, 5000, 500, -73985000, 40742000, -73980000, 40747000);
 
         vm.prank(bob);
-        vm.expectRevert(ITerritoryRegistry.Unowned.selector);
+        vm.expectRevert(ITerritoryRegistry.AlreadyOwned.selector);
         registry.claimTerritory(HASH_1, 5000, 500, -73985000, 40742000, -73980000, 40747000);
     }
 

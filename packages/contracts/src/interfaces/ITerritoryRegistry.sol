@@ -25,6 +25,7 @@ interface ITerritoryRegistry {
     error EmptyTerritoryId();
     error NotController();
     error Unowned();
+    error AlreadyOwned();
     error InvalidArea();
 
     // Struct

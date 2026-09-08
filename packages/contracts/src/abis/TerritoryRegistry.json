@@ -513,6 +513,11 @@
   },
   {
     "type": "error",
+    "name": "AlreadyOwned",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "EmptyTerritoryId",
     "inputs": []
   },

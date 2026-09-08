@@ -28,7 +28,7 @@ contract TerritoryRegistry is ITerritoryRegistry, Ownable, Pausable {
     ) external override whenNotPaused {
         if (polygonHash == bytes32(0)) revert EmptyTerritoryId();
         if (areaSqm == 0) revert InvalidArea();
-        if (_territories[polygonHash].controller != address(0)) revert Unowned();
+        if (_territories[polygonHash].controller != address(0)) revert AlreadyOwned();
 
         uint256 cappedStrength = _capStrength(strength);
 

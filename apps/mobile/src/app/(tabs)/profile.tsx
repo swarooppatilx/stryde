@@ -24,6 +24,7 @@ import { SPORT_ICONS } from '@/constants/activity';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
@@ -52,6 +53,7 @@ export default function ProfileScreen() {
   const { logout, user } = usePrivy();
   const router = useRouter();
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const username = useProfileStore((s) => s.username);
   const avatar = useProfileStore((s) => s.avatar);
   const avatarCid = useProfileStore((s) => s.avatarCid);
@@ -659,7 +661,7 @@ export default function ProfileScreen() {
             <ThemedView style={styles.statItem}>
               <Ionicons name="resize-outline" size={16} color={theme.textSecondary} />
               <ThemedText style={[styles.statVal, { color: theme.text }]}>
-                {formatDistance(totalDistance)}
+                {formatDistance(totalDistance, unitSystem)}
               </ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                 Distance
@@ -679,7 +681,7 @@ export default function ProfileScreen() {
             <ThemedView style={styles.statItem}>
               <Ionicons name="map-outline" size={16} color={theme.textSecondary} />
               <ThemedText style={[styles.statVal, { color: theme.text }]}>
-                {formatArea(totalTerritoryArea)}
+                {formatArea(totalTerritoryArea, unitSystem)}
               </ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                 Territory
@@ -724,7 +726,7 @@ export default function ProfileScreen() {
                     <ThemedText type="sectionTitle">This Week</ThemedText>
                     <ThemedText type="small" style={{ color: theme.textSecondary }}>
                       {weeklyStats.activityCount} activities ·{' '}
-                      {formatDistance(weeklyStats.totalDistance)}
+                      {formatDistance(weeklyStats.totalDistance, unitSystem)}
                     </ThemedText>
                   </ThemedView>
                 </ThemedView>
@@ -732,7 +734,7 @@ export default function ProfileScreen() {
                 <ThemedView style={styles.weekStatsRow}>
                   <ThemedView style={styles.weekStatItem}>
                     <ThemedText style={[styles.weekStatValue, { color: theme.text }]}>
-                      {formatDistance(weeklyStats.totalDistance)}
+                      {formatDistance(weeklyStats.totalDistance, unitSystem)}
                     </ThemedText>
                     <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                       Distance
@@ -900,7 +902,7 @@ export default function ProfileScreen() {
                                     color={theme.textSecondary}
                                   />
                                   <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                                    {formatDistance(activity.distance)}
+                                    {formatDistance(activity.distance, unitSystem)}
                                   </ThemedText>
                                 </ThemedView>
                                 <ThemedView style={styles.activityStat}>
@@ -921,7 +923,7 @@ export default function ProfileScreen() {
                                   />
                                   <ThemedText type="small" style={{ color: theme.textSecondary }}>
                                     {activity.territory
-                                      ? formatArea(activity.territoryArea)
+                                      ? formatArea(activity.territoryArea, unitSystem)
                                       : 'No territory'}
                                   </ThemedText>
                                 </ThemedView>
@@ -965,7 +967,7 @@ export default function ProfileScreen() {
                               extra={
                                 <View style={styles.recordExtra}>
                                   <ThemedText style={styles.recordValue}>
-                                    {formatDistance(records.longestDistance.distance)}
+                                    {formatDistance(records.longestDistance.distance, unitSystem)}
                                   </ThemedText>
                                 </View>
                               }
@@ -982,7 +984,8 @@ export default function ProfileScreen() {
                                   <ThemedText style={styles.recordValue}>
                                     {formatPace(
                                       records.fastestPace.distance,
-                                      records.fastestPace.duration
+                                      records.fastestPace.duration,
+                                      unitSystem
                                     )}
                                   </ThemedText>
                                 </View>
@@ -999,7 +1002,10 @@ export default function ProfileScreen() {
                                 extra={
                                   <View style={styles.recordExtra}>
                                     <ThemedText style={styles.recordValue}>
-                                      {formatArea(records.largestTerritory.territoryArea)}
+                                      {formatArea(
+                                        records.largestTerritory.territoryArea,
+                                        unitSystem
+                                      )}
                                     </ThemedText>
                                   </View>
                                 }
@@ -1031,7 +1037,7 @@ export default function ProfileScreen() {
                         extra={
                           <ThemedView style={styles.sportExtra}>
                             <ThemedText type="small" style={styles.sportDistance}>
-                              {formatDistance(stat.totalDistance)}
+                              {formatDistance(stat.totalDistance, unitSystem)}
                             </ThemedText>
                             <ThemedText type="small" style={{ color: theme.textSecondary }}>
                               {stat.count} {stat.count === 1 ? 'activity' : 'activities'}
@@ -1060,7 +1066,7 @@ export default function ProfileScreen() {
                     extra={
                       <ThemedView style={styles.sportExtra}>
                         <ThemedText type="small" style={styles.sportDistance}>
-                          {formatDistance(totalDistance)}
+                          {formatDistance(totalDistance, unitSystem)}
                         </ThemedText>
                         <ThemedText type="small" style={{ color: theme.textSecondary }}>
                           This year
@@ -1170,7 +1176,7 @@ export default function ProfileScreen() {
                             type="caption"
                             style={[styles.achievementTitle, { color: theme.textSecondary }]}
                           >
-                            {formatArea(territoryService.getPolygonArea(polygon))}
+                            {formatArea(territoryService.getPolygonArea(polygon), unitSystem)}
                           </ThemedText>
                         </ThemedView>
                       );
