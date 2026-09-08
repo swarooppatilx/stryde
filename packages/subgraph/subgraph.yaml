@@ -141,4 +141,6 @@ dataSources:
           handler: handleChallengeSettled
         - event: ChallengeCancelled(indexed uint256,indexed address)
           handler: handleChallengeCancelled
+        - event: ChallengeWithdrawn(indexed uint256,indexed address,uint256)
+          handler: handleChallengeWithdrawn
       file: src/mappings/ChallengeRegistry.ts

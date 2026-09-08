@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",
-    "hono": "^4.13.3"
+    "hono": "^4.13.3",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",

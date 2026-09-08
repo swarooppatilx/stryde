@@ -110,6 +110,16 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
             _hasDonePayout[challengeId][msg.sender] = true;
             _payOut(msg.sender, c.stake);
             emit ChallengeWithdrawn(challengeId, msg.sender, c.stake);
+        } else if (c.status == ChallengeStatus.Accepted && block.timestamp > c.deadline) {
+            // Both sides staked but nobody called settleChallenge before the
+            // deadline (settleChallenge itself reverts with DeadlinePassed past
+            // this point). Rather than stranding both stakes forever, each party
+            // reclaims their own stake back.
+            if (msg.sender != c.challenger && msg.sender != c.opponent) revert NotParticipant();
+            if (_hasDonePayout[challengeId][msg.sender]) revert AlreadySettled();
+            _hasDonePayout[challengeId][msg.sender] = true;
+            _payOut(msg.sender, c.stake);
+            emit ChallengeWithdrawn(challengeId, msg.sender, c.stake);
         } else {
             revert NotSettled();
         }

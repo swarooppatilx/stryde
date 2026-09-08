@@ -96,14 +96,33 @@ async function fetchActivityRecordedLogs(
   });
 }
 
+/** A single participant's recorded activity history, used e.g. to compare
+ * distances when settling a challenge. Prefers the deployed subgraph (indexed,
+ * filtered by wallet, no fromBlock:0 rescan) when one exists for the active
+ * chain mode; falls back to scanning ActivityRecorded logs directly for modes
+ * with no subgraph (e.g. local Anvil) or if the subgraph request itself
+ * fails. */
 export async function syncActivitiesFromChain(wallet: `0x${string}`): Promise<SyncedActivity[]> {
+  try {
+    const fromSubgraph = await getActivitiesFromSubgraph(wallet);
+    if (fromSubgraph) {
+      return fromSubgraph.sort((a, b) => (b.activityId > a.activityId ? 1 : -1));
+    }
+  } catch {
+    // fall through to the on-chain scan below
+  }
+
   const client = getPublicClient();
   const contracts = getContracts();
 
   try {
     const activities = await fetchActivityRecordedLogs(client, contracts, wallet);
     return activities.sort((a, b) => (b.activityId > a.activityId ? 1 : -1));
-  } catch {
+  } catch (error) {
+    console.warn(
+      `[sync] syncActivitiesFromChain: getLogs fallback failed for wallet ${wallet}`,
+      error
+    );
     return [];
   }
 }

@@ -314,6 +314,58 @@ contract ChallengeRegistryTest is Test {
         registry.withdrawStake(id);
     }
 
+    function test_Withdraw_AfterDeadlineAccepted_BothPartiesReclaimOwnStake() public {
+        uint256 id = _createAndAccept();
+
+        // Both staked, deadline passes, nobody calls settleChallenge.
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(alice);
+        vm.expectRevert(IChallengeRegistry.DeadlinePassed.selector);
+        registry.settleChallenge(id, alice);
+
+        uint256 aliceBalanceBefore = alice.balance;
+        vm.prank(alice);
+        registry.withdrawStake(id);
+        assertEq(alice.balance, aliceBalanceBefore + 0.1 ether);
+
+        uint256 bobBalanceBefore = bob.balance;
+        vm.prank(bob);
+        registry.withdrawStake(id);
+        assertEq(bob.balance, bobBalanceBefore + 0.1 ether);
+    }
+
+    function test_Withdraw_AfterDeadlineAccepted_RevertDoubleWithdraw() public {
+        uint256 id = _createAndAccept();
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(alice);
+        registry.withdrawStake(id);
+
+        vm.prank(alice);
+        vm.expectRevert(IChallengeRegistry.AlreadySettled.selector);
+        registry.withdrawStake(id);
+    }
+
+    function test_Withdraw_AfterDeadlineAccepted_RevertNonParticipant() public {
+        uint256 id = _createAndAccept();
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(carol);
+        vm.expectRevert(IChallengeRegistry.NotParticipant.selector);
+        registry.withdrawStake(id);
+    }
+
+    function test_Withdraw_AfterDeadlineAccepted_RevertBeforeDeadline() public {
+        uint256 id = _createAndAccept();
+
+        // Still within the deadline: Accepted-but-unsettled withdraw path
+        // must not be reachable early.
+        vm.prank(alice);
+        vm.expectRevert(IChallengeRegistry.NotSettled.selector);
+        registry.withdrawStake(id);
+    }
+
     // ─── Cancel ─────────────────────────────────────────────────────
 
     function test_CancelChallenge() public {

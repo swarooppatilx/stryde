@@ -79,4 +79,8 @@ type Challenge @entity {
   loser: Bytes
   payout: BigInt
   createdAt: BigInt!
+  withdrawn: Boolean! # true once at least one payout for this challenge has been claimed
+  challengerWithdrawn: Boolean! # true once the challenger has claimed their own stake/payout
+  opponentWithdrawn: Boolean! # true once the opponent has claimed their own stake/payout
+  withdrawnAt: BigInt # timestamp of the most recent withdrawal
 }

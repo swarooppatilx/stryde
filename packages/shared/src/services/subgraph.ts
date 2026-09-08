@@ -41,8 +41,15 @@ interface ActivityEntity {
   timestamp: string;
 }
 
-const ACTIVITIES_QUERY = `{
-  activities(first: 1000, orderBy: timestamp, orderDirection: desc) {
+const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+function buildActivitiesQuery(wallet?: string): string {
+  if (wallet && !HEX_ADDRESS_RE.test(wallet)) {
+    throw new Error(`Invalid wallet address for subgraph query: ${wallet}`);
+  }
+  const where = wallet ? `, where: { user_: { id: "${wallet.toLowerCase()}" } }` : '';
+  return `{
+  activities(first: 1000, orderBy: timestamp, orderDirection: desc${where}) {
     id
     activityId
     user { id }
@@ -54,15 +61,22 @@ const ACTIVITIES_QUERY = `{
     timestamp
   }
 }`;
+}
 
 /** Returns null (rather than throwing) when no subgraph is configured for the
  * active chain mode, so callers can fall back to the getLogs-based sync path
- * without treating "not deployed here" as an error. */
-export async function getActivitiesFromSubgraph(): Promise<SyncedActivity[] | null> {
+ * without treating "not deployed here" as an error. Pass `wallet` to filter
+ * to a single participant's activities (e.g. challenge settlement). */
+export async function getActivitiesFromSubgraph(
+  wallet?: `0x${string}`
+): Promise<SyncedActivity[] | null> {
   const { subgraphUrl } = getActiveConfig();
   if (!subgraphUrl) return null;
 
-  const data = await querySubgraph<{ activities: ActivityEntity[] }>(subgraphUrl, ACTIVITIES_QUERY);
+  const data = await querySubgraph<{ activities: ActivityEntity[] }>(
+    subgraphUrl,
+    buildActivitiesQuery(wallet)
+  );
 
   return data.activities.map((a) => {
     const activityType: ActivityType = ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run';

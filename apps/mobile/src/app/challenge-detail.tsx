@@ -1,3 +1,4 @@
+import { Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -25,6 +26,7 @@ import { useEnsName } from '@/hooks/useEnsName';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useSocialStore } from '@/stores/socialStore';
+import { getParsedError } from '@/utils/errors';
 import { formatDistance, getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 
@@ -44,6 +46,10 @@ export default function ChallengeDetailScreen() {
   const [challenge, setChallenge] = useState<OnchainChallenge | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // getChallenge()'s on-chain struct has no "claimed" flag, so withdrawal
+  // completion is tracked locally — status/isWinner alone don't change once
+  // the stake has actually been withdrawn.
+  const [hasWithdrawn, setHasWithdrawn] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -55,6 +61,7 @@ export default function ChallengeDetailScreen() {
   }, [id]);
 
   useEffect(() => {
+    setHasWithdrawn(false);
     load();
   }, [load]);
 
@@ -106,13 +113,17 @@ export default function ChallengeDetailScreen() {
 
   const runAction = async (
     action: () => Promise<{ confirmed: boolean }>,
-    labels: { pending: string; success: string }
+    labels: { pending: string; success: string },
+    onConfirmed?: () => void
   ) => {
     if (!wallet) return;
     setIsBusy(true);
     try {
       const result = await transact(action, labels);
-      if (result?.confirmed) await load();
+      if (result?.confirmed) {
+        onConfirmed?.();
+        await load();
+      }
     } finally {
       setIsBusy(false);
     }
@@ -154,6 +165,9 @@ export default function ChallengeDetailScreen() {
         { pending: 'Settling challenge...', success: 'Challenge settled' }
       );
       if (result?.confirmed) await load();
+    } catch (error) {
+      console.error('[ChallengeDetail] Failed to determine winner:', error);
+      Toast.fail(getParsedError(error), 3);
     } finally {
       setIsBusy(false);
     }
@@ -162,10 +176,11 @@ export default function ChallengeDetailScreen() {
   const handleWithdraw = () => {
     haptics.success();
     if (!wallet) return;
-    runAction(() => services.challenge.withdrawStake(wallet, challenge.id), {
-      pending: 'Withdrawing...',
-      success: 'Withdrawn',
-    });
+    runAction(
+      () => services.challenge.withdrawStake(wallet, challenge.id),
+      { pending: 'Withdrawing...', success: 'Withdrawn' },
+      () => setHasWithdrawn(true)
+    );
   };
 
   return (
@@ -262,17 +277,25 @@ export default function ChallengeDetailScreen() {
               Cancel Challenge
             </AppButton>
           )}
-          {challenge.status === 0 && isChallenger && deadlinePassed && (
+          {challenge.status === 0 && isChallenger && deadlinePassed && !hasWithdrawn && (
             <AppButton onPress={handleWithdraw} disabled={isBusy}>
-              Reclaim Stake
+              {isBusy ? 'Withdrawing...' : 'Reclaim Stake'}
             </AppButton>
           )}
-          {challenge.status === 1 && (isChallenger || isOpponent) && (
+          {challenge.status === 1 && (isChallenger || isOpponent) && !deadlinePassed && (
             <AppButton onPress={handleSettle} disabled={isBusy}>
               {isBusy ? 'Settling...' : 'Settle Challenge'}
             </AppButton>
           )}
-          {isWinner && (
+          {challenge.status === 1 &&
+            (isChallenger || isOpponent) &&
+            deadlinePassed &&
+            !hasWithdrawn && (
+              <AppButton onPress={handleWithdraw} disabled={isBusy}>
+                {isBusy ? 'Withdrawing...' : 'Reclaim Stake'}
+              </AppButton>
+            )}
+          {isWinner && !hasWithdrawn && (
             <AppButton onPress={handleWithdraw} disabled={isBusy}>
               {isBusy ? 'Withdrawing...' : 'Withdraw Winnings'}
             </AppButton>
