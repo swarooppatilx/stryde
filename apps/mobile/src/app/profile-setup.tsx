@@ -25,6 +25,7 @@ import { useViemWallet } from '@/hooks/useViemWallet';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Gender } from '@/types';
+import { getParsedError } from '@/utils/errors';
 
 const STEPS = ['name', 'birthday', 'gender'] as const;
 type Step = (typeof STEPS)[number];
@@ -141,29 +142,32 @@ export default function ProfileSetupScreen() {
     setIsSubmitting(true);
 
     try {
+      if (wallet && hasWallet) {
+        try {
+          const { profileId, confirmed } = await services.profile.register(wallet, trimmed);
+
+          if (!confirmed) {
+            setError("Setup didn't finish — please try again");
+            return;
+          }
+
+          if (address) {
+            setWallet(address);
+          }
+          setProfileId(profileId.toString());
+        } catch (writeError) {
+          console.warn('[ProfileSetup] Onchain registration failed:', writeError);
+          setError(getParsedError(writeError));
+          return;
+        }
+      }
+
       saveUsername(trimmed);
       saveFirstName(firstName.trim());
       saveLastName(lastName.trim());
       saveGender(gender);
       if (birthday) {
         saveBirthday(birthday.toISOString().split('T')[0]);
-      }
-
-      if (wallet && hasWallet) {
-        try {
-          const { profileId, confirmed } = await services.profile.register(wallet, trimmed);
-
-          if (address) {
-            setWallet(address);
-          }
-          if (confirmed) {
-            setProfileId(profileId.toString());
-          } else {
-            console.warn('[ProfileSetup] Onchain registration did not confirm');
-          }
-        } catch (writeError) {
-          console.warn('[ProfileSetup] Onchain registration failed:', writeError);
-        }
       }
 
       if (user?.id) {
@@ -298,6 +302,8 @@ export default function ProfileSetupScreen() {
                   ]}
                   onPress={() => setShowDatePicker(true)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select your birthday"
                 >
                   <ThemedText
                     style={{
@@ -341,7 +347,7 @@ export default function ProfileSetupScreen() {
                   This helps with leaderboards and insights
                 </ThemedText>
 
-                <View style={styles.genderGrid}>
+                <View style={styles.genderGrid} accessibilityRole="radiogroup">
                   {GENDER_OPTIONS.map((option) => {
                     const selected = gender === option.value;
                     return (
@@ -360,6 +366,8 @@ export default function ProfileSetupScreen() {
                         ]}
                         onPress={() => setGender(option.value)}
                         activeOpacity={0.7}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
                       >
                         <Ionicons
                           name={option.icon as keyof typeof Ionicons.glyphMap}

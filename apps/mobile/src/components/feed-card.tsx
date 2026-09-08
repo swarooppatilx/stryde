@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -22,14 +22,20 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
 import type { SocialActivity, SocialUser } from '@/stores/socialStore';
 import { useSocialStore } from '@/stores/socialStore';
-import { formatDistance, formatDuration, getDisplayName, getInitials } from '@/utils/format';
-import { haptics } from '@/utils/haptics';
+import {
+  formatDistance,
+  formatDuration,
+  formatRelativeTime,
+  getDisplayName,
+  getInitials,
+} from '@/utils/format';
+import { haptics, impactLight } from '@/utils/haptics';
 import { shareRouteImage } from '@/utils/share';
 
 interface FeedCardProps {
@@ -40,20 +46,6 @@ interface FeedCardProps {
   onPress: () => void;
   onMapPress?: () => void;
   onUserPress?: () => void;
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = Date.now();
-  const diff = now - new Date(date).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days}d ago`;
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function formatElevation(meters: number): string {
@@ -129,21 +121,27 @@ function MediaSection({
   const hasMap = !!activity.polyline;
   const totalItems = images.length + (hasMap ? 1 : 0);
 
-  if (totalItems === 0) return null;
+  const onLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const w = e.nativeEvent.layout.width;
+      if (w > 0 && w !== containerWidth) setContainerWidth(w);
+    },
+    [containerWidth]
+  );
 
-  const onLayout = (e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width;
-    if (w > 0 && w !== containerWidth) setContainerWidth(w);
-  };
-
-  const onScroll = (e: {
-    nativeEvent: { contentOffset: { x: number }; layoutMeasurement: { width: number } };
-  }) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / e.nativeEvent.layoutMeasurement.width);
-    setActiveIndex(idx);
-  };
+  const onScroll = useCallback(
+    (e: {
+      nativeEvent: { contentOffset: { x: number }; layoutMeasurement: { width: number } };
+    }) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / e.nativeEvent.layoutMeasurement.width);
+      setActiveIndex(idx);
+    },
+    []
+  );
 
   const carouselHeight = 200;
+
+  if (totalItems === 0) return null;
 
   // Single image only — no carousel
   if (totalItems === 1 && images.length === 1) {
@@ -250,6 +248,95 @@ function MediaSection({
   );
 }
 
+// Off-screen, transparent-background rendering of the card's shareable
+// content (avatar, name, stats, media) — excludes interactive chrome like
+// the kudos/comment/share action bar and comment preview. Captured via
+// `shareCardRef` so the resulting PNG has an alpha channel instead of the
+// visible card's opaque theme background, which is required for a clean
+// Instagram Stories overlay.
+function ShareableCardContent({
+  activity,
+  user,
+  theme,
+  icon,
+  ensName,
+}: {
+  activity: SocialActivity;
+  user: SocialUser;
+  theme: ReturnType<typeof useTheme>;
+  icon: keyof typeof Ionicons.glyphMap;
+  ensName?: string | null;
+}) {
+  return (
+    <ThemedView style={[styles.card, { backgroundColor: 'transparent' }]}>
+      {/* Header: user info */}
+      <View style={styles.header}>
+        <UserAvatar name={user.username} avatarUrl={user.avatar} />
+        <View style={styles.headerText}>
+          <ThemedText type="smallBold" numberOfLines={1}>
+            {ensName || user.username}
+          </ThemedText>
+          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+            {formatRelativeTime(activity.createdAt)} ·{' '}
+            {activity.activityType.charAt(0).toUpperCase() + activity.activityType.slice(1)}
+            {user.location ? ` · ${user.location}` : ''}
+          </ThemedText>
+        </View>
+      </View>
+
+      {/* Activity title */}
+      <ThemedText type="sectionTitle" numberOfLines={1} style={styles.title}>
+        {activity.name}
+      </ThemedText>
+
+      {/* Stats row - hide for image-only posts */}
+      {(activity.distance > 0 || activity.duration > 0) && (
+        <ThemedView style={styles.statsRow}>
+          {activity.distance > 0 && (
+            <ThemedView style={styles.stat}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Distance
+              </ThemedText>
+              <ThemedText type="smallBold">{formatDistance(activity.distance)}</ThemedText>
+            </ThemedView>
+          )}
+          {activity.duration > 0 && (
+            <ThemedView style={styles.stat}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Time
+              </ThemedText>
+              <ThemedText type="smallBold">{formatDuration(activity.duration)}</ThemedText>
+            </ThemedView>
+          )}
+          {activity.elevationGain != null && activity.elevationGain > 0 && (
+            <ThemedView style={styles.stat}>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Elevation
+              </ThemedText>
+              <ThemedText type="smallBold">{formatElevation(activity.elevationGain)}</ThemedText>
+            </ThemedView>
+          )}
+        </ThemedView>
+      )}
+
+      {/* Media: image, route, or carousel */}
+      <MediaSection activity={activity} icon={icon} theme={theme} onPress={() => {}} />
+
+      {/* Territory badge */}
+      {activity.territoryArea > 0 && (
+        <ThemedView
+          style={[styles.territoryBadge, { backgroundColor: tint(theme.brand.success, 0.1) }]}
+        >
+          <Ionicons name="shield-checkmark" size={14} color={theme.brand.success} />
+          <ThemedText type="caption" style={{ color: theme.brand.success }}>
+            Territory captured
+          </ThemedText>
+        </ThemedView>
+      )}
+    </ThemedView>
+  );
+}
+
 export function FeedCard({
   activity,
   user,
@@ -265,6 +352,7 @@ export function FeedCard({
   const ensName = useEnsName(user.wallet);
   const hasKudoed = activity.kudos.includes(getCurrentUserId());
   const cardRef = useRef<View>(null);
+  const shareCardRef = useRef<View>(null);
   const icon = (SPORT_ICONS[activity.activityType] || 'walk') as keyof typeof Ionicons.glyphMap;
 
   // Kudos animation
@@ -274,7 +362,7 @@ export function FeedCard({
   }));
 
   const handleKudos = () => {
-    haptics.impactMedium();
+    impactLight();
     kudosScale.value = withSequence(
       withTiming(1.3, { duration: 120 }),
       withTiming(1, { duration: 150 })
@@ -284,195 +372,209 @@ export function FeedCard({
 
   const handleShare = () => {
     haptics.tap();
-    shareRouteImage(cardRef);
+    shareRouteImage(shareCardRef, activity.id);
   };
 
   return (
-    <View ref={cardRef} collapsable={false}>
-      <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-        {/* Header: user info */}
-        <TouchableOpacity
-          style={styles.header}
-          activeOpacity={0.7}
-          onPress={onUserPress ?? onPress}
-          accessibilityRole="button"
-          accessibilityLabel={`${user.username}'s activity`}
-        >
-          <UserAvatar name={user.username} avatarUrl={user.avatar} />
-          <ThemedView style={styles.headerText}>
-            <ThemedText type="smallBold" numberOfLines={1}>
-              {ensName || user.username}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {formatRelativeTime(activity.createdAt)} ·{' '}
-              {activity.activityType.charAt(0).toUpperCase() + activity.activityType.slice(1)}
-              {user.location ? ` · ${user.location}` : ''}
-            </ThemedText>
-          </ThemedView>
-        </TouchableOpacity>
-
-        {/* Activity title */}
-        <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
-          <ThemedText type="sectionTitle" numberOfLines={1} style={styles.title}>
-            {activity.name}
-          </ThemedText>
-        </TouchableOpacity>
-
-        {/* Stats row - hide for image-only posts */}
-        {(activity.distance > 0 || activity.duration > 0) && (
-          <ThemedView style={styles.statsRow}>
-            {activity.distance > 0 && (
-              <ThemedView style={styles.stat}>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Distance
-                </ThemedText>
-                <ThemedText type="smallBold">
-                  {formatDistance(activity.distance, unitSystem)}
-                </ThemedText>
-              </ThemedView>
-            )}
-            {activity.duration > 0 && (
-              <ThemedView style={styles.stat}>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Time
-                </ThemedText>
-                <ThemedText type="smallBold">{formatDuration(activity.duration)}</ThemedText>
-              </ThemedView>
-            )}
-            {activity.elevationGain != null && activity.elevationGain > 0 && (
-              <ThemedView style={styles.stat}>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  Elevation
-                </ThemedText>
-                <ThemedText type="smallBold">{formatElevation(activity.elevationGain)}</ThemedText>
-              </ThemedView>
-            )}
-          </ThemedView>
-        )}
-
-        {/* Media: image, route, or carousel */}
-        <MediaSection
-          activity={activity}
-          icon={icon}
-          theme={theme}
-          onPress={onPress}
-          onMapPress={onMapPress}
-        />
-
-        {/* Territory badge */}
-        {activity.territoryArea > 0 && (
-          <ThemedView
-            style={[
-              styles.territoryBadge,
-              { backgroundColor: theme.background, borderColor: theme.border },
-            ]}
+    <View>
+      <View ref={cardRef} collapsable={false}>
+        <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+          {/* Header: user info */}
+          <TouchableOpacity
+            style={styles.header}
+            activeOpacity={0.7}
+            onPress={onUserPress ?? onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${user.username}'s activity`}
           >
-            <Ionicons name="shield-checkmark-outline" size={14} color={theme.brand.primary} />
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              Territory captured
-            </ThemedText>
-          </ThemedView>
-        )}
-
-        {/* Kudos + comments count row */}
-        <ThemedView style={styles.socialProof}>
-          {activity.kudos.length > 0 && (
-            <ThemedView style={styles.kudosInfo}>
-              <AvatarStack userIds={activity.kudos} max={3} size={22} />
+            <UserAvatar name={user.username} avatarUrl={user.avatar} />
+            <ThemedView style={styles.headerText}>
+              <ThemedText type="smallBold" numberOfLines={1}>
+                {ensName || user.username}
+              </ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {activity.kudos.length} {activity.kudos.length === 1 ? 'kudo' : 'kudos'}
+                {formatRelativeTime(activity.createdAt, true)} ·{' '}
+                {activity.activityType.charAt(0).toUpperCase() + activity.activityType.slice(1)}
+                {user.location ? ` · ${user.location}` : ''}
               </ThemedText>
             </ThemedView>
-          )}
-          {activity.comments.length > 0 && (
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {activity.comments.length} {activity.comments.length === 1 ? 'comment' : 'comments'}
+          </TouchableOpacity>
+
+          {/* Activity title */}
+          <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
+            <ThemedText type="sectionTitle" numberOfLines={1} style={styles.title}>
+              {activity.name}
             </ThemedText>
+          </TouchableOpacity>
+
+          {/* Stats row - hide for image-only posts */}
+          {(activity.distance > 0 || activity.duration > 0) && (
+            <ThemedView style={styles.statsRow}>
+              {activity.distance > 0 && (
+                <ThemedView style={styles.stat}>
+                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                    Distance
+                  </ThemedText>
+                  <ThemedText type="smallBold">
+                    {formatDistance(activity.distance, unitSystem)}
+                  </ThemedText>
+                </ThemedView>
+              )}
+              {activity.duration > 0 && (
+                <ThemedView style={styles.stat}>
+                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                    Time
+                  </ThemedText>
+                  <ThemedText type="smallBold">{formatDuration(activity.duration)}</ThemedText>
+                </ThemedView>
+              )}
+              {activity.elevationGain != null && activity.elevationGain > 0 && (
+                <ThemedView style={styles.stat}>
+                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                    Elevation
+                  </ThemedText>
+                  <ThemedText type="smallBold">
+                    {formatElevation(activity.elevationGain)}
+                  </ThemedText>
+                </ThemedView>
+              )}
+            </ThemedView>
           )}
-        </ThemedView>
 
-        {/* Divider */}
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          {/* Media: image, route, or carousel */}
+          <MediaSection
+            activity={activity}
+            icon={icon}
+            theme={theme}
+            onPress={onPress}
+            onMapPress={onMapPress}
+          />
 
-        {/* Three-column action bar */}
-        <ThemedView style={styles.actions}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={handleKudos}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={hasKudoed ? 'Remove kudos' : 'Give kudos'}
-            accessibilityState={{ selected: hasKudoed }}
-          >
-            <Animated.View style={kudosAnimatedStyle}>
-              <Ionicons
-                name={hasKudoed ? 'thumbs-up' : 'thumbs-up-outline'}
-                size={20}
-                color={hasKudoed ? theme.brand.primary : theme.textSecondary}
-              />
-            </Animated.View>
-            <ThemedText
-              type="small"
-              style={{ color: hasKudoed ? theme.brand.primary : theme.textSecondary }}
+          {/* Territory badge */}
+          {activity.territoryArea > 0 && (
+            <ThemedView
+              style={[styles.territoryBadge, { backgroundColor: tint(theme.brand.success, 0.1) }]}
             >
-              Kudos
-            </ThemedText>
-          </TouchableOpacity>
-
-          <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => {
-              haptics.tap();
-              onComment();
-            }}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={`${activity.comments.length} comments`}
-          >
-            <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              Comment
-            </ThemedText>
-          </TouchableOpacity>
-
-          <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={handleShare}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Share activity"
-          >
-            <Ionicons name="arrow-redo-outline" size={20} color={theme.textSecondary} />
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              Share
-            </ThemedText>
-          </TouchableOpacity>
-        </ThemedView>
-
-        {/* Latest comment preview */}
-        {activity.comments.length > 0 && (
-          <>
-            <View style={[styles.divider, { backgroundColor: theme.border }]} />
-            <ThemedView style={styles.commentPreview}>
-              <ThemedText type="small" numberOfLines={2}>
-                <ThemedText type="smallBold">
-                  {getUserDisplayName(
-                    activity.comments[activity.comments.length - 1].userId,
-                    getUserById
-                  )}{' '}
-                </ThemedText>
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  {activity.comments[activity.comments.length - 1].text}
-                </ThemedText>
+              <Ionicons name="shield-checkmark" size={14} color={theme.brand.success} />
+              <ThemedText type="caption" style={{ color: theme.brand.success }}>
+                Territory captured
               </ThemedText>
             </ThemedView>
-          </>
-        )}
-      </ThemedView>
+          )}
+
+          {/* Kudos + comments count row */}
+          <ThemedView style={styles.socialProof}>
+            {activity.kudos.length > 0 && (
+              <ThemedView style={styles.kudosInfo}>
+                <AvatarStack userIds={activity.kudos} max={3} size={22} />
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  {activity.kudos.length} {activity.kudos.length === 1 ? 'kudo' : 'kudos'}
+                </ThemedText>
+              </ThemedView>
+            )}
+            {activity.comments.length > 0 && (
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                {activity.comments.length} {activity.comments.length === 1 ? 'comment' : 'comments'}
+              </ThemedText>
+            )}
+          </ThemedView>
+
+          {/* Divider */}
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+          {/* Three-column action bar */}
+          <ThemedView style={styles.actions}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={handleKudos}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={hasKudoed ? 'Remove kudos' : 'Give kudos'}
+              accessibilityState={{ selected: hasKudoed }}
+            >
+              <Animated.View style={kudosAnimatedStyle}>
+                <Ionicons
+                  name={hasKudoed ? 'thumbs-up' : 'thumbs-up-outline'}
+                  size={20}
+                  color={hasKudoed ? theme.brand.primary : theme.textSecondary}
+                />
+              </Animated.View>
+              <ThemedText
+                type="small"
+                style={{ color: hasKudoed ? theme.brand.primary : theme.textSecondary }}
+              >
+                Kudos
+              </ThemedText>
+            </TouchableOpacity>
+
+            <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => {
+                haptics.tap();
+                onComment();
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${activity.comments.length} comments`}
+            >
+              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                Comment
+              </ThemedText>
+            </TouchableOpacity>
+
+            <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={handleShare}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Share activity"
+            >
+              <Ionicons name="arrow-redo-outline" size={20} color={theme.textSecondary} />
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                Share
+              </ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
+
+          {/* Latest comment preview */}
+          {activity.comments.length > 0 && (
+            <>
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <ThemedView style={styles.commentPreview}>
+                <ThemedText type="small" numberOfLines={2}>
+                  <ThemedText type="smallBold">
+                    {getUserDisplayName(
+                      activity.comments[activity.comments.length - 1].userId,
+                      getUserById
+                    )}{' '}
+                  </ThemedText>
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    {activity.comments[activity.comments.length - 1].text}
+                  </ThemedText>
+                </ThemedText>
+              </ThemedView>
+            </>
+          )}
+        </ThemedView>
+      </View>
+
+      {/* Off-screen transparent copy captured for sharing — see ShareableCardContent above */}
+      <View style={styles.shareCardContainer} pointerEvents="none">
+        <View ref={shareCardRef} collapsable={false}>
+          <ShareableCardContent
+            activity={activity}
+            user={user}
+            theme={theme}
+            icon={icon}
+            ensName={ensName}
+          />
+        </View>
+      </View>
     </View>
   );
 }
@@ -589,6 +691,11 @@ const styles = StyleSheet.create({
   actionDivider: {
     width: StyleSheet.hairlineWidth,
     marginVertical: Spacing.one,
+  },
+  shareCardContainer: {
+    position: 'absolute',
+    top: -10000,
+    left: 0,
   },
   commentPreview: {
     paddingHorizontal: Spacing.three,

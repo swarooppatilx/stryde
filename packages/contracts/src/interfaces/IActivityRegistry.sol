@@ -17,6 +17,7 @@ interface IActivityRegistry {
     // Errors
     error ZeroHash();
     error DuplicateHash();
+    error InvalidActivityType();
 
     // Functions
     function recordActivity(
@@ -31,6 +32,7 @@ interface IActivityRegistry {
     function getActivityOwner(uint256 activityId) external view returns (address);
     function getActivityTimestamp(uint256 activityId) external view returns (uint256);
     function getActivityCount(address user) external view returns (uint256);
-    function getUserActivityIds(address user) external view returns (uint256[] memory);
+    function getUserActivityIds(address user, uint256 offset, uint256 limit) external view returns (uint256[] memory);
+    function getActivity(uint256 activityId) external view returns (bytes32 activityHash, address owner, uint256 timestamp);
     function totalActivities() external view returns (uint256);
 }

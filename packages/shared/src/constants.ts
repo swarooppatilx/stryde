@@ -27,6 +27,8 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 const DEFAULT_LOCAL_RPC = 'http://127.0.0.1:8545';
 let localRpcOverride: string | null = null;
 
+let chainConfigCache: { key: string; config: ChainConfig } | null = null;
+
 export function setLocalRpcUrl(url: string): void {
   localRpcOverride = url;
 }
@@ -48,14 +50,14 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
     subgraphUrl: 'https://api.studio.thegraph.com/query/1760059/stryde/v0.1.2',
     contracts: {
-      profileRegistry: '0xa180433C0818518eda0Ac8c3248dCEE388a689dd',
-      activityRegistry: '0xf786Fd52cfCc4c319aC5B43E2F8e856f454Dd5f2',
-      territoryRegistry: '0x52fB04Cf2AD5ed767fc66b0Fc70C70E185446B67',
-      seasonManager: '0xe36E17c1C61CE0cE5eF1c5EAF5eb17c60f6ce5Ba',
-      achievementRegistry: '0x60EcD3Cc3D29aC475E1d84969B442C41B6d0C91C',
-      challengeRegistry: '0xA8B8133550F7e9CA15164a3c97a822bdead3e7EE',
-      territoryNFT: '0x9AaF0D8f995F9Af99cdb9ab1c3dc599259Ff1643',
-      moveToEarnToken: '0x0AdcEfd61531D5fc62f1fFA09b3AcdE602f4C8f6',
+      profileRegistry: '0xEb5d78a3d1d852a823AF8283d4f6869610b1269a',
+      activityRegistry: '0x1A90B0B3D2EDe91eB8C036c2c9Fa82f1654c76Fe',
+      territoryRegistry: '0x0437De17688BD16AcD2B793d1446d5E775a056C8',
+      seasonManager: '0xE9aB491b2Ca50523EC681476c05db7A5D59Bfc8F',
+      achievementRegistry: '0xBD01B26FC06Bf96B58a9811d42c2f180Fe3b8Fc3',
+      challengeRegistry: '0x321aFdf640f95c3C9964299767594Cd69DFcB13a',
+      territoryNFT: '0xe5c66b5a52CAe8848C848CC548D3054622Ef8aed',
+      moveToEarnToken: '0xAb3e840c8C2e811D4D1AbFE98c992f652e722359',
     },
   },
   'base-sepolia': {
@@ -93,10 +95,20 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
 };
 
 export function getChainConfig(mode: ChainMode): ChainConfig {
+  const effectiveRpcUrl =
+    mode === 'local' && localRpcOverride ? localRpcOverride : CHAIN_CONFIGS[mode].rpcUrl;
+  const key = `${mode}:${effectiveRpcUrl}`;
+
+  if (chainConfigCache?.key === key) {
+    return chainConfigCache.config;
+  }
+
   const config = { ...CHAIN_CONFIGS[mode] };
   if (mode === 'local' && localRpcOverride) {
     config.rpcUrl = localRpcOverride;
   }
+
+  chainConfigCache = { key, config };
   return config;
 }
 

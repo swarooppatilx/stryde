@@ -24,7 +24,7 @@ export function SportTypePicker({ selected, onSelect }: SportTypePickerProps) {
   const theme = useTheme();
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityRole="radiogroup">
       {CATEGORIES.map((cat) => {
         const items = SPORT_TYPES.filter((s) => s.category === cat.key);
         if (items.length === 0) return null;
@@ -57,7 +57,7 @@ export function SportTypePicker({ selected, onSelect }: SportTypePickerProps) {
                       haptics.selection();
                       onSelect(sport.type);
                     }}
-                    accessibilityRole="button"
+                    accessibilityRole="radio"
                     accessibilityLabel={sport.label}
                     accessibilityState={{ selected: isSelected }}
                   >

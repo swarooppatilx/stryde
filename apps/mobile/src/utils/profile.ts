@@ -8,19 +8,13 @@ export interface StreakData {
 export function computeStreak(activities: Activity[]): StreakData {
   if (activities.length === 0) return { current: 0, longest: 0 };
 
-  const daySet = new Set<string>();
+  const daySet = new Set<number>();
   for (const a of activities) {
     const d = new Date(a.createdAt);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    daySet.add(key);
+    daySet.add(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime());
   }
 
-  const days = Array.from(daySet)
-    .map((s) => {
-      const [y, m, d] = s.split('-').map(Number);
-      return new Date(y, m - 1, d).getTime();
-    })
-    .sort((a, b) => b - a);
+  const days = Array.from(daySet).sort((a, b) => b - a);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -29,11 +23,7 @@ export function computeStreak(activities: Activity[]): StreakData {
 
   let current = 0;
   // Give grace: if user hasn't exercised today yet, start counting from yesterday
-  let expected = daySet.has(
-    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  )
-    ? todayMs
-    : todayMs - msPerDay;
+  let expected = daySet.has(todayMs) ? todayMs : todayMs - msPerDay;
   for (const day of days) {
     if (day === expected) {
       current++;

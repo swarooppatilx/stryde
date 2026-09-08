@@ -12,12 +12,13 @@ export const ENV = {
   MAP_STYLE_URL:
     process.env.EXPO_PUBLIC_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty',
   CHAIN_MODE: (process.env.EXPO_PUBLIC_CHAIN_MODE || DEFAULT_CHAIN_MODE) as ChainMode,
-  // Opt-in: use a Privy smart account (gasless, sponsored via the paymaster
-  // policy configured in the Privy Dashboard) instead of the raw embedded
-  // wallet for on-chain writes. Only applies in remote (sepolia) modes — no
-  // ERC-4337 bundler/paymaster infra exists on local Anvil. Off by default
-  // so this doesn't affect anyone who hasn't configured a paymaster policy.
-  USE_SMART_WALLET: process.env.EXPO_PUBLIC_USE_SMART_WALLET === 'true',
+  // Use a Privy smart account (gasless, sponsored via the paymaster policy
+  // configured in the Privy Dashboard) instead of the raw embedded wallet
+  // for on-chain writes. Only applies in remote (sepolia) modes — no
+  // ERC-4337 bundler/paymaster infra exists on local Anvil. On by default so
+  // new users aren't blocked by an empty embedded wallet needing gas — set
+  // this env var to 'false' to opt back out to the raw embedded wallet.
+  USE_SMART_WALLET: process.env.EXPO_PUBLIC_USE_SMART_WALLET !== 'false',
 } as const;
 
 export function getLocalRpcUrl(): string {

@@ -32,7 +32,7 @@ import { trackingService } from '@/services/trackingService';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ActivityType, Location as LocationType, Ring } from '@/types';
 import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
-import { haptics } from '@/utils/haptics';
+import { haptics, impactHeavy, impactMedium, notificationSuccess } from '@/utils/haptics';
 
 const ACTIVITY_TYPES = SPORT_TYPES;
 
@@ -262,7 +262,7 @@ export default function TrackingScreen() {
   };
 
   const handlePause = async () => {
-    haptics.tap();
+    impactMedium();
     await trackingService.pauseTracking();
     setIsTracking(false);
     setIsPaused(true);
@@ -270,7 +270,7 @@ export default function TrackingScreen() {
   };
 
   const handleResume = async () => {
-    haptics.tap();
+    impactMedium();
     await trackingService.resumeTracking();
     setIsTracking(true);
     setIsPaused(false);
@@ -284,7 +284,7 @@ export default function TrackingScreen() {
   };
 
   const finishActivity = async () => {
-    haptics.success();
+    notificationSuccess();
     motionSensorService.stop();
     const locations = trackingService.getLocations();
     const finalDistance = useGyroscopeAssist
@@ -297,7 +297,13 @@ export default function TrackingScreen() {
     const territory = territoryService.getEnclosedPolygon(locations);
     const territoryArea = territory ? territoryService.getPolygonArea(territory) : 0;
 
-    await trackingService.stopTracking();
+    const result = await trackingService.stopTracking();
+    if (!result.success) {
+      Alert.alert('Activity Too Short', result.error ?? 'Please try again.');
+      setIsTracking(false);
+      setIsPaused(false);
+      return;
+    }
     setIsTracking(false);
     setIsPaused(false);
     setExpanded(false);
@@ -422,7 +428,7 @@ export default function TrackingScreen() {
             <TouchableOpacity
               style={styles.startButton}
               onPress={() => {
-                haptics.impactMedium();
+                impactHeavy();
                 handleStart();
               }}
               activeOpacity={0.85}

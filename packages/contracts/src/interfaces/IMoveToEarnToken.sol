@@ -12,6 +12,10 @@ interface IMoveToEarnToken {
     error ZeroDistance();
     error DuplicateActivityHash();
 
+    // Write functions
+    function mintForActivity(address recipient, bytes32 activityHash, uint256 distance) external returns (uint256);
+    function setRewardPerMeter(uint256 newRate) external;
+
     // View functions
     function isRewarded(bytes32 activityHash) external view returns (bool);
 }

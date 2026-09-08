@@ -15,7 +15,6 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/button';
-import { Card } from '@/components/card';
 import { CommentsSheet } from '@/components/comments-sheet';
 import { EmptyInboxState } from '@/components/empty-inbox-v1';
 import { FeedCard } from '@/components/feed-card';
@@ -57,6 +56,8 @@ export default function HomeScreen() {
   // Local saves should appear immediately, including posts not yet recorded onchain.
   // biome-ignore lint/correctness/useExhaustiveDependencies: activities triggers synchronization from the local store
   useEffect(() => syncLocalActivities(), [activities, syncLocalActivities]);
+
+  const greeting = useMemo(() => getGreeting(), []);
 
   const weekStats = useMemo(() => {
     const weekly = getWeeklyStats(activities);
@@ -138,7 +139,7 @@ export default function HomeScreen() {
           {/* ── Top Bar ── */}
           <ThemedView style={styles.topBar}>
             <ThemedText type="subtitle" numberOfLines={1} style={styles.greeting}>
-              {getGreeting()}
+              {greeting}
             </ThemedText>
             <ThemedView style={styles.topBarActions}>
               <TouchableOpacity

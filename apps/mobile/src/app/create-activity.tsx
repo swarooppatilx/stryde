@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,7 +31,7 @@ import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
-import type { Activity, ActivityFeel, ActivityPrivacy, ActivityType, Ring } from '@/types';
+import type { Activity, ActivityFeel, ActivityPrivacy, ActivityType } from '@/types';
 import { formatArea, formatDistance, formatDuration, getActivityName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
@@ -67,7 +67,8 @@ export default function CreateActivityScreen() {
   const [photos, setPhotos] = useState<string[]>(() => {
     try {
       return params.photos ? JSON.parse(params.photos) : [];
-    } catch {
+    } catch (e) {
+      console.warn('[Activity] Failed to parse photos param:', e);
       return [];
     }
   });
@@ -80,12 +81,14 @@ export default function CreateActivityScreen() {
   const polyline = params.polyline || '';
   const territoryArea = params.territoryArea ? Number.parseFloat(params.territoryArea) : 0;
 
-  let territory: Ring | null = null;
-  try {
-    territory = params.territory ? JSON.parse(params.territory) : null;
-  } catch {
-    territory = null;
-  }
+  const territory = useMemo(() => {
+    try {
+      return params.territory ? JSON.parse(params.territory) : null;
+    } catch (e) {
+      console.warn('[Activity] Failed to parse territory param:', e);
+      return null;
+    }
+  }, [params.territory]);
 
   // Auto-generate title
   useEffect(() => {
@@ -98,18 +101,37 @@ export default function CreateActivityScreen() {
     haptics.success();
     setIsSaving(true);
 
-    const uploadedPhotos = await Promise.all(
-      photos.map(async (uri) => {
-        if (uri.startsWith('http')) return uri;
-        try {
-          const { cid } = await uploadImageToIpfs(`activity-${Date.now()}`, uri);
-          return ipfsToHttpUrl(cid);
-        } catch (err) {
-          console.warn('[CreateActivity] Photo upload failed, keeping local URI', err);
-          return uri;
+    async function uploadWithConcurrency<T>(
+      items: T[],
+      fn: (item: T) => Promise<string>,
+      limit: number
+    ): Promise<string[]> {
+      const results: string[] = [];
+      let index = 0;
+
+      async function worker() {
+        while (index < items.length) {
+          const i = index++;
+          results[i] = await fn(items[i]);
         }
-      })
-    );
+      }
+
+      await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+      return results;
+    }
+
+    const uploadFn = async (uri: string) => {
+      if (uri.startsWith('http')) return uri;
+      try {
+        const { cid } = await uploadImageToIpfs(`activity-${Date.now()}`, uri);
+        return ipfsToHttpUrl(cid);
+      } catch (err) {
+        console.warn('[CreateActivity] Photo upload failed, keeping local URI', err);
+        return uri;
+      }
+    };
+
+    const uploadedPhotos = await uploadWithConcurrency(photos, uploadFn, 3);
 
     const activityId = generateId();
     // Included in the hash so two activities with the same route/stats (e.g. manual

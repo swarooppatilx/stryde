@@ -1,6 +1,8 @@
 import { keccak256, toBytes } from 'viem';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
 
+const polygonHashCache = new Map<string, `0x${string}`>();
+
 export async function getController(territoryId: `0x${string}`): Promise<`0x${string}`> {
   const client = getPublicClient();
   const contracts = getContracts();
@@ -62,8 +64,13 @@ export async function totalTerritories(): Promise<bigint> {
 }
 
 export function computePolygonHash(polygon: Array<[number, number]>): `0x${string}` {
-  const flat = polygon.map(([lng, lat]) => `${lng},${lat}`).join('|');
-  return keccak256(toBytes(flat));
+  const key = polygon.map(([lng, lat]) => `${lng},${lat}`).join('|');
+  const cached = polygonHashCache.get(key);
+  if (cached) return cached;
+
+  const hash = keccak256(toBytes(key));
+  polygonHashCache.set(key, hash);
+  return hash;
 }
 
 function toFixedPoint(value: number): number {
@@ -80,19 +87,21 @@ export async function claimTerritory(
 ): Promise<{ territoryId: `0x${string}`; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const polygonHash = computePolygonHash(params.polygon);
 
-  const lngs = params.polygon.map(([lng]) => lng);
-  const lats = params.polygon.map(([, lat]) => lat);
-
-  const minLng = toFixedPoint(Math.min(...lngs));
-  const minLat = toFixedPoint(Math.min(...lats));
-  const maxLng = toFixedPoint(Math.max(...lngs));
-  const maxLat = toFixedPoint(Math.max(...lats));
+  let minLng = Infinity,
+    maxLng = -Infinity,
+    minLat = Infinity,
+    maxLat = -Infinity;
+  for (const [lng, lat] of params.polygon) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
 
   const strength = params.strength ?? 100;
 
@@ -103,10 +112,10 @@ export async function claimTerritory(
       polygonHash,
       BigInt(Math.round(params.areaSqm)),
       BigInt(strength),
-      minLng,
-      minLat,
-      maxLng,
-      maxLat,
+      toFixedPoint(minLng),
+      toFixedPoint(minLat),
+      toFixedPoint(maxLng),
+      toFixedPoint(maxLat),
     ],
     account,
     chain: config.chain,

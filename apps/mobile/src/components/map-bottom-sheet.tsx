@@ -79,15 +79,19 @@ export function MapBottomSheet() {
     });
   }, []);
 
-  const panGesture = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .onEnd((event) => {
-      if (event.translationY < -20 || event.velocityY < -500) {
-        runOnJS(navigateSnap)('up');
-      } else if (event.translationY > 20 || event.velocityY > 500) {
-        runOnJS(navigateSnap)('down');
-      }
-    });
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([-10, 10])
+        .onEnd((event) => {
+          if (event.translationY < -20 || event.velocityY < -500) {
+            runOnJS(navigateSnap)('up');
+          } else if (event.translationY > 20 || event.velocityY > 500) {
+            runOnJS(navigateSnap)('down');
+          }
+        }),
+    [navigateSnap]
+  );
 
   const isCollapsed = snap === 'collapsed';
   const isExpanded = snap === 'expanded';

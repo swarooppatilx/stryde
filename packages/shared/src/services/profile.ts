@@ -1,6 +1,6 @@
 import { decodeEventLog, parseEventLogs } from 'viem';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
-import { getProfileAvatarsFromSubgraph } from './subgraph';
+import { getProfileAvatarsFromSubgraph, getProfilesFromSubgraph } from './subgraph';
 
 export async function isRegistered(wallet: `0x${string}`): Promise<boolean> {
   const client = getPublicClient();
@@ -94,8 +94,8 @@ async function getLatestAvatarByWalletFromLogs(): Promise<Map<string, string>> {
       const args = parsed.args as unknown as { wallet: `0x${string}`; cid: string };
       byWallet.set(args.wallet.toLowerCase(), args.cid);
     }
-  } catch {
-    // ignore — callers just won't get avatars this round
+  } catch (error) {
+    console.warn('[profile] getLatestAvatarByWallet: failed to fetch AvatarUpdated logs', error);
   }
   return byWallet;
 }
@@ -114,6 +114,23 @@ async function getLatestAvatarByWallet(): Promise<Map<string, string>> {
 }
 
 export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
+  try {
+    const profiles = await getProfilesFromSubgraph();
+    if (profiles) {
+      const avatarsByWallet = await getLatestAvatarByWallet();
+      return profiles.map((p) => ({
+        wallet: p.wallet,
+        username: p.username,
+        avatarCid: avatarsByWallet.get(p.wallet.toLowerCase()),
+      }));
+    }
+  } catch (error) {
+    console.warn(
+      '[profile] getRegisteredUsers: subgraph lookup failed, falling back to getLogs',
+      error
+    );
+  }
+
   const client = getPublicClient();
   const contracts = getContracts();
 
@@ -146,7 +163,8 @@ export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
         avatarCid: avatarsByWallet.get(args.wallet.toLowerCase()),
       };
     });
-  } catch {
+  } catch (error) {
+    console.warn('[profile] getRegisteredUsers: getLogs fallback failed', error);
     return [];
   }
 }
@@ -157,8 +175,7 @@ export async function setAvatar(
 ): Promise<{ txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -180,8 +197,7 @@ export async function register(
 ): Promise<{ profileId: bigint; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -205,7 +221,9 @@ export async function register(
   });
 
   return {
-    profileId: (event?.args as { profileId?: bigint } | undefined)?.profileId ?? 0n,
+    profileId:
+      ((event as { args?: Record<string, unknown> })?.args as { profileId?: bigint } | undefined)
+        ?.profileId ?? 0n,
     txHash: hash,
     confirmed: true,
   };

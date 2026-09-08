@@ -138,8 +138,8 @@ export async function syncAllActivitiesFromChain(): Promise<SyncedActivity[]> {
     if (fromSubgraph) {
       return fromSubgraph.sort((a, b) => (b.activityId > a.activityId ? 1 : -1));
     }
-  } catch {
-    // fall through to the on-chain scan below
+  } catch (e) {
+    console.warn('[Sync] Subgraph fetch failed, falling back to on-chain scan:', e);
   }
 
   const client = getPublicClient();
@@ -148,7 +148,8 @@ export async function syncAllActivitiesFromChain(): Promise<SyncedActivity[]> {
   try {
     const activities = await fetchActivityRecordedLogs(client, contracts);
     return activities.sort((a, b) => (b.activityId > a.activityId ? 1 : -1));
-  } catch {
+  } catch (e) {
+    console.warn('[Sync] Failed to sync all activities from chain:', e);
     return [];
   }
 }
@@ -164,7 +165,8 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
       functionName: 'getUserTerritories',
       args: [wallet],
     })) as `0x${string}`[];
-  } catch {
+  } catch (e) {
+    console.warn('[Sync] Failed to fetch territory IDs:', e);
     return [];
   }
 
@@ -201,7 +203,8 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
           maxLng: t.maxLng,
           maxLat: t.maxLat,
         } as SyncedTerritory;
-      } catch {
+      } catch (e) {
+        console.warn('[Sync] Failed to read territory details:', e);
         return null;
       }
     })
@@ -214,30 +217,15 @@ export async function syncProfileFromChain(wallet: `0x${string}`): Promise<Synce
   const client = getPublicClient();
   const contracts = getContracts();
 
-  let registered: boolean;
-  try {
-    registered = (await client.readContract({
-      ...contracts.profileRegistry,
-      functionName: 'isRegistered',
-      args: [wallet],
-    })) as boolean;
-  } catch {
-    return { isRegistered: false, profileId: null };
-  }
-
-  if (!registered) {
-    return { isRegistered: false, profileId: null };
-  }
-
   try {
     const profileId = (await client.readContract({
       ...contracts.profileRegistry,
       functionName: 'getProfileId',
       args: [wallet],
     })) as bigint;
-
     return { isRegistered: true, profileId };
-  } catch {
-    return { isRegistered: true, profileId: null };
+  } catch (e) {
+    console.warn('[Sync] Failed to sync profile:', e);
+    return { isRegistered: false, profileId: null };
   }
 }

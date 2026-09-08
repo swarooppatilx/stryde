@@ -36,6 +36,7 @@ packages/subgraph/generated
 packages/contracts/lib/
 packages/contracts/cache/
 packages/contracts/out/
+packages/contracts/broadcast/
 
 # Debug
 npm-debug.log*

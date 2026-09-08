@@ -26,17 +26,58 @@ const CHAIN_MAP: Record<ChainMode, Chain> = {
   local: anvil,
 };
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Right after login, Privy's SmartWalletsProvider does its own background
+// handshake to provision the smart wallet server-side (ping the embedded
+// wallet, get an init challenge, sign it, link it) before getClientForChain
+// can succeed. Calling getClientForChain immediately races that handshake —
+// it throws a generic "Could not create smart wallet client" error until the
+// link completes, even with a fully-configured dashboard. Retry with backoff
+// instead of surfacing that race as a hard failure.
+const SMART_WALLET_CLIENT_RETRIES = 5;
+const SMART_WALLET_CLIENT_RETRY_BASE_MS = 500;
+
+async function getSmartWalletClientWithRetry(
+  getClientForChain: ReturnType<typeof useSmartWallets>['getClientForChain'],
+  chainId: number
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < SMART_WALLET_CLIENT_RETRIES; attempt++) {
+    try {
+      return await getClientForChain({ chainId });
+    } catch (error) {
+      lastError = error;
+      if (attempt < SMART_WALLET_CLIENT_RETRIES - 1) {
+        await delay(SMART_WALLET_CLIENT_RETRY_BASE_MS * 2 ** attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
 export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
   wallet: WalletClient | null;
   address: `0x${string}` | null;
   isLoading: boolean;
+  walletError: string | null;
 } {
   const { wallets } = useEmbeddedEthereumWallet();
   const { getClientForChain } = useSmartWallets();
   const [wallet, setWallet] = useState<WalletClient | null>(null);
   const [address, setAddress] = useState<`0x${string}` | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [walletError, setWalletError] = useState<string | null>(null);
   const localInitRef = useRef(false);
+
+  // getClientForChain's function identity isn't stable across renders, so it
+  // can't sit in the remote-mode effect's dependency array without re-running
+  // (and re-throwing, e.g. on a smart-wallet-client init failure) every
+  // render — the same starvation-loop class of bug the pre-login guard below
+  // already exists to avoid. Read it via a ref instead so the effect only
+  // re-runs when `wallets`/`mode` actually change.
+  const getClientForChainRef = useRef(getClientForChain);
+  getClientForChainRef.current = getClientForChain;
 
   // Local mode: init once, never re-run (no Privy dependency)
   useEffect(() => {
@@ -67,25 +108,40 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
         const embeddedWallet = wallets?.[0];
 
         // Before login there's no embedded wallet yet — bail instead of
-        // calling into Privy's smart-wallet client, whose function identity
-        // isn't stable pre-auth. Without this check the effect (deps include
-        // getClientForChain) re-fires on every render, each attempt throwing
-        // "must be logged in", which starves the JS thread in a tight loop.
+        // calling into Privy's smart-wallet client. Without this check the
+        // effect would re-run every time getClientForChain's identity
+        // changes pre-auth, each attempt throwing "must be logged in", which
+        // starves the JS thread in a tight loop.
         if (!embeddedWallet) {
           setIsLoading(false);
           return;
         }
 
         if (ENV.USE_SMART_WALLET) {
-          // Gasless path: a Privy smart account (ERC-4337), sponsored via
-          // whatever paymaster policy is configured in the Privy Dashboard.
-          const smartClient = await getClientForChain({ chainId: chain.id });
-          if (!cancelled) {
-            setWallet(smartClient as unknown as WalletClient);
-            setAddress(smartClient.account.address);
-            setCurrentUserId(smartClient.account.address);
+          try {
+            // Gasless path: a Privy smart account (ERC-4337), sponsored via
+            // whatever paymaster policy is configured in the Privy Dashboard.
+            const smartClient = await getSmartWalletClientWithRetry(
+              getClientForChainRef.current,
+              chain.id
+            );
+            if (!cancelled) {
+              setWallet(smartClient as unknown as WalletClient);
+              setAddress(smartClient.account.address);
+              setCurrentUserId(smartClient.account.address);
+            }
+            return;
+          } catch (smartWalletError) {
+            // Don't leave the user with no wallet at all if the smart-account
+            // path is broken (misconfigured paymaster policy, Privy-side
+            // outage, etc.) — fall back to the raw embedded wallet so writes
+            // still work (paid in the wallet's own gas) instead of silently
+            // stalling every screen that depends on an address existing.
+            console.warn(
+              '[useViemWallet] Smart wallet client unavailable, falling back to embedded wallet:',
+              smartWalletError
+            );
           }
-          return;
         }
 
         const walletAddress = embeddedWallet.address as `0x${string}`;
@@ -104,6 +160,7 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
         }
       } catch (error) {
         console.error('[useViemWallet] Failed to initialize:', error);
+        setWalletError(error instanceof Error ? error.message : 'Wallet initialization failed');
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -116,7 +173,8 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
     return () => {
       cancelled = true;
     };
-  }, [wallets, mode, getClientForChain]);
+    // getClientForChain deliberately excluded — see getClientForChainRef above.
+  }, [wallets, mode]);
 
-  return { wallet, address, isLoading };
+  return { wallet, address, isLoading, walletError };
 }

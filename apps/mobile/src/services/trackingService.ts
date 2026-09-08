@@ -77,12 +77,22 @@ export class TrackingService implements ITrackingService {
     await this.persist();
   }
 
-  async stopTracking(): Promise<void> {
+  async stopTracking(): Promise<{ success: boolean; error?: string }> {
     this.isTracking = false;
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
+
+    const distance = this.getDistance();
+    const duration = this.getDuration();
+    if (distance < 10 && duration < 5) {
+      return {
+        success: false,
+        error: 'Activity too short — walked less than 10m in under 5 seconds',
+      };
+    }
+
     await this.persist();
     this.locations = [];
     this.interpolatedLocations = [];
@@ -93,6 +103,7 @@ export class TrackingService implements ITrackingService {
     this.stepsSinceLastGps = 0;
     this.lastInterpolatedLocation = null;
     await this.storage.removeItem(TRACKING_KEY);
+    return { success: true };
   }
 
   addLocation(location: Location): void {

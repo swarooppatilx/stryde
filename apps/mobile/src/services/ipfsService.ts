@@ -1,4 +1,4 @@
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import { getInfoAsync, readAsStringAsync } from 'expo-file-system/legacy';
 import { ENV } from '@/constants/config';
 
 interface IpfsUploadResult {
@@ -52,6 +52,15 @@ export function uploadToIpfs(
 }
 
 export async function uploadImageToIpfs(name: string, imageUri: string): Promise<IpfsUploadResult> {
+  const fileInfo = await getInfoAsync(imageUri);
+  if (!fileInfo.exists) {
+    throw new Error('Image file not found');
+  }
+  const fileSize = fileInfo.size;
+  if (fileSize > 10 * 1024 * 1024) {
+    throw new Error('Image too large — maximum 10MB');
+  }
+
   const base64 = await readAsStringAsync(imageUri, {
     encoding: 'base64',
   });

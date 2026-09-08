@@ -38,8 +38,7 @@ export async function mintTokenForActivity(
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -62,7 +61,9 @@ export async function mintTokenForActivity(
   });
 
   return {
-    amount: (event?.args as { amount?: bigint } | undefined)?.amount ?? 0n,
+    amount:
+      ((event as { args?: Record<string, unknown> })?.args as { amount?: bigint } | undefined)
+        ?.amount ?? 0n,
     confirmed: true,
   };
 }

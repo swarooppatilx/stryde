@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, type View } from 'react-native';
 import { useShallow } from 'zustand/shallow';
 
@@ -22,7 +22,6 @@ export function useActivity() {
     }))
   );
   const router = useRouter();
-  const [coordinates, setCoordinates] = useState<[number, number][]>([]);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [elevationData, setElevationData] = useState<ElevationData | null>(null);
@@ -32,11 +31,10 @@ export function useActivity() {
     ? (getActivityById(id) ?? (socialActivities.find((a) => a.id === id) as Activity | undefined))
     : undefined;
 
-  useEffect(() => {
-    if (activity?.polyline) {
-      setCoordinates(parsePolyline(activity.polyline));
-    }
-  }, [activity?.polyline]);
+  const coordinates = useMemo(
+    () => (activity?.polyline ? parsePolyline(activity.polyline) : []),
+    [activity?.polyline]
+  );
 
   useEffect(() => {
     if (coordinates.length <= 1) return;
@@ -53,7 +51,7 @@ export function useActivity() {
     };
   }, [coordinates]);
 
-  const deleteActivityFlow = () => {
+  const deleteActivityFlow = useCallback(() => {
     if (!activity) return;
     Alert.alert(
       'Delete Activity',
@@ -70,15 +68,15 @@ export function useActivity() {
         },
       ]
     );
-  };
+  }, [activity, deleteActivity, router]);
 
-  const startEditName = () => {
+  const startEditName = useCallback(() => {
     if (!activity) return;
     setEditedName(activity.name || '');
     setIsEditingName(true);
-  };
+  }, [activity]);
 
-  const saveName = () => {
+  const saveName = useCallback(() => {
     const trimmed = editedName.trim();
     if (trimmed.length > 0 && activity) {
       const inActivityStore = getActivityById(activity.id);
@@ -89,12 +87,14 @@ export function useActivity() {
       }
     }
     setIsEditingName(false);
-  };
+  }, [editedName, activity, getActivityById, updateActivity, updateSocialActivity]);
 
-  const share = async () => {
+  const share = useCallback(async () => {
     if (!activity) return;
-    await shareRouteImage(viewRef);
-  };
+    await shareRouteImage(viewRef, activity.id);
+  }, [activity]);
+
+  const goBack = useCallback(() => router.replace('/(tabs)'), [router]);
 
   return {
     activity,
@@ -108,6 +108,6 @@ export function useActivity() {
     handleStartEditName: startEditName,
     handleSaveName: saveName,
     handleShare: share,
-    goBack: () => router.replace('/(tabs)'),
+    goBack,
   };
 }

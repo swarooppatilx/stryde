@@ -72,9 +72,18 @@ export const useTerritoryStore = create<TerritoryState>()(
       name: '@stryde/territory-polygons',
       version: 1,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      partialize: (state) => ({
+        polygons: state.polygons,
+        territoryMetadata: state.territoryMetadata,
+      }),
       migrate: (persistedState: unknown, version: number) => {
         if (version < 1) {
-          return undefined;
+          const state = persistedState as Record<string, unknown>;
+          return {
+            ...state,
+            polygons: state.polygons ?? {},
+            territoryMetadata: state.territoryMetadata ?? {},
+          };
         }
         return persistedState;
       },

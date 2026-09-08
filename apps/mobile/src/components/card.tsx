@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, TouchableOpacity, type ViewStyle } from 'react-native';
 
 import { ThemedView } from '@/components/themed-view';
@@ -15,19 +16,18 @@ interface CardProps {
 export function Card({ children, onPress, style, padding = Spacing.five }: CardProps) {
   const theme = useTheme();
 
-  const content = (
-    <ThemedView
-      style={[
-        styles.card,
-        theme.isDark ? ShadowDark.card : Shadow.card,
-        { backgroundColor: theme.backgroundElement },
-        { padding },
-        style,
-      ]}
-    >
-      {children}
-    </ThemedView>
+  const cardStyle = useMemo(
+    () => [
+      styles.card,
+      theme.isDark ? ShadowDark.card : Shadow.card,
+      { backgroundColor: theme.backgroundElement },
+      { padding },
+      style,
+    ],
+    [theme.isDark, theme.backgroundElement, padding, style]
   );
+
+  const content = <ThemedView style={cardStyle}>{children}</ThemedView>;
 
   if (onPress) {
     return (

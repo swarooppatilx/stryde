@@ -111,6 +111,7 @@ export function formatRelativeTime(date: Date, compact = false): string {
 }
 
 export function getInitials(name: string): string {
+  if (!name?.trim()) return '?';
   return name
     .split(' ')
     .map((n) => n[0])

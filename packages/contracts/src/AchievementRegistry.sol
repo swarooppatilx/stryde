@@ -11,6 +11,8 @@ import {IAchievementRegistry} from "./interfaces/IAchievementRegistry.sol";
 contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
+    event BaseURIUpdated(string oldURI, string newURI);
+
     string public baseURI;
     uint256 private _nextTokenId = 1;
     mapping(bytes32 => Achievement) private _achievements;
@@ -25,7 +27,9 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
     }
 
     function setBaseURI(string calldata uri) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        string memory oldURI = baseURI;
         baseURI = uri;
+        emit BaseURIUpdated(oldURI, uri);
     }
 
     function defineAchievement(bytes32 achievementId, string calldata name) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -33,6 +37,14 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
 
         _achievements[achievementId] = Achievement({name: name, exists: true});
         emit AchievementDefined(achievementId, name);
+    }
+
+    function defineAchievement(uint256 achievementId, string calldata name, string calldata) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (bytes(name).length == 0) revert EmptyAchievement();
+
+        bytes32 id = bytes32(achievementId);
+        _achievements[id] = Achievement({name: name, exists: true});
+        emit AchievementDefined(id, name);
     }
 
     function mintAchievement(address recipient, bytes32 achievementId) external whenNotPaused onlyRole(MINTER_ROLE) {
@@ -48,6 +60,21 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
         _userTokens[recipient].push(tokenId);
 
         emit AchievementMinted(tokenId, recipient, achievementId);
+    }
+
+    function mintAchievement(address to, uint256 achievementId, bytes32 activityHash) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
+        if (to == address(0)) revert ZeroAddress();
+        bytes32 id = bytes32(achievementId);
+        Achievement storage achievement = _achievements[id];
+        if (!achievement.exists) revert EmptyAchievement();
+
+        uint256 tokenId = _nextTokenId++;
+        _mint(to, tokenId);
+        _tokenAchievement[tokenId] = id;
+        _userTokens[to].push(tokenId);
+
+        emit AchievementMinted(tokenId, to, id);
+        return tokenId;
     }
 
     function getAchievement(bytes32 achievementId) external view override returns (Achievement memory) {
@@ -70,7 +97,7 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
         return _hasMinted[recipient][achievementId];
     }
 
-    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+    function tokenURI(uint256 tokenId) public view override(ERC721, IAchievementRegistry) returns (string memory) {
         _requireOwned(tokenId);
         bytes32 achievementId = _tokenAchievement[tokenId];
         return string(abi.encodePacked(baseURI, Strings.toHexString(uint256(achievementId))));

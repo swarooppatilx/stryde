@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { View, type ViewProps } from 'react-native';
 
 import type { ThemeColor } from '@/constants/theme';
@@ -10,11 +11,10 @@ export type ThemedViewProps = ViewProps & {
 
 export function ThemedView({ style, type, ...otherProps }: ThemedViewProps) {
   const theme = useTheme();
-
-  return (
-    <View
-      style={[{ backgroundColor: type ? theme[type] : 'transparent' }, style]}
-      {...otherProps}
-    />
+  const backgroundColor = useMemo(
+    () => ({ backgroundColor: type ? theme[type] : 'transparent' }),
+    [theme, type]
   );
+
+  return <View style={[backgroundColor, style]} {...otherProps} />;
 }

@@ -14,8 +14,10 @@ export const asyncStorageAdapter: StorageAdapter = AsyncStorage;
  * code that calls Date methods on it crashes. Restore ISO strings back to
  * real Dates so the declared `Date` types are truthful at runtime.
  */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 export function isoDateReviver(_key: string, value: unknown): unknown {
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+  if (typeof value === 'string' && ISO_DATE_RE.test(value)) {
     return new Date(value);
   }
   return value;

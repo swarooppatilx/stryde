@@ -1,5 +1,6 @@
 import { Result } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'expo-safe-area-context';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 
 import { MapBottomSheet } from '@/components/map-bottom-sheet';
@@ -26,6 +27,7 @@ export default function MapScreen() {
     toggleFollow,
     toggleRoutes,
   } = useMap();
+  const insets = useSafeAreaInsets();
 
   const routes = activityRoutes.map((r) => ({
     ...r,
@@ -49,7 +51,7 @@ export default function MapScreen() {
           />
 
           {/* Map Controls */}
-          <ThemedView style={styles.controls}>
+          <ThemedView style={[styles.controls, { top: insets.top + 16 }]}>
             <TouchableOpacity
               style={[
                 styles.controlBtn,
@@ -143,7 +145,6 @@ const styles = StyleSheet.create({
   controls: {
     position: 'absolute',
     right: Spacing.three,
-    top: 150,
     gap: Spacing.two,
   },
   controlBtn: {

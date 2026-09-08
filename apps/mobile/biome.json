@@ -41,11 +41,13 @@
         "useImportType": "warn"
       },
       "suspicious": {
-        "noExplicitAny": "warn",
+        "noExplicitAny": "error",
         "noArrayIndexKey": "off"
       },
       "a11y": {
-        "preset": "none"
+        "useAltText": "warn",
+        "useButtonType": "warn",
+        "useValidAriaRole": "error"
       }
     }
   },

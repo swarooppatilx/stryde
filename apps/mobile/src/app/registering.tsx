@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { usePrivy } from '@privy-io/expo';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -15,7 +14,6 @@ import { useProfileStore } from '@/stores/profileStore';
 import { getParsedError } from '@/utils/errors';
 
 export default function RegisteringScreen() {
-  const { user } = usePrivy();
   const { wallet } = useViemWallet(ENV.CHAIN_MODE);
   const router = useRouter();
   const theme = useTheme();
@@ -24,7 +22,6 @@ export default function RegisteringScreen() {
   const [retryToken, setRetryToken] = useState(0);
   const setUsername = useProfileStore((s) => s.setUsername);
   const setWallet = useProfileStore((s) => s.setWallet);
-  const setProfileId = useProfileStore((s) => s.setProfileId);
 
   const handleRetry = () => {
     setFailed(false);
@@ -65,32 +62,10 @@ export default function RegisteringScreen() {
           return;
         }
 
-        const emailAccount = user?.linked_accounts?.find((a) => a.type === 'email');
-        const suggested =
-          emailAccount && 'address' in emailAccount
-            ? emailAccount.address.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '')
-            : '';
-        const username = suggested || `user_${address.slice(2, 8)}`;
-
+        // Not yet registered — hand off to profile-setup, which owns
+        // collecting a username from the user and submitting registration.
         if (!cancelled) {
-          setStatus(`Registering "${username}"...`);
-        }
-
-        const { profileId, confirmed } = await services.profile.register(wallet, username);
-
-        if (!confirmed) {
-          if (!cancelled) {
-            setStatus("Setup didn't finish — please try again");
-            setFailed(true);
-          }
-          return;
-        }
-
-        if (!cancelled) {
-          setUsername(username);
-          setWallet(address);
-          setProfileId(profileId.toString());
-          router.replace('/(tabs)');
+          router.replace('/profile-setup');
         }
       } catch (error) {
         console.error('[Registering] Failed:', error);
@@ -106,7 +81,7 @@ export default function RegisteringScreen() {
     return () => {
       cancelled = true;
     };
-  }, [wallet, user, setUsername, setWallet, setProfileId, router.replace, retryToken]);
+  }, [wallet, setUsername, setWallet, router.replace, retryToken]);
 
   return (
     <ThemedView type="background" style={styles.container}>

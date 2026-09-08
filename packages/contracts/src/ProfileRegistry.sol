@@ -11,18 +11,21 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
     mapping(address => uint256) private _profileIdOf;
     mapping(uint256 => address) private _walletOf;
     mapping(string => bool) private _usernameTaken;
+    mapping(uint256 => string) private _usernameOf;
 
     constructor() Ownable(msg.sender) {}
 
     function register(string calldata username) external override whenNotPaused returns (uint256 profileId) {
         if (_profileIdOf[msg.sender] != 0) revert AlreadyRegistered();
         if (bytes(username).length == 0) revert EmptyUsername();
+        if (bytes(username).length > 32) revert UsernameTooLong();
         if (_usernameTaken[username]) revert UsernameTaken();
 
-        profileId = _nextProfileId++;
+        unchecked { profileId = _nextProfileId++; }
         _profileIdOf[msg.sender] = profileId;
         _walletOf[profileId] = msg.sender;
         _usernameTaken[username] = true;
+        _usernameOf[profileId] = username;
 
         emit ProfileCreated(profileId, msg.sender, username, block.timestamp);
     }
@@ -32,13 +35,31 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
         emit AvatarUpdated(msg.sender, cid);
     }
 
+    function setUsername(string calldata newUsername) external whenNotPaused override {
+        uint256 profileId = _profileIdOf[msg.sender];
+        if (profileId == 0) revert NotRegistered();
+        if (bytes(newUsername).length == 0) revert EmptyUsername();
+        if (bytes(newUsername).length > 32) revert UsernameTooLong();
+        if (_usernameTaken[newUsername]) revert UsernameTaken();
+
+        string memory oldUsername = _usernameOf[profileId];
+        if (bytes(oldUsername).length > 0) {
+            _usernameTaken[oldUsername] = false;
+        }
+        _usernameTaken[newUsername] = true;
+        _usernameOf[profileId] = newUsername;
+
+        emit ProfileUpdated(profileId, newUsername);
+    }
+
     function isRegistered(address wallet) external view override returns (bool) {
         return _profileIdOf[wallet] != 0;
     }
 
     function getProfileId(address wallet) external view override returns (uint256) {
-        if (_profileIdOf[wallet] == 0) revert NotRegistered();
-        return _profileIdOf[wallet];
+        uint256 profileId = _profileIdOf[wallet];
+        if (profileId == 0) revert NotRegistered();
+        return profileId;
     }
 
     function getWallet(uint256 profileId) external view override returns (address) {

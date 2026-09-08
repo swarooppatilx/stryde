@@ -1,3 +1,4 @@
+import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -11,11 +12,15 @@ interface AvatarStackProps {
   size?: number;
 }
 
-export function AvatarStack({ userIds, max = 3, size = 24 }: AvatarStackProps) {
+export const AvatarStack = React.memo(function AvatarStack({
+  userIds,
+  max = 3,
+  size = 24,
+}: AvatarStackProps) {
   const theme = useTheme();
   const getUserById = useSocialStore((s) => s.getUserById);
 
-  const visible = userIds.slice(0, max);
+  const visible = useMemo(() => userIds.slice(0, max), [userIds, max]);
   const remaining = userIds.length - max;
   const overlap = size * 0.35;
 
@@ -75,7 +80,7 @@ export function AvatarStack({ userIds, max = 3, size = 24 }: AvatarStackProps) {
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

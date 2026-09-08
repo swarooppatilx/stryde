@@ -57,13 +57,17 @@ export async function getChallenge(challengeId: bigint): Promise<OnchainChalleng
   };
 }
 
-export async function getUserChallengeIds(user: `0x${string}`): Promise<bigint[]> {
+export async function getUserChallengeIds(
+  user: `0x${string}`,
+  offset = 0n,
+  limit = 100n
+): Promise<bigint[]> {
   const client = getPublicClient();
   const contracts = getContracts();
   return client.readContract({
     ...contracts.challengeRegistry,
     functionName: 'getUserChallenges',
-    args: [user],
+    args: [user, BigInt(offset), BigInt(limit)],
   }) as Promise<bigint[]>;
 }
 
@@ -85,8 +89,7 @@ export async function createChallenge(
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -98,7 +101,7 @@ export async function createChallenge(
       BigInt(Math.round(params.targetMetric)),
       BigInt(Math.round(params.durationSeconds)),
     ],
-    value: params.stakeWei,
+    value: params.stakeWei as unknown,
     account,
     chain: config.chain,
   });
@@ -117,7 +120,9 @@ export async function createChallenge(
     logs: receipt.logs,
   });
 
-  const challengeId = (event?.args as { challengeId?: bigint } | undefined)?.challengeId ?? 0n;
+  const challengeId =
+    ((event as { args?: Record<string, unknown> })?.args as { challengeId?: bigint } | undefined)
+      ?.challengeId ?? 0n;
   return { challengeId, confirmed: true };
 }
 
@@ -125,25 +130,24 @@ export async function acceptChallenge(
   wallet: ReturnType<typeof getWalletClient>,
   challengeId: bigint,
   stakeWei: bigint
-): Promise<{ confirmed: boolean }> {
+): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
     ...contracts.challengeRegistry,
     functionName: 'acceptChallenge',
     args: [challengeId],
-    value: stakeWei,
+    value: stakeWei as unknown,
     account,
     chain: config.chain,
   });
 
   const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success' };
+  return { confirmed: receipt.status === 'success', txHash: hash };
 }
 
 /**
@@ -204,12 +208,11 @@ export async function settleChallenge(
   wallet: ReturnType<typeof getWalletClient>,
   challengeId: bigint,
   winner: `0x${string}`
-): Promise<{ confirmed: boolean }> {
+): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -221,18 +224,17 @@ export async function settleChallenge(
   });
 
   const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success' };
+  return { confirmed: receipt.status === 'success', txHash: hash };
 }
 
 export async function cancelChallenge(
   wallet: ReturnType<typeof getWalletClient>,
   challengeId: bigint
-): Promise<{ confirmed: boolean }> {
+): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -244,18 +246,17 @@ export async function cancelChallenge(
   });
 
   const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success' };
+  return { confirmed: receipt.status === 'success', txHash: hash };
 }
 
 export async function withdrawStake(
   wallet: ReturnType<typeof getWalletClient>,
   challengeId: bigint
-): Promise<{ confirmed: boolean }> {
+): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const hash = await wallet.writeContract({
@@ -267,5 +268,5 @@ export async function withdrawStake(
   });
 
   const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success' };
+  return { confirmed: receipt.status === 'success', txHash: hash };
 }

@@ -31,6 +31,7 @@ class MotionSensorService {
   private accelSub: Subscription | null = null;
   private lastAccelMagnitude = 1;
   private onUpdate: (() => void) | null = null;
+  private refCount = 0;
 
   private constructor() {}
 
@@ -42,8 +43,11 @@ class MotionSensorService {
   }
 
   async start(options?: { rate?: 10 | 50; onUpdate?: () => void }): Promise<void> {
-    // Prevent duplicate subscriptions
-    if (this.gyroSub || this.accelSub) this.stop();
+    this.refCount++;
+    if (this.refCount > 1) {
+      this.onUpdate = options?.onUpdate ?? null;
+      return;
+    }
 
     this.onUpdate = options?.onUpdate ?? null;
     const intervalMs = 1000 / (options?.rate ?? 10);
@@ -101,6 +105,9 @@ class MotionSensorService {
   }
 
   stop(): void {
+    this.refCount = Math.max(0, this.refCount - 1);
+    if (this.refCount > 0) return;
+
     this.gyroSub?.remove();
     this.accelSub?.remove();
     this.gyroSub = null;

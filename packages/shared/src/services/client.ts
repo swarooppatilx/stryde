@@ -25,6 +25,11 @@ const warnedZeroAddressModes = new Set<ChainMode>();
 // setLocalRpcUrl() picking up a new LAN IP — still invalidates the cache
 // instead of serving a client pointed at a stale URL.
 let cachedPublicClient: { key: string; client: PublicClient } | null = null;
+let cachedWalletClient: { key: string; client: WalletClient } | null = null;
+let contractsCache: {
+  key: string;
+  contracts: Record<string, { address: `0x${string}`; abi: readonly unknown[] }>;
+} | null = null;
 
 let currentMode: ChainMode = DEFAULT_CHAIN_MODE;
 
@@ -51,6 +56,7 @@ export function getPublicClient(): PublicClient {
   const client = createPublicClient({
     chain: config.chain,
     transport: rpcTransport(config.rpcUrl),
+    batch: { multicall: true },
   }) as PublicClient;
   cachedPublicClient = { key, client };
   return client;
@@ -63,17 +69,30 @@ export function getBalance(address: `0x${string}`): Promise<bigint> {
 
 export function getWalletClient(privateKey: `0x${string}`): WalletClient {
   const config = getChainConfig(currentMode);
-  return createWalletClient({
+  const key = `${currentMode}:${config.rpcUrl}:${privateKey}`;
+
+  if (cachedWalletClient?.key === key) {
+    return cachedWalletClient.client;
+  }
+
+  const client = createWalletClient({
     chain: config.chain,
     account: privateKeyToAccount(privateKey),
     transport: rpcTransport(config.rpcUrl),
   }) as WalletClient;
+  cachedWalletClient = { key, client };
+  return client;
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 export function getContracts() {
   const config = getChainConfig(currentMode);
+  const key = `${currentMode}:${config.rpcUrl}`;
+
+  if (contractsCache?.key === key) {
+    return contractsCache.contracts;
+  }
 
   if (
     !warnedZeroAddressModes.has(currentMode) &&
@@ -87,7 +106,9 @@ export function getContracts() {
     );
   }
 
-  return {
+  const profileRegistryAddress = config.contracts.profileRegistry;
+
+  const contracts = {
     profileRegistry: {
       address: config.contracts.profileRegistry,
       abi: ABIS.profileRegistry,
@@ -121,4 +142,11 @@ export function getContracts() {
       abi: ABIS.moveToEarnToken,
     },
   } as const;
+
+  if (profileRegistryAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Contract addresses not configured — run deploy script first');
+  }
+
+  contractsCache = { key, contracts };
+  return contracts;
 }

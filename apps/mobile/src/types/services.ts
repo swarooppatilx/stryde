@@ -4,7 +4,7 @@ export interface ITrackingService {
   startTracking(): Promise<void>;
   pauseTracking(): Promise<void>;
   resumeTracking(): Promise<void>;
-  stopTracking(): Promise<void>;
+  stopTracking(): Promise<{ success: boolean; error?: string }>;
   addLocation(location: Location): void;
   restoreSession(): Promise<void>;
   getLocations(): Location[];

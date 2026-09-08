@@ -32,8 +32,12 @@ export const useActivityStore = create<ActivityState>()(
       name: '@stryde/activities',
       version: 1,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      partialize: (state) => ({ activities: state.activities }),
       migrate: (persistedState: unknown, version: number) => {
-        if (version < 1) return undefined;
+        if (version < 1) {
+          const state = persistedState as Record<string, unknown>;
+          return { ...state, activities: state.activities ?? [] };
+        }
         return persistedState;
       },
     }

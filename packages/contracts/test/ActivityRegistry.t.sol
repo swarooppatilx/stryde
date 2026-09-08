@@ -45,7 +45,7 @@ contract ActivityRegistryTest is Test {
         assertEq(registry.getActivityCount(alice), 1);
         assertEq(registry.totalActivities(), 1);
 
-        uint256[] memory ids = registry.getUserActivityIds(alice);
+        uint256[] memory ids = registry.getUserActivityIds(alice, 0, type(uint256).max);
         assertEq(ids.length, 1);
         assertEq(ids[0], 1);
     }
@@ -74,7 +74,7 @@ contract ActivityRegistryTest is Test {
         assertEq(registry.getActivityCount(alice), 2);
         assertEq(registry.totalActivities(), 2);
 
-        uint256[] memory ids = registry.getUserActivityIds(alice);
+        uint256[] memory ids = registry.getUserActivityIds(alice, 0, type(uint256).max);
         assertEq(ids.length, 2);
         assertEq(ids[0], 1);
         assertEq(ids[1], 2);
@@ -114,7 +114,7 @@ contract ActivityRegistryTest is Test {
     }
 
     function test_GetUserActivityIds_Empty() public {
-        uint256[] memory ids = registry.getUserActivityIds(alice);
+        uint256[] memory ids = registry.getUserActivityIds(alice, 0, type(uint256).max);
         assertEq(ids.length, 0);
     }
 
@@ -152,7 +152,7 @@ contract ActivityRegistryTest is Test {
     function testFuzz_RecordActivity(uint8 activityType, uint256 distance, uint256 duration, uint256 territoryArea)
         public
     {
-        vm.assume(activityType <= 3);
+        vm.assume(activityType <= 11);
         vm.assume(distance > 0 && distance < type(uint256).max);
         vm.assume(duration > 0 && duration < type(uint256).max);
         vm.assume(territoryArea < type(uint256).max);

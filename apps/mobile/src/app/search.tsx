@@ -8,11 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SearchBar } from '@/components/search-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { UserAvatar } from '@/components/user-avatar';
 import { SPORT_ICONS } from '@/constants/activity';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
-import { formatDistance, getDisplayName, getInitials } from '@/utils/format';
+import { formatDistance, getDisplayName } from '@/utils/format';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -120,11 +121,7 @@ export default function SearchScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={displayName}
                   >
-                    <View style={[styles.userAvatar, { backgroundColor: theme.brand.primaryTint }]}>
-                      <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
-                        {getInitials(displayName)}
-                      </ThemedText>
-                    </View>
+                    <UserAvatar name={displayName} size={40} />
                     <ThemedView style={styles.userInfo}>
                       <ThemedText type="smallBold" numberOfLines={1}>
                         {displayName}
@@ -220,13 +217,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
   },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+
   userInfo: { flex: 1, gap: 2 },
   activityRow: {
     flexDirection: 'row',

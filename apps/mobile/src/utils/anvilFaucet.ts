@@ -26,7 +26,7 @@ export async function ensureLocalWalletFunded(): Promise<FaucetResult> {
       return 'already-funded';
     }
 
-    await fetch(rpcUrl, {
+    const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -37,7 +37,13 @@ export async function ensureLocalWalletFunded(): Promise<FaucetResult> {
       }),
     });
 
-    console.log('[Anvil] Wallet funded with 100 ETH');
+    const result = await response.json();
+    if (result.error) {
+      console.warn('[Anvil] Failed to fund wallet:', result.error);
+      return 'failed';
+    }
+
+    if (__DEV__) console.log('[Anvil] Wallet funded with 100 ETH');
     return 'funded';
   } catch (error) {
     console.warn('[Anvil] Could not fund wallet:', error);

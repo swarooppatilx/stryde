@@ -1,10 +1,11 @@
 import { Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { services } from '@repo/shared';
+import { getActiveConfig, services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Linking,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,7 +14,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
-
 import { AppButton } from '@/components/button';
 import { Shimmer } from '@/components/Shimmer/Shimmer';
 import { ThemedText } from '@/components/themed-text';
@@ -46,16 +46,15 @@ export default function ChallengeDetailScreen() {
   const [challenge, setChallenge] = useState<OnchainChallenge | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  // getChallenge()'s on-chain struct has no "claimed" flag, so withdrawal
-  // completion is tracked locally — status/isWinner alone don't change once
-  // the stake has actually been withdrawn.
   const [hasWithdrawn, setHasWithdrawn] = useState(false);
+  const [lastTxHash, setLastTxHash] = useState<`0x${string}` | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       setChallenge(await services.challenge.getChallenge(BigInt(id)));
-    } catch {
+    } catch (e) {
+      console.warn('[Challenge] Failed to load:', e);
       setChallenge(null);
     }
   }, [id]);
@@ -112,7 +111,7 @@ export default function ChallengeDetailScreen() {
     challenge.winner.toLowerCase() !== currentUserId;
 
   const runAction = async (
-    action: () => Promise<{ confirmed: boolean }>,
+    action: () => Promise<{ confirmed: boolean; txHash?: `0x${string}` }>,
     labels: { pending: string; success: string },
     onConfirmed?: () => void
   ) => {
@@ -122,6 +121,7 @@ export default function ChallengeDetailScreen() {
       const result = await transact(action, labels);
       if (result?.confirmed) {
         onConfirmed?.();
+        if (result.txHash) setLastTxHash(result.txHash);
         await load();
       }
     } finally {
@@ -164,7 +164,10 @@ export default function ChallengeDetailScreen() {
         () => services.challenge.settleChallenge(wallet, challenge.id, winner),
         { pending: 'Settling challenge...', success: 'Challenge settled' }
       );
-      if (result?.confirmed) await load();
+      if (result?.confirmed) {
+        if (result.txHash) setLastTxHash(result.txHash);
+        await load();
+      }
     } catch (error) {
       console.error('[ChallengeDetail] Failed to determine winner:', error);
       Toast.fail(getParsedError(error), 3);
@@ -267,6 +270,22 @@ export default function ChallengeDetailScreen() {
             </ThemedText>
           )}
 
+          {lastTxHash &&
+            ENV.CHAIN_MODE !== 'local' &&
+            (() => {
+              const explorerUrl = `${getActiveConfig().chain.blockExplorers?.default.url}/tx/${lastTxHash}`;
+              return (
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(explorerUrl)}
+                  style={styles.explorerLink}
+                >
+                  <ThemedText type="small" style={{ color: theme.brand.primary }}>
+                    View on Explorer ↗
+                  </ThemedText>
+                </TouchableOpacity>
+              );
+            })()}
+
           {challenge.status === 0 && isOpponent && (
             <AppButton onPress={handleAccept} disabled={isBusy}>
               {isBusy ? 'Accepting...' : 'Accept & Match Stake'}
@@ -367,5 +386,9 @@ const styles = StyleSheet.create({
   statDivider: {
     width: StyleSheet.hairlineWidth,
     height: 32,
+  },
+  explorerLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
   },
 });

@@ -38,7 +38,12 @@
         "noNonNullAssertion": "off"
       },
       "suspicious": {
-        "noExplicitAny": "warn"
+        "noExplicitAny": "error"
+      },
+      "a11y": {
+        "useAltText": "warn",
+        "useButtonType": "warn",
+        "useValidAriaRole": "error"
       }
     }
   },

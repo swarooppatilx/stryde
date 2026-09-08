@@ -93,14 +93,16 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
         Challenge storage c = _challenges[challengeId];
         if (c.challenger == address(0)) revert NotParticipant();
 
-        if (c.status == ChallengeStatus.Settled) {
+        ChallengeStatus status = c.status;
+
+        if (status == ChallengeStatus.Settled) {
             if (msg.sender != c.winner) revert NotParticipant();
             if (_hasDonePayout[challengeId][msg.sender]) revert AlreadySettled();
             _hasDonePayout[challengeId][msg.sender] = true;
             _payOut(msg.sender, c.stake * 2);
             emit ChallengeWithdrawn(challengeId, msg.sender, c.stake * 2);
         } else if (
-            c.status == ChallengeStatus.Cancelled || (c.status == ChallengeStatus.Open && block.timestamp > c.deadline)
+            status == ChallengeStatus.Cancelled || (status == ChallengeStatus.Open && block.timestamp > c.deadline)
         ) {
             // Challenger reclaims stake after explicit cancel, or after the accept
             // deadline passes on an unaccepted challenge (prevents permanently
@@ -133,8 +135,21 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
         return _nextChallengeId - 1;
     }
 
-    function getUserChallenges(address user) external view override returns (uint256[] memory) {
-        return _userChallenges[user];
+    function getUserChallenges(address user, uint256 offset, uint256 limit) external view override returns (uint256[] memory) {
+        uint256[] storage arr = _userChallenges[user];
+        if (offset >= arr.length) {
+            return new uint256[](0);
+        }
+        uint256 end = offset + limit;
+        if (end > arr.length) {
+            end = arr.length;
+        }
+        uint256 size = end - offset;
+        uint256[] memory result = new uint256[](size);
+        for (uint256 i = 0; i < size; i++) {
+            result[i] = arr[offset + i];
+        }
+        return result;
     }
 
     function pause() external onlyOwner {

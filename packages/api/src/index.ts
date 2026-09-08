@@ -15,7 +15,15 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
   .filter(Boolean);
 
 app.use('*', logger());
-app.use('*', cors({ origin: allowedOrigins }));
+app.use(
+  '*',
+  cors({
+    origin: allowedOrigins,
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    allowHeaders: ['Content-Type', 'X-API-Key', 'X-Request-ID'],
+    credentials: true,
+  })
+);
 
 // Fixed-window per-IP limiter for the IPFS and activity-validation routes —
 // Pinata pins cost money, and /activities/validate does real hashing work per
@@ -26,21 +34,38 @@ app.use('*', cors({ origin: allowedOrigins }));
 // multiple concurrent lambdas.
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
-const requestCounts = new Map<string, { count: number; windowStart: number }>();
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
+const requestCounts = new Map<string, RateLimitEntry>();
 
 const rateLimiter = async (c: Context, next: Next) => {
-  const key = c.req.header('X-Forwarded-For') || 'unknown';
+  const key =
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    c.req.header('x-real-ip') ||
+    'unknown';
   const now = Date.now();
   const entry = requestCounts.get(key);
 
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    requestCounts.set(key, { count: 1, windowStart: now });
+  if (entry && now > entry.resetTime) {
+    requestCounts.delete(key);
+  }
+
+  const current = requestCounts.get(key);
+  if (!current) {
+    requestCounts.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
   } else {
-    entry.count += 1;
-    if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+    current.count += 1;
+    if (current.count > RATE_LIMIT_MAX_REQUESTS) {
       return c.json({ error: 'Too many requests' }, 429);
     }
   }
+
+  if (requestCounts.size > 10000) {
+    requestCounts.clear();
+  }
+
   await next();
 };
 

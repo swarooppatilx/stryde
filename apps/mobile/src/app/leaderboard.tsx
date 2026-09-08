@@ -89,7 +89,8 @@ export default function LeaderboardScreen() {
           distance: Number(e.contribution),
         }))
       );
-    } catch {
+    } catch (e) {
+      console.warn('[Leaderboard] Failed to load:', e);
       setRows([]);
     }
   }, []);

@@ -44,7 +44,12 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
         />
       )}
       {error ? (
-        <ThemedText type="small" style={{ color: Brand.danger }}>
+        <ThemedText
+          type="small"
+          style={{ color: Brand.danger }}
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+        >
           {error}
         </ThemedText>
       ) : null}

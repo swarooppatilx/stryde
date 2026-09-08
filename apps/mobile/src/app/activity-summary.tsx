@@ -2,7 +2,7 @@ import { Input } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -43,6 +43,8 @@ export default function ActivitySummaryScreen() {
     goBack,
   } = useActivity();
 
+  const [showShareImage, setShowShareImage] = useState(false);
+
   const allActivities = useActivityStore((s) => s.activities);
   const newRecords = useMemo(() => {
     if (!activity) return [];
@@ -69,6 +71,12 @@ export default function ActivitySummaryScreen() {
     }
     return records;
   }, [activity, allActivities]);
+
+  const handleSharePress = useCallback(async () => {
+    setShowShareImage(true);
+    await handleShare();
+    setShowShareImage(false);
+  }, [handleShare]);
 
   useEffect(() => {
     if (coordinates.length < 2 || !cameraRef.current) return;
@@ -365,7 +373,7 @@ export default function ActivitySummaryScreen() {
 
               <TouchableOpacity
                 style={[styles.iconButton, { backgroundColor: theme.backgroundSelected }]}
-                onPress={handleShare}
+                onPress={handleSharePress}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Share activity"
@@ -387,15 +395,17 @@ export default function ActivitySummaryScreen() {
         </ThemedView>
       </SafeAreaView>
 
-      <View ref={viewRef} style={styles.shareImageContainer} pointerEvents="none">
-        <ShareRouteImage
-          coordinates={coordinates}
-          territory={activity.territory}
-          territoryArea={activity.territoryArea}
-          distance={activity.distance}
-          duration={activity.duration}
-        />
-      </View>
+      {showShareImage && (
+        <View ref={viewRef} style={styles.shareImageContainer} pointerEvents="none">
+          <ShareRouteImage
+            coordinates={coordinates}
+            territory={activity.territory}
+            territoryArea={activity.territoryArea}
+            distance={activity.distance}
+            duration={activity.duration}
+          />
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -507,12 +517,10 @@ const styles = StyleSheet.create({
   },
   shareImageContainer: {
     position: 'absolute',
-    bottom: 0,
+    top: -10000,
     left: 0,
     width: 1080,
     height: 1080,
-    opacity: 0.01,
-    zIndex: -1,
   },
   badgeRow: {
     flexDirection: 'row',

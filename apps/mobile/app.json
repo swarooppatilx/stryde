@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.stryde.app"
+      "bundleIdentifier": "com.stryde.app",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "instagram-stories",
+          "instagram"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -37,8 +43,9 @@
       "@maplibre/maplibre-react-native",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-sharing",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-status-bar",
+      "expo-system-ui"
     ],
     "experiments": {
       "typedRoutes": true,

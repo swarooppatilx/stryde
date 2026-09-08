@@ -8,9 +8,13 @@ import {IActivityRegistry} from "./interfaces/IActivityRegistry.sol";
 contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
     uint256 private _nextActivityId = 1;
 
-    mapping(uint256 => bytes32) private _activityHash;
-    mapping(uint256 => address) private _activityOwner;
-    mapping(uint256 => uint256) private _activityTimestamp;
+    struct Activity {
+        bytes32 activityHash;
+        address owner;
+        uint256 timestamp;
+    }
+
+    mapping(uint256 => Activity) private _activities;
     mapping(address => uint256[]) private _activitiesByUser;
     mapping(bytes32 => bool) private _hashUsed;
 
@@ -25,11 +29,10 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
     ) external override whenNotPaused returns (uint256 activityId) {
         if (activityHash == bytes32(0)) revert ZeroHash();
         if (_hashUsed[activityHash]) revert DuplicateHash();
+        if (activityType > 11) revert InvalidActivityType();
 
-        activityId = _nextActivityId++;
-        _activityHash[activityId] = activityHash;
-        _activityOwner[activityId] = msg.sender;
-        _activityTimestamp[activityId] = block.timestamp;
+        unchecked { activityId = _nextActivityId++; }
+        _activities[activityId] = Activity({activityHash: activityHash, owner: msg.sender, timestamp: block.timestamp});
         _activitiesByUser[msg.sender].push(activityId);
         _hashUsed[activityHash] = true;
 
@@ -39,23 +42,41 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
     }
 
     function getActivityHash(uint256 activityId) external view override returns (bytes32) {
-        return _activityHash[activityId];
+        return _activities[activityId].activityHash;
     }
 
     function getActivityOwner(uint256 activityId) external view override returns (address) {
-        return _activityOwner[activityId];
+        return _activities[activityId].owner;
     }
 
     function getActivityTimestamp(uint256 activityId) external view override returns (uint256) {
-        return _activityTimestamp[activityId];
+        return _activities[activityId].timestamp;
+    }
+
+    function getActivity(uint256 activityId) external view override returns (bytes32 activityHash, address owner, uint256 timestamp) {
+        Activity storage a = _activities[activityId];
+        return (a.activityHash, a.owner, a.timestamp);
     }
 
     function getActivityCount(address user) external view override returns (uint256) {
         return _activitiesByUser[user].length;
     }
 
-    function getUserActivityIds(address user) external view override returns (uint256[] memory) {
-        return _activitiesByUser[user];
+    function getUserActivityIds(address user, uint256 offset, uint256 limit) external view override returns (uint256[] memory) {
+        uint256[] storage arr = _activitiesByUser[user];
+        if (offset >= arr.length) {
+            return new uint256[](0);
+        }
+        uint256 end = offset + limit;
+        if (end > arr.length) {
+            end = arr.length;
+        }
+        uint256 size = end - offset;
+        uint256[] memory result = new uint256[](size);
+        for (uint256 i = 0; i < size; i++) {
+            result[i] = arr[offset + i];
+        }
+        return result;
     }
 
     function totalActivities() external view override returns (uint256) {

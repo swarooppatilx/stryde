@@ -18,26 +18,13 @@ import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
-import { getDisplayName, getInitials } from '@/utils/format';
-import { haptics } from '@/utils/haptics';
+import { formatRelativeTime, getDisplayName, getInitials } from '@/utils/format';
+import { haptics, impactLight } from '@/utils/haptics';
 
 interface CommentsSheetProps {
   visible: boolean;
   activityId: string | null;
   onClose: () => void;
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = Date.now();
-  const diff = now - new Date(date).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function formatLikeCount(count: number): string {
@@ -71,7 +58,7 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
     if (!trimmed) return;
     addComment(activity.id, trimmed);
     setText('');
-    haptics.success();
+    impactLight();
   };
 
   const handleClose = () => {
@@ -117,7 +104,7 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
                 {activity.name}
               </ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {formatRelativeTime(activity.createdAt)}
+                {formatRelativeTime(activity.createdAt, true)}
               </ThemedText>
             </ThemedView>
 
@@ -174,7 +161,7 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
                         <ThemedView style={styles.commentHeader}>
                           <ThemedText type="smallBold">{displayName}</ThemedText>
                           <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                            · {formatRelativeTime(comment.createdAt)}
+                            · {formatRelativeTime(comment.createdAt, true)}
                           </ThemedText>
                         </ThemedView>
                         <ThemedText type="small" style={{ color: theme.text }}>
@@ -310,8 +297,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   sendBtn: {
-    width: 36,
-    height: 36,
+    minWidth: 44,
+    minHeight: 44,
     borderRadius: BorderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',

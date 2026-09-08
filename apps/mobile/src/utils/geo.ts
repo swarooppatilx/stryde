@@ -2,6 +2,14 @@ import type { Location } from '../types';
 
 /** Great-circle distance between two coordinates, in meters. */
 export function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lon1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lon2)
+  ) {
+    return 0;
+  }
   const R = 6371e3;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;

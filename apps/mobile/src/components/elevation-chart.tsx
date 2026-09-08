@@ -36,13 +36,21 @@ export function ElevationChart({ elevations, width = 300, height = 80 }: Elevati
     return { linePath, areaPath };
   }, [elevations, width, height]);
 
+  const minElevation = Math.min(...elevations);
+  const maxElevation = Math.max(...elevations);
+
   if (!pathData || elevations.length < 2) {
     return null;
   }
 
   return (
     <View style={styles.container}>
-      <Svg width={width} height={height}>
+      <Svg
+        width={width}
+        height={height}
+        accessibilityRole="image"
+        accessibilityLabel={`Elevation chart showing ${minElevation}m to ${maxElevation}m`}
+      >
         <Defs>
           <LinearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={Brand.primary} stopOpacity={isDark ? 0.45 : 0.3} />

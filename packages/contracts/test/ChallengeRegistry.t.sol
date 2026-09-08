@@ -67,8 +67,8 @@ contract ChallengeRegistryTest is Test {
         assertEq(c.deadline, block.timestamp + 7 days);
         assertEq(registry.getChallengeCount(), 1);
 
-        uint256[] memory aliceChallenges = registry.getUserChallenges(alice);
-        uint256[] memory bobChallenges = registry.getUserChallenges(bob);
+        uint256[] memory aliceChallenges = registry.getUserChallenges(alice, 0, type(uint256).max);
+        uint256[] memory bobChallenges = registry.getUserChallenges(bob, 0, type(uint256).max);
         assertEq(aliceChallenges.length, 1);
         assertEq(bobChallenges.length, 1);
     }
@@ -415,7 +415,7 @@ contract ChallengeRegistryTest is Test {
     }
 
     function test_GetUserChallenges_Empty() public {
-        uint256[] memory ids = registry.getUserChallenges(alice);
+        uint256[] memory ids = registry.getUserChallenges(alice, 0, type(uint256).max);
         assertEq(ids.length, 0);
     }
 

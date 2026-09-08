@@ -84,8 +84,7 @@ export async function recordActivity(
 ): Promise<{ activityId: bigint; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
   const config = getActiveConfig();
-  const addresses = await wallet.getAddresses();
-  const account = addresses[0];
+  const account = wallet.account?.address;
   if (!account) throw new Error('No wallet account found');
 
   const activityHash = computeActivityHash(
@@ -123,7 +122,9 @@ export async function recordActivity(
   });
 
   return {
-    activityId: (event?.args as { activityId?: bigint } | undefined)?.activityId ?? 0n,
+    activityId:
+      ((event as { args?: Record<string, unknown> })?.args as { activityId?: bigint } | undefined)
+        ?.activityId ?? 0n,
     txHash: hash,
     confirmed: true,
   };

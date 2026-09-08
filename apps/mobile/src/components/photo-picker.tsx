@@ -90,6 +90,7 @@ export function PhotoPicker({ photos, onPhotosChange, maxPhotos = MAX_PHOTOS }: 
             <TouchableOpacity
               style={[styles.removeBtn, { backgroundColor: theme.brand.primary }]}
               onPress={() => removePhoto(index)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               accessibilityRole="button"
               accessibilityLabel="Remove photo"
             >
@@ -156,9 +157,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     right: 4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },

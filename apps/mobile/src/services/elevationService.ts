@@ -48,32 +48,36 @@ export async function getElevationForRoute(
       batches.push(sampled.slice(i, i + BATCH_SIZE));
     }
 
-    const elevations: number[] = [];
-    for (const batch of batches) {
-      const batchElevations = await fetchElevationBatch(batch);
-      elevations.push(...batchElevations);
-    }
+    const batchResults = await Promise.allSettled(batches.map((b) => fetchElevationBatch(b)));
+    const elevations = batchResults.flatMap((result, i) => {
+      if (result.status === 'fulfilled') return result.value;
+      console.warn('[Elevation] Batch failed:', result.reason);
+      return new Array(batches[i].length).fill(null);
+    });
 
     if (elevations.length === 0) return null;
 
+    const validElevations = elevations.filter((e): e is number => e !== null);
+    if (validElevations.length === 0) return null;
+
     let totalAscent = 0;
     let totalDescent = 0;
-    let minElevation = elevations[0];
-    let maxElevation = elevations[0];
+    let minElevation = validElevations[0];
+    let maxElevation = validElevations[0];
 
-    for (let i = 1; i < elevations.length; i++) {
-      const diff = elevations[i] - elevations[i - 1];
+    for (let i = 1; i < validElevations.length; i++) {
+      const diff = validElevations[i] - validElevations[i - 1];
       if (diff > 0) {
         totalAscent += diff;
       } else {
         totalDescent += Math.abs(diff);
       }
-      minElevation = Math.min(minElevation, elevations[i]);
-      maxElevation = Math.max(maxElevation, elevations[i]);
+      minElevation = Math.min(minElevation, validElevations[i]);
+      maxElevation = Math.max(maxElevation, validElevations[i]);
     }
 
     return {
-      elevations,
+      elevations: validElevations,
       totalAscent: Math.round(totalAscent),
       totalDescent: Math.round(totalDescent),
       minElevation: Math.round(minElevation),

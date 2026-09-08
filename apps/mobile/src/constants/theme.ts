@@ -91,6 +91,31 @@ export const Fonts = Platform.select({
   },
 });
 
+export const SIZES = {
+  icon: {
+    small: 16,
+    medium: 24,
+    large: 32,
+  },
+  button: {
+    minTouch: 44,
+    toolbar: 36,
+  },
+  padding: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+  },
+  radius: {
+    sm: 4,
+    md: 8,
+    lg: 12,
+    xl: 16,
+  },
+} as const;
+
 export const Spacing = {
   half: 2,
   one: 4,

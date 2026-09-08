@@ -87,7 +87,14 @@ export const useCommunityStore = create<CommunityState>()(
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({ joinedClubs: state.joinedClubs, joinedEvents: state.joinedEvents }),
       migrate: (persistedState: unknown, version: number) => {
-        if (version < 2) return undefined;
+        if (version < 2) {
+          const state = persistedState as Record<string, unknown>;
+          return {
+            ...state,
+            joinedClubs: state.joinedClubs ?? [],
+            joinedEvents: state.joinedEvents ?? [],
+          };
+        }
         return persistedState;
       },
     }

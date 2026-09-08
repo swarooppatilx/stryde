@@ -75,7 +75,7 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, lazy: true }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="login" />

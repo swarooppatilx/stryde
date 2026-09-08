@@ -104,7 +104,8 @@ export default function CreateChallengeScreen() {
     if (balanceWei === null) return false;
     try {
       return parseEther(stakeEth || '0') > balanceWei;
-    } catch {
+    } catch (e) {
+      console.warn('[Challenge] Failed to parse stake amount:', e);
       return false;
     }
   }, [balanceWei, stakeEth]);
@@ -119,7 +120,8 @@ export default function CreateChallengeScreen() {
     let stakeWei: bigint;
     try {
       stakeWei = parseEther(stakeEth || '0');
-    } catch {
+    } catch (e) {
+      console.warn('[Challenge] Invalid stake amount:', e);
       Alert.alert('Invalid stake', 'Enter a valid ETH amount.');
       return;
     }

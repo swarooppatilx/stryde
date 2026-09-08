@@ -111,6 +111,7 @@ export default function LoginScreen() {
               }}
               hitSlop={8}
               activeOpacity={0.7}
+              accessibilityLabel="Go back to previous screen"
             >
               <Ionicons name="chevron-back" size={20} color={theme.text} />
             </TouchableOpacity>
@@ -164,6 +165,7 @@ export default function LoginScreen() {
                 disabled={secondsLeft > 0}
                 hitSlop={8}
                 activeOpacity={0.7}
+                accessibilityLabel="Resend verification code"
               >
                 <ThemedText
                   type="small"
@@ -225,6 +227,8 @@ export default function LoginScreen() {
                 returnKeyType="send"
                 onSubmitEditing={handleSendCode}
                 error={error}
+                accessibilityLabel="Email address"
+                accessibilityHint="Enter your email to sign in"
               />
 
               <AppButton

@@ -13,7 +13,6 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandWordmark } from '@/components/brand';
 import { AppButton } from '@/components/button';
-import { OnboardingBackgroundPlaceholder } from '@/components/onboarding-background-placeholder';
 import { ThemedText } from '@/components/themed-text';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 
@@ -31,7 +30,7 @@ const SLIDES = [
   {
     image: require('@/assets/images/onboarding-feed.png'),
     title: 'Own your data. Forever.',
-    body: 'Activities and territory are yours - verified and portable, not locked in someone else’s app.',
+    body: "Activities and territory are yours - verified and portable, not locked in someone else's app.",
   },
 ];
 
@@ -86,6 +85,9 @@ export default function OnboardingScreen() {
             setIndex(next);
           }}
           style={styles.carousel}
+          accessibilityRole="adjustable"
+          accessibilityLabel="Onboarding tutorial"
+          accessibilityHint="Swipe left to continue through the tutorial"
         >
           {SLIDES.map((slide) => (
             <View key={slide.title} style={[styles.slideVisual, { width: screenWidth }]}>

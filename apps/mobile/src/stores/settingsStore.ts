@@ -35,7 +35,14 @@ export const useSettingsStore = create<SettingsState>()(
       version: 1,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
-        if (version < 1) return undefined;
+        if (version < 1) {
+          const state = persistedState as Record<string, unknown>;
+          return {
+            ...state,
+            useGyroscopeAssist: state.useGyroscopeAssist ?? true,
+            sensorUpdateRate: state.sensorUpdateRate ?? 10,
+          };
+        }
         return persistedState;
       },
     }

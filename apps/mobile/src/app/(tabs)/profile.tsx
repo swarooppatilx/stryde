@@ -2,6 +2,7 @@ import { Input, List, SwipeAction, Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePrivy } from '@privy-io/expo';
 import { services } from '@repo/shared';
+import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -262,7 +263,6 @@ export default function ProfileScreen() {
   const copyAddress = async () => {
     if (!walletAddress) return;
     try {
-      const Clipboard = await import('expo-clipboard');
       await Clipboard.setStringAsync(walletAddress);
       Toast.success('Address copied', 1);
     } catch (error) {

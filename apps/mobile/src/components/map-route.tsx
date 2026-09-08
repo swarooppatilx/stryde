@@ -303,7 +303,11 @@ function MapLibreRouteInternal({
   const resolvedMapStyle = mapStyleUrl ?? 'https://tiles.openfreemap.org/styles/liberty';
 
   return (
-    <MapLibreMap style={[styles.map, style]} mapStyle={resolvedMapStyle}>
+    <MapLibreMap
+      style={[styles.map, style]}
+      mapStyle={resolvedMapStyle}
+      compassPosition={{ top: 150, right: Spacing.three }}
+    >
       <Camera
         ref={cameraRef}
         initialViewState={{

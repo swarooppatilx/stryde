@@ -33,6 +33,7 @@ contract MoveToEarnToken is IMoveToEarnToken, ERC20, Ownable, Pausable, AccessCo
         external
         whenNotPaused
         onlyRole(MINTER_ROLE)
+        returns (uint256)
     {
         if (recipient == address(0)) revert ZeroAddress();
         if (activityHash == bytes32(0)) revert EmptyActivityHash();
@@ -44,6 +45,7 @@ contract MoveToEarnToken is IMoveToEarnToken, ERC20, Ownable, Pausable, AccessCo
         _mint(recipient, amount);
 
         emit ActivityRewarded(recipient, activityHash, distance, amount);
+        return amount;
     }
 
     function isRewarded(bytes32 activityHash) external view override returns (bool) {

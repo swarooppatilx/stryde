@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 
 import { Brand, Fonts, type ThemeColor } from '@/constants/theme';
@@ -21,34 +22,6 @@ export type ThemedTextProps = TextProps & {
     | 'error';
   themeColor?: ThemeColor;
 };
-
-export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
-  const theme = useTheme();
-
-  return (
-    <Text
-      style={[
-        { color: themeColor ? theme[themeColor] : theme.text },
-        type === 'default' && styles.default,
-        type === 'title' && styles.title,
-        type === 'headline' && styles.headline,
-        type === 'sectionTitle' && styles.sectionTitle,
-        type === 'small' && styles.small,
-        type === 'smallBold' && styles.smallBold,
-        type === 'caption' && styles.caption,
-        type === 'eyebrow' && styles.eyebrow,
-        type === 'subtitle' && styles.subtitle,
-        type === 'link' && styles.link,
-        type === 'linkPrimary' && styles.linkPrimary,
-        type === 'code' && styles.code,
-        type === 'button' && styles.button,
-        type === 'error' && styles.error,
-        style,
-      ]}
-      {...rest}
-    />
-  );
-}
 
 const styles = StyleSheet.create({
   small: {
@@ -126,3 +99,37 @@ const styles = StyleSheet.create({
     color: Brand.danger,
   },
 });
+
+const TYPE_STYLE_MAP = {
+  default: styles.default,
+  title: styles.title,
+  headline: styles.headline,
+  sectionTitle: styles.sectionTitle,
+  small: styles.small,
+  smallBold: styles.smallBold,
+  caption: styles.caption,
+  eyebrow: styles.eyebrow,
+  subtitle: styles.subtitle,
+  link: styles.link,
+  linkPrimary: styles.linkPrimary,
+  code: styles.code,
+  button: styles.button,
+  error: styles.error,
+} as const;
+
+export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
+  const theme = useTheme();
+  const colorStyle = useMemo(
+    () => ({ color: themeColor ? theme[themeColor] : theme.text }),
+    [theme, themeColor]
+  );
+
+  return (
+    <Text
+      allowFontScaling
+      maxFontSizeMultiplier={1.5}
+      style={[colorStyle, TYPE_STYLE_MAP[type], style]}
+      {...rest}
+    />
+  );
+}

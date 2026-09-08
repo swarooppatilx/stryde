@@ -42,12 +42,13 @@ interface ActivityEntity {
 }
 
 const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const PAGE_SIZE = 100;
 
-function buildActivitiesQuery(wallet?: string): string {
-  if (wallet && !HEX_ADDRESS_RE.test(wallet)) {
-    throw new Error(`Invalid wallet address for subgraph query: ${wallet}`);
+function _buildActivitiesQuery(_wallet?: string): string {
+  if (_wallet && !HEX_ADDRESS_RE.test(_wallet)) {
+    throw new Error(`Invalid wallet address for subgraph query: ${_wallet}`);
   }
-  const where = wallet ? `, where: { user_: { id: "${wallet.toLowerCase()}" } }` : '';
+  const where = _wallet ? `, where: { user_: { id: "${_wallet.toLowerCase()}" } }` : '';
   return `{
   activities(first: 1000, orderBy: timestamp, orderDirection: desc${where}) {
     id
@@ -63,22 +64,62 @@ function buildActivitiesQuery(wallet?: string): string {
 }`;
 }
 
+const ACTIVITIES_QUERY = `
+  query GetActivities($first: Int!, $skip: Int!, $orderBy: String!) {
+    activities(first: $first, skip: $skip, orderBy: $orderBy, orderDirection: desc) {
+      id
+      activityId
+      user { id }
+      activityHash
+      activityType
+      distance
+      duration
+      territoryArea
+      timestamp
+    }
+  }
+`;
+
 /** Returns null (rather than throwing) when no subgraph is configured for the
  * active chain mode, so callers can fall back to the getLogs-based sync path
  * without treating "not deployed here" as an error. Pass `wallet` to filter
  * to a single participant's activities (e.g. challenge settlement). */
 export async function getActivitiesFromSubgraph(
-  wallet?: `0x${string}`
+  _wallet?: `0x${string}`
 ): Promise<SyncedActivity[] | null> {
   const { subgraphUrl } = getActiveConfig();
   if (!subgraphUrl) return null;
 
-  const data = await querySubgraph<{ activities: ActivityEntity[] }>(
-    subgraphUrl,
-    buildActivitiesQuery(wallet)
-  );
+  const allActivities: ActivityEntity[] = [];
+  let skip = 0;
+  let hasMore = true;
 
-  return data.activities.map((a) => {
+  while (hasMore) {
+    const response = await fetch(subgraphUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: ACTIVITIES_QUERY,
+        variables: { first: PAGE_SIZE, skip, orderBy: 'timestamp' },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status}`);
+    }
+
+    const body = (await response.json()) as GraphQLResponse<{ activities: ActivityEntity[] }>;
+    if (body.errors?.length) {
+      throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+    }
+
+    const activities = body.data?.activities ?? [];
+    allActivities.push(...activities);
+    hasMore = activities.length === PAGE_SIZE;
+    skip += PAGE_SIZE;
+  }
+
+  return allActivities.map((a) => {
     const activityType: ActivityType = ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run';
     return {
       activityHash: a.activityHash,
@@ -99,10 +140,22 @@ interface ProfileAvatarEntity {
   avatarCid: string | null;
 }
 
+interface ProfileEntity {
+  id: string;
+  username: string;
+}
+
 const PROFILE_AVATARS_QUERY = `{
   profiles(first: 1000, where: { avatarCid_not: null }) {
     id
     avatarCid
+  }
+}`;
+
+const PROFILES_QUERY = `{
+  profiles(first: 1000) {
+    id
+    username
   }
 }`;
 
@@ -125,4 +178,21 @@ export async function getProfileAvatarsFromSubgraph(): Promise<Map<string, strin
     }
   }
   return byWallet;
+}
+
+/** Returns null (rather than throwing) when no subgraph is configured for the
+ * active chain mode, so callers can fall back to the getLogs-based sync path
+ * without treating "not deployed here" as an error. */
+export async function getProfilesFromSubgraph(): Promise<
+  { wallet: string; username: string }[] | null
+> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const data = await querySubgraph<{ profiles: ProfileEntity[] }>(subgraphUrl, PROFILES_QUERY);
+
+  return data.profiles.map((p) => ({
+    wallet: p.id,
+    username: p.username,
+  }));
 }

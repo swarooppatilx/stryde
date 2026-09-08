@@ -48,3 +48,7 @@ export const FEEL_OPTIONS: { value: ActivityFeel; emoji: string; label: string }
 export function getSportIcon(type: ActivityType | undefined): keyof typeof Ionicons.glyphMap {
   return (type && SPORT_ICONS[type]) || 'walk';
 }
+
+export function getSportLabel(type: ActivityType | undefined): string {
+  return SPORT_TYPES.find((s) => s.type === type)?.label ?? 'Activity';
+}

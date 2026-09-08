@@ -84,7 +84,7 @@ export function useMap() {
     return () => subscription.remove();
   }, [hasLocation, loadLocation]);
 
-  const recenter = () => {
+  const recenter = useCallback(() => {
     if (location) {
       cameraRef.current?.easeTo({
         center: [location.longitude, location.latitude],
@@ -92,29 +92,33 @@ export function useMap() {
         duration: 300,
       });
     }
-  };
+  }, [location]);
 
-  const toggleFollow = () => {
+  const toggleFollow = useCallback(() => {
     setFollowMode((prev) => {
       if (prev === null) return 'default';
       if (prev === 'default') return 'heading';
       return null;
     });
-  };
+  }, []);
 
-  const toggleRoutes = () => {
+  const toggleRoutes = useCallback(() => {
     setShowRoutes((prev) => !prev);
-  };
+  }, []);
 
-  const activityRoutes = showRoutes
-    ? activities
-        .filter((a) => a.polyline)
-        .map((a) => ({
-          id: a.id,
-          coordinates: parsePolyline(a.polyline),
-        }))
-        .filter((r) => r.coordinates.length >= 2)
-    : [];
+  const activityRoutes = useMemo(
+    () =>
+      showRoutes
+        ? activities
+            .filter((a) => a.polyline)
+            .map((a) => ({
+              id: a.id,
+              coordinates: parsePolyline(a.polyline),
+            }))
+            .filter((r) => r.coordinates.length >= 2)
+        : [],
+    [showRoutes, activities]
+  );
 
   return {
     location,

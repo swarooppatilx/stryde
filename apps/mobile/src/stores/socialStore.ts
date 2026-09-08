@@ -1,6 +1,8 @@
 import { services } from '@repo/shared';
+import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { getSportLabel } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
 import { ipfsToHttpUrl } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
@@ -8,6 +10,16 @@ import { useProfileStore } from '@/stores/profileStore';
 import type { Activity, User } from '@/types';
 import { mergeLocalActivities } from '@/utils/socialFeed';
 import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
+
+/**
+ * getCurrentUserId() is checksummed (from Privy/viem) while activity.userId /
+ * user.id often come from the subgraph, which returns lowercase addresses —
+ * so exact string equality between the two fails even when they refer to the
+ * same wallet.
+ */
+function sameAddress(a: string | undefined, b: string | undefined): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
 
 export interface SocialUser extends User {
   bio?: string;
@@ -33,12 +45,12 @@ function isVisibleToViewer(
   viewerId: string,
   following: string[]
 ): boolean {
-  if (activity.userId.toLowerCase() === viewerId.toLowerCase()) return true;
+  if (sameAddress(activity.userId, viewerId)) return true;
   switch (activity.privacy) {
     case 'only_me':
       return false;
     case 'followers':
-      return following.includes(activity.userId);
+      return following.some((f) => sameAddress(f, activity.userId));
     default:
       return true;
   }
@@ -109,8 +121,8 @@ export const useSocialStore = create<SocialState>()(
             following: 0,
           }));
           set({ users: socialUsers });
-        } catch {
-          // ignore — leave users empty
+        } catch (e) {
+          console.warn('[Social] Failed to fetch users:', e);
         }
       },
 
@@ -175,8 +187,8 @@ export const useSocialStore = create<SocialState>()(
               ),
             };
           });
-        } catch {
-          // ignore — leave activities as-is
+        } catch (e) {
+          console.warn('[Social] Failed to fetch activities:', e);
         }
       },
 
@@ -201,7 +213,7 @@ export const useSocialStore = create<SocialState>()(
       addComment: (activityId: string, text: string) =>
         set((state) => {
           const comment: SocialComment = {
-            id: `comment-${Date.now()}`,
+            id: `comment-${Date.now()}-${Crypto.randomUUID().slice(0, 8)}`,
             userId: getCurrentUserId(),
             text,
             createdAt: new Date(),
@@ -243,13 +255,13 @@ export const useSocialStore = create<SocialState>()(
 
       toggleFollow: (userId: string) =>
         set((state) => {
-          const isFollowing = state.following.includes(userId);
+          const isFollowing = state.following.some((id) => sameAddress(id, userId));
           const updatedFollowing = isFollowing
-            ? state.following.filter((id) => id !== userId)
+            ? state.following.filter((id) => !sameAddress(id, userId))
             : [...state.following, userId];
 
           const updatedUsers = state.users.map((u) => {
-            if (u.id !== userId) return u;
+            if (!sameAddress(u.id, userId)) return u;
             return {
               ...u,
               followers: isFollowing ? u.followers - 1 : u.followers + 1,
@@ -259,7 +271,7 @@ export const useSocialStore = create<SocialState>()(
           return { following: updatedFollowing, users: updatedUsers };
         }),
 
-      isFollowing: (userId: string) => get().following.includes(userId),
+      isFollowing: (userId: string) => get().following.some((id) => sameAddress(id, userId)),
 
       getFeed: () => {
         const { activities, following } = get();
@@ -281,16 +293,21 @@ export const useSocialStore = create<SocialState>()(
         const { activities, following } = get();
         const viewerId = getCurrentUserId();
         const q = query.toLowerCase();
+        // Chain-sourced activities from other users have no `name` (the subgraph's
+        // Activity entity has no name/title field and the on-chain contract event
+        // doesn't emit one either), so fall back to a sport-type label so they're
+        // still searchable.
         return activities.filter(
           (a) =>
-            (a.name || '').toLowerCase().includes(q) && isVisibleToViewer(a, viewerId, following)
+            (a.name || getSportLabel(a.activityType)).toLowerCase().includes(q) &&
+            isVisibleToViewer(a, viewerId, following)
         );
       },
 
       getUserById: (id: string) => {
         const { users } = get();
-        const user = users.find((u) => u.id.toLowerCase() === id.toLowerCase());
-        if (id.toLowerCase() === getCurrentUserId().toLowerCase()) {
+        const user = users.find((u) => sameAddress(u.id, id));
+        if (sameAddress(id, getCurrentUserId())) {
           const profile = useProfileStore.getState();
           return {
             ...user,
@@ -314,7 +331,7 @@ export const useSocialStore = create<SocialState>()(
         const { activities, following } = get();
         const viewerId = getCurrentUserId();
         return activities
-          .filter((a) => a.userId === userId && isVisibleToViewer(a, viewerId, following))
+          .filter((a) => sameAddress(a.userId, userId) && isVisibleToViewer(a, viewerId, following))
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       },
 
@@ -326,7 +343,14 @@ export const useSocialStore = create<SocialState>()(
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
         if (version < 4) {
-          return null;
+          const state = persistedState as Record<string, unknown>;
+          return {
+            ...state,
+            activities: (state.activities as unknown[]) ?? [],
+            users: (state.users as Record<string, unknown>[]) ?? [],
+            following: (state.following as `0x${string}`[]) ?? [],
+            blockedUsers: (state.blockedUsers as `0x${string}`[]) ?? [],
+          };
         }
         return persistedState;
       },

@@ -51,7 +51,7 @@ interface IChallengeRegistry {
     // View functions
     function getChallenge(uint256 challengeId) external view returns (Challenge memory);
     function getChallengeCount() external view returns (uint256);
-    function getUserChallenges(address user) external view returns (uint256[] memory);
+    function getUserChallenges(address user, uint256 offset, uint256 limit) external view returns (uint256[] memory);
 
     // Write functions
     function createChallenge(address opponent, uint8 activityType, uint256 targetMetric, uint256 duration)

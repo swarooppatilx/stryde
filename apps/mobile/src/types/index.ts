@@ -1,16 +1,6 @@
-export type ActivityType =
-  | 'run'
-  | 'ride'
-  | 'walk'
-  | 'hike'
-  | 'swim'
-  | 'yoga'
-  | 'workout'
-  | 'hiit'
-  | 'dance'
-  | 'climb'
-  | 'skate'
-  | 'row';
+import type { ActivityType } from '@repo/shared/types';
+
+export type { ActivityType };
 
 export type ActivityFeel = 'great' | 'good' | 'ok' | 'bad' | 'terrible';
 

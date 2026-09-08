@@ -3,12 +3,18 @@ import { Hono } from 'hono';
 export const notifications = new Hono();
 
 notifications.post('/push', async (c) => {
-  // TODO: send push notification via Expo
-  // Expo push token + message
-  await c.req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
 
-  return c.json({
-    sent: true,
-    tickets: [],
-  });
+  return c.json(
+    {
+      error: 'Push notifications not yet implemented',
+      received: body,
+    },
+    501
+  );
 });
