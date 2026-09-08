@@ -26,6 +26,7 @@ import { FEEL_OPTIONS } from '@/constants/activity';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
@@ -48,6 +49,7 @@ type Params = {
 export default function CreateActivityScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const params = useLocalSearchParams<Params>();
   const saveActivity = useActivityStore((s) => s.saveActivity);
   const updateActivity = useActivityStore((s) => s.updateActivity);
@@ -352,7 +354,7 @@ export default function CreateActivityScreen() {
                   <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                     Distance
                   </ThemedText>
-                  <ThemedText type="smallBold">{formatDistance(distance)}</ThemedText>
+                  <ThemedText type="smallBold">{formatDistance(distance, unitSystem)}</ThemedText>
                 </ThemedView>
                 <ThemedView style={styles.stat}>
                   <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -365,7 +367,9 @@ export default function CreateActivityScreen() {
                     <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                       Territory
                     </ThemedText>
-                    <ThemedText type="smallBold">{formatArea(territoryArea)}</ThemedText>
+                    <ThemedText type="smallBold">
+                      {formatArea(territoryArea, unitSystem)}
+                    </ThemedText>
                   </ThemedView>
                 )}
               </ThemedView>

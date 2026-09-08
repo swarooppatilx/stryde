@@ -18,6 +18,7 @@ import { getSportIcon } from '@/constants/activity';
 import { MAP_STYLES } from '@/constants/config';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useActivity } from '@/hooks/useActivity';
 import { useActivityStore } from '@/stores/activityStore';
 import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
@@ -25,6 +26,7 @@ import { computePersonalRecords } from '@/utils/profile';
 
 export default function ActivitySummaryScreen() {
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const cameraRef = useRef<CameraRef>(null);
   const {
     activity,
@@ -230,7 +232,9 @@ export default function ActivitySummaryScreen() {
                 <ThemedText type="small" style={{ color: theme.textSecondary }}>
                   Distance
                 </ThemedText>
-                <ThemedText type="subtitle">{formatDistance(activity.distance)}</ThemedText>
+                <ThemedText type="subtitle">
+                  {formatDistance(activity.distance, unitSystem)}
+                </ThemedText>
               </ThemedView>
               <ThemedView style={styles.stat}>
                 <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -243,7 +247,7 @@ export default function ActivitySummaryScreen() {
                   Pace
                 </ThemedText>
                 <ThemedText type="subtitle">
-                  {formatPace(activity.distance, activity.duration)}
+                  {formatPace(activity.distance, activity.duration, unitSystem)}
                 </ThemedText>
               </ThemedView>
               <ThemedView style={styles.stat}>
@@ -251,7 +255,7 @@ export default function ActivitySummaryScreen() {
                   Territory
                 </ThemedText>
                 <ThemedText type="subtitle">
-                  {activity.territory ? formatArea(activity.territoryArea) : '—'}
+                  {activity.territory ? formatArea(activity.territoryArea, unitSystem) : '—'}
                 </ThemedText>
               </ThemedView>
             </ThemedView>

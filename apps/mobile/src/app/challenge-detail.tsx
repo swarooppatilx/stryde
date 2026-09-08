@@ -20,6 +20,7 @@ import { ThemedView } from '@/components/themed-view';
 import { ENV, getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
@@ -35,6 +36,7 @@ export default function ChallengeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const { wallet } = useViemWallet(ENV.CHAIN_MODE);
   const { transact } = useTransactor();
   const getUserById = useSocialStore((s) => s.getUserById);
@@ -204,7 +206,7 @@ export default function ChallengeDetailScreen() {
           <ThemedView style={[styles.statsRow, { backgroundColor: theme.backgroundElement }]}>
             <ThemedView style={styles.statItem}>
               <ThemedText style={[styles.statValue, { color: theme.text }]}>
-                {formatDistance(Number(challenge.targetMetric))}
+                {formatDistance(Number(challenge.targetMetric), unitSystem)}
               </ThemedText>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                 Target
