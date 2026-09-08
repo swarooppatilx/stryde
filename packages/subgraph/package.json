@@ -1,0 +1,16 @@
+{
+  "name": "@repo/subgraph",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@graphprotocol/graph-ts": "^0.38.1"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "^0.93.2"
+  }
+}

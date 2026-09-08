@@ -1,0 +1,32 @@
+# Compiler files
+cache/
+out/
+
+# Commonly ignored directories
+.logs/
+.ignore/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Docs
+docs/
+
+# Dotenv file
+.env
+.env.*
+!.env.example
+
+# Foundry lockfile (re-resolved in CI from submodules)
+foundry.lock
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# JS tooling (if mixed into the repo later)
+node_modules/
