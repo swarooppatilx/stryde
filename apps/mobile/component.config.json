@@ -1,0 +1,20 @@
+{
+  "$schema": "https://reacticx.com/schema/component.config.json",
+  "outDir": "src/components",
+  "structure": "flat",
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/utils",
+    "hooks": "@/hooks"
+  },
+  "paths": {
+    "utils": "src/utils",
+    "hooks": "src/hooks",
+    "types": "src/types",
+    "examples": "src/examples"
+  },
+  "include": {
+    "dependencies": true
+  },
+  "installDependencies": "prompt"
+}
