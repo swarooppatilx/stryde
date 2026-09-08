@@ -5,6 +5,8 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import type { Chain } from 'viem';
+import { baseSepolia, sepolia } from 'viem/chains';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AppErrorBoundary, AppErrorFallback } from '@/components/error-boundary';
 import { ThemeProvider } from '@/components/theme-provider';
@@ -13,6 +15,16 @@ import { useChainSync } from '@/hooks/useChainSync';
 import { usePrivyMetadataSync } from '@/hooks/usePrivyMetadataSync';
 import { useProtectedRoute } from '@/hooks/useProtectedRoute';
 import { useSocialStore } from '@/stores/socialStore';
+
+// Privy's default supportedChains list puts mainnet first, and "the [embedded]
+// wallet will automatically default to the first supplied supportedChain" —
+// without this, the embedded wallet stays on mainnet regardless of our own
+// CHAIN_MODE, and every write silently fails with a chain-mismatch error the
+// moment viem notices the wallet's actual chain doesn't match the tx target.
+// Local mode never touches Privy's wallet (see useViemWallet), so the value
+// here is inconsequential there — sepolia is just a harmless default.
+const PRIVY_SUPPORTED_CHAINS: [Chain, ...Chain[]] =
+  ENV.CHAIN_MODE === 'base-sepolia' ? [baseSepolia] : [sepolia];
 
 SplashScreen.preventAutoHideAsync();
 setChainMode(ENV.CHAIN_MODE);
@@ -98,6 +110,7 @@ export default function RootLayout() {
         key={privyInstanceKey}
         appId={ENV.PRIVY_APP_ID}
         clientId={ENV.PRIVY_CLIENT_ID}
+        supportedChains={PRIVY_SUPPORTED_CHAINS}
         config={{
           embedded: {
             ethereum: {

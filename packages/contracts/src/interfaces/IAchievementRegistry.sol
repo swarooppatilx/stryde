@@ -10,6 +10,7 @@ interface IAchievementRegistry {
     error ZeroAddress();
     error EmptyAchievement();
     error SoulboundTransfer();
+    error AlreadyMinted();
 
     // Struct
     struct Achievement {
@@ -22,4 +23,5 @@ interface IAchievementRegistry {
     function getTokenCount(address recipient) external view returns (uint256);
     function getTokenIds(address recipient) external view returns (uint256[] memory);
     function getTokenAchievement(uint256 tokenId) external view returns (bytes32);
+    function hasMinted(address recipient, bytes32 achievementId) external view returns (bool);
 }
