@@ -1,16 +1,16 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { activities } from './routes/activities';
-import { health } from './routes/health';
-import { ipfs } from './routes/ipfs';
-import { notifications } from './routes/notifications';
+import { activities } from './routes/activities.js';
+import { health } from './routes/health.js';
+import { ipfs } from './routes/ipfs.js';
+import { notifications } from './routes/notifications.js';
 
 const app = new Hono().basePath('/api');
 
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin: string) => origin.trim())
   .filter(Boolean);
 
 app.use('*', logger());

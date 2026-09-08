@@ -30,6 +30,7 @@ coverage
 out/
 build
 dist
+packages/subgraph/generated
 
 # Contracts (Foundry)
 packages/contracts/lib/
