@@ -1,34 +1,37 @@
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandWordmark } from '@/components/brand';
 import { AppButton } from '@/components/button';
+import { OnboardingBackgroundPlaceholder } from '@/components/onboarding-background-placeholder';
 import { ThemedText } from '@/components/themed-text';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 
 const SLIDES = [
   {
-    icon: 'footsteps' as const,
+    image: require('@/assets/images/onboarding-tracking.png'),
     title: 'Track every mile',
     body: 'Record runs, rides, hikes and walks with live GPS tracking, pace, and elevation.',
   },
   {
-    icon: 'grid' as const,
+    image: require('@/assets/images/onboarding-tracking.png'),
     title: 'Capture real-world territory',
     body: 'Every route you complete claims the ground you covered. Explore to expand your map.',
   },
   {
-    icon: 'shield-checkmark' as const,
+    image: require('@/assets/images/onboarding-feed.png'),
     title: 'Own your data. Forever.',
     body: 'Activities and territory are yours - verified and portable, not locked in someone else’s app.',
-  },
-  {
-    icon: 'wallet' as const,
-    title: "Sign in with email, that's it.",
-    body: 'No passwords, no seed phrases, no extensions to install.',
   },
 ];
 
@@ -38,16 +41,34 @@ export default function OnboardingScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const { width: screenWidth } = useWindowDimensions();
 
-  const handleContinue = () => {
+  const activeSlide = SLIDES[index];
+
+  const goToSlide = (next: number) => {
+    scrollRef.current?.scrollTo({ x: next * screenWidth, animated: true });
+    setIndex(next);
+  };
+
+  const handleGetStarted = () => {
+    router.replace('/login');
+  };
+
+  const handleLogin = () => {
     router.replace('/login');
   };
 
   return (
     <View style={styles.container}>
+      {/* Placeholder — swap for a real background photo when one is ready, see
+          onboarding-background-placeholder.tsx for the exact replacement. */}
+      <Image
+        source={require('@/assets/images/onboarding_bg.webp')}
+        resizeMode="cover"
+        style={StyleSheet.absoluteFill}
+      />
       <LinearGradient
-        colors={[Brand.primary, Brand.primaryPressed]}
+        colors={['rgba(11,11,12,0.35)', 'rgba(11,11,12,0.8)']}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <SafeAreaView style={styles.safeArea}>
@@ -67,31 +88,43 @@ export default function OnboardingScreen() {
           style={styles.carousel}
         >
           {SLIDES.map((slide) => (
-            <View key={slide.title} style={[styles.slide, { width: screenWidth }]}>
-              <View style={styles.iconCircle}>
-                <Ionicons name={slide.icon} size={40} color={Brand.white} />
+            <View key={slide.title} style={[styles.slideVisual, { width: screenWidth }]}>
+              <View style={styles.phoneFrame}>
+                <Image source={slide.image} style={styles.phoneImage} resizeMode="cover" />
               </View>
-              <ThemedText type="title" style={styles.slideTitle}>
-                {slide.title}
-              </ThemedText>
-              <ThemedText style={styles.slideBody}>{slide.body}</ThemedText>
             </View>
           ))}
         </ScrollView>
 
         <View style={styles.dots}>
           {SLIDES.map((slide, i) => (
-            <View
+            <TouchableOpacity
               key={slide.title}
-              style={[styles.dot, i === index ? styles.dotActive : styles.dotInactive]}
-            />
+              onPress={() => goToSlide(i)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Go to slide ${i + 1} of ${SLIDES.length}`}
+              accessibilityState={{ selected: i === index }}
+            >
+              <View style={[styles.dot, i === index ? styles.dotActive : styles.dotInactive]} />
+            </TouchableOpacity>
           ))}
         </View>
 
+        <Animated.View key={index} entering={FadeIn.duration(220)} style={styles.textArea}>
+          <ThemedText type="title" style={styles.slideTitle}>
+            {activeSlide.title}
+          </ThemedText>
+          <ThemedText style={styles.slideBody}>{activeSlide.body}</ThemedText>
+        </Animated.View>
+
         <View style={styles.footer}>
-          <AppButton variant="secondary" style={styles.joinButton} onPress={handleContinue}>
-            Join for free
+          <AppButton variant="secondary" style={styles.joinButton} onPress={handleGetStarted}>
+            Get Started
           </AppButton>
+          <TouchableOpacity onPress={handleLogin} hitSlop={8} activeOpacity={0.7}>
+            <ThemedText style={styles.loginLink}>Login</ThemedText>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     </View>
@@ -112,37 +145,32 @@ const styles = StyleSheet.create({
   carousel: {
     flex: 1,
   },
-  slide: {
+  slideVisual: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.five,
-    gap: Spacing.three,
   },
-  iconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.two,
+  phoneFrame: {
+    width: 210,
+    height: 446,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.25)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 12,
   },
-  slideTitle: {
-    color: Brand.white,
-    textAlign: 'center',
-    fontSize: 28,
-  },
-  slideBody: {
-    color: Brand.white,
-    textAlign: 'center',
-    opacity: 0.9,
-    lineHeight: 22,
+  phoneImage: {
+    width: '100%',
+    height: '100%',
   },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: Spacing.one,
-    marginBottom: Spacing.four,
+    marginBottom: Spacing.three,
   },
   dot: {
     width: 8,
@@ -156,13 +184,36 @@ const styles = StyleSheet.create({
   dotInactive: {
     backgroundColor: 'rgba(255,255,255,0.4)',
   },
+  textArea: {
+    paddingHorizontal: Spacing.five,
+    gap: Spacing.two,
+    minHeight: 96,
+  },
+  slideTitle: {
+    color: Brand.white,
+    textAlign: 'center',
+    fontSize: 28,
+  },
+  slideBody: {
+    color: Brand.white,
+    textAlign: 'center',
+    opacity: 0.9,
+    lineHeight: 22,
+  },
   footer: {
     paddingHorizontal: Spacing.five,
+    paddingTop: Spacing.four,
     paddingBottom: Spacing.four,
     gap: Spacing.three,
     alignItems: 'center',
   },
   joinButton: {
     borderRadius: BorderRadius.full,
+  },
+  loginLink: {
+    color: Brand.white,
+    fontWeight: '600',
+    fontSize: 16,
+    padding: Spacing.one,
   },
 });

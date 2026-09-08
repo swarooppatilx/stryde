@@ -19,7 +19,7 @@ import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ENV } from '@/constants/config';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { updatePrivyMetadata } from '@/services/profileService';
@@ -219,9 +219,24 @@ export default function ProfileSetupScreen() {
             ) : (
               <View style={styles.backBtn} />
             )}
-            <ThemedText type="small" style={{ color: theme.brand.primary }}>
-              {STEPS.indexOf(step) + 1}/{STEPS.length}
-            </ThemedText>
+            <View
+              style={styles.progressRow}
+              accessibilityRole="progressbar"
+              accessibilityLabel={`Step ${STEPS.indexOf(step) + 1} of ${STEPS.length}`}
+            >
+              {STEPS.map((s, i) => (
+                <View
+                  key={s}
+                  style={[
+                    styles.progressSegment,
+                    {
+                      backgroundColor:
+                        i <= STEPS.indexOf(step) ? theme.brand.primary : theme.border,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
             <View style={styles.backBtn} />
           </ThemedView>
 
@@ -277,7 +292,7 @@ export default function ProfileSetupScreen() {
                   style={[
                     styles.dateButton,
                     {
-                      backgroundColor: `${theme.brand.primary}10`,
+                      backgroundColor: tint(theme.brand.primary, 0.06),
                       borderColor: theme.brand.primary,
                     },
                   ]}
@@ -286,7 +301,7 @@ export default function ProfileSetupScreen() {
                 >
                   <ThemedText
                     style={{
-                      color: birthday ? theme.brand.primary : `${theme.brand.primary}80`,
+                      color: birthday ? theme.brand.primary : tint(theme.brand.primary, 0.5),
                       fontSize: 16,
                     }}
                   >
@@ -337,10 +352,10 @@ export default function ProfileSetupScreen() {
                           {
                             backgroundColor: selected
                               ? theme.brand.primary
-                              : `${theme.brand.primary}10`,
+                              : tint(theme.brand.primary, 0.06),
                             borderColor: selected
                               ? theme.brand.primary
-                              : `${theme.brand.primary}30`,
+                              : tint(theme.brand.primary, 0.19),
                           },
                         ]}
                         onPress={() => setGender(option.value)}
@@ -405,6 +420,17 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  progressRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: Spacing.one,
+    marginHorizontal: Spacing.two,
+  },
+  progressSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: BorderRadius.full,
   },
   content: {
     flex: 1,

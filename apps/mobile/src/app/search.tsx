@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SearchBar } from '@/components/search-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
@@ -71,27 +72,13 @@ export default function SearchScreen() {
           >
             <Ionicons name="chevron-back" size={22} color={theme.text} />
           </TouchableOpacity>
-          <View style={[styles.inputWrapper, { backgroundColor: theme.backgroundElement }]}>
-            <Ionicons name="search-outline" size={18} color={theme.textSecondary} />
-            <TextInput
-              style={[styles.input, { color: theme.text }]}
-              placeholder="Search people, activities..."
-              placeholderTextColor={theme.textSecondary}
-              value={query}
-              onChangeText={setQuery}
-              autoFocus
-              returnKeyType="search"
-            />
-            {query.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setQuery('')}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-              >
-                <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          <SearchBar
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search people, activities..."
+            autoFocus
+            style={styles.inputWrapper}
+          />
         </ThemedView>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -211,17 +198,8 @@ const styles = StyleSheet.create({
   },
   inputWrapper: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
     borderRadius: BorderRadius.lg,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    padding: 0,
+    borderWidth: 0,
   },
   scroll: {
     paddingVertical: Spacing.two,

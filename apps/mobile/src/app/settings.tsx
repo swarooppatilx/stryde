@@ -415,7 +415,7 @@ export default function SettingsScreen() {
               </List.Item>
             </List>
           ) : null}
-          {ENV.USE_SMART_WALLET && (
+          {__DEV__ && ENV.USE_SMART_WALLET && (
             <List>
               <List.Item
                 key="test-gasless"

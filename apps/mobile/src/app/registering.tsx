@@ -120,7 +120,7 @@ export default function RegisteringScreen() {
           <ThemedText type="headline" style={styles.title}>
             Setting up your profile
           </ThemedText>
-          <ThemedText type="small" style={[styles.status, { color: 'rgba(255,255,255,0.5)' }]}>
+          <ThemedText type="small" style={[styles.status, { color: theme.textSecondary }]}>
             {status}
           </ThemedText>
           {failed && (

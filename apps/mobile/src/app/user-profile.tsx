@@ -1,9 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { NumberFlow } from '@/components/number-flow';
+import {
+  AnimatedScrollView,
+  HeaderComponentWrapper,
+  HeaderNavBar,
+} from '@/components/parallax-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
@@ -64,10 +71,40 @@ export default function UserProfileScreen() {
 
   return (
     <ThemedView type="background" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <ThemedView style={styles.header}>
+      <AnimatedScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        headerMaxHeight={240}
+        topBarHeight={90}
+        renderHeaderComponent={() => (
+          <HeaderComponentWrapper>
+            <LinearGradient
+              colors={[Brand.primary, Brand.primaryPressed]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.parallaxAvatarWrap}>
+              {user.avatar ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
+                </View>
+              )}
+            </View>
+          </HeaderComponentWrapper>
+        )}
+        renderOveralComponent={() => (
+          <View style={styles.parallaxOverlay}>
+            <ThemedText style={[styles.name, { color: Brand.white }]}>{renderedName}</ThemedText>
+            <ThemedText type="small" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              @{user.username}
+            </ThemedText>
+          </View>
+        )}
+        renderTopNavBarComponent={() => (
+          <HeaderNavBar headerHeight={90} tint={theme.isDark ? 'dark' : 'light'} intensity={80}>
             <TouchableOpacity
               onPress={() => router.back()}
               activeOpacity={0.7}
@@ -77,23 +114,16 @@ export default function UserProfileScreen() {
             >
               <Ionicons name="chevron-back" size={20} color={theme.text} />
             </TouchableOpacity>
-          </ThemedView>
-
+            <ThemedText type="smallBold" numberOfLines={1}>
+              {renderedName}
+            </ThemedText>
+            <View style={styles.navSpacer} />
+          </HeaderNavBar>
+        )}
+      >
+        <View style={styles.bodyPadding}>
           {/* Profile */}
           <ThemedView style={styles.profileSection}>
-            {user.avatar ? (
-              <Image source={{ uri: user.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, { backgroundColor: theme.brand.primary }]}>
-                <ThemedText style={styles.avatarInitials}>{initials}</ThemedText>
-              </View>
-            )}
-
-            <ThemedText style={styles.name}>{renderedName}</ThemedText>
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              @{user.username}
-            </ThemedText>
-
             {user.bio && (
               <ThemedText type="small" style={[styles.bio, { color: theme.textSecondary }]}>
                 {user.bio}
@@ -112,9 +142,12 @@ export default function UserProfileScreen() {
             {/* Stats */}
             <ThemedView style={[styles.statsRow, { backgroundColor: theme.backgroundElement }]}>
               <ThemedView style={styles.stat}>
-                <ThemedText style={[styles.statVal, { color: theme.text }]}>
-                  {activities.length}
-                </ThemedText>
+                <NumberFlow
+                  value={activities.length}
+                  fontSize={16}
+                  fontWeight="700"
+                  color={theme.text}
+                />
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                   Activities
                 </ThemedText>
@@ -130,9 +163,12 @@ export default function UserProfileScreen() {
               </ThemedView>
               <ThemedView style={[styles.statDivider, { backgroundColor: theme.border }]} />
               <ThemedView style={styles.stat}>
-                <ThemedText style={[styles.statVal, { color: theme.text }]}>
-                  {user.followers}
-                </ThemedText>
+                <NumberFlow
+                  value={user.followers}
+                  fontSize={16}
+                  fontWeight="700"
+                  color={theme.text}
+                />
                 <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                   Followers
                 </ThemedText>
@@ -216,8 +252,8 @@ export default function UserProfileScreen() {
               })
             )}
           </ThemedView>
-        </ScrollView>
-      </SafeAreaView>
+        </View>
+      </AnimatedScrollView>
     </ThemedView>
   );
 }
@@ -225,21 +261,29 @@ export default function UserProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  scroll: { gap: Spacing.three },
+  scroll: { paddingBottom: Spacing.three },
+  bodyPadding: { gap: Spacing.three },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.one,
-  },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: BorderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  navSpacer: { width: 36 },
+
+  /* Parallax Header */
+  parallaxAvatarWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  parallaxOverlay: {
+    alignItems: 'center',
+    gap: Spacing.half,
+    paddingBottom: Spacing.three,
   },
 
   profileSection: { alignItems: 'center', gap: Spacing.one, paddingHorizontal: Spacing.four },
@@ -281,7 +325,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   stat: { flex: 1, alignItems: 'center', gap: 2 },
-  statVal: { fontSize: 18, fontWeight: '700' },
+  statVal: { fontSize: 16, fontWeight: '700' },
   statDivider: { width: StyleSheet.hairlineWidth, height: 32 },
 
   followBtn: {

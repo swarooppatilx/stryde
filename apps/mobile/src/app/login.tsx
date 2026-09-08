@@ -2,26 +2,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLoginWithEmail } from '@privy-io/expo';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { BrandWordmark } from '@/components/brand';
 import { AppButton } from '@/components/button';
 import { OtpInput } from '@/components/otp-input';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 const RESEND_SECONDS = 30;
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const [otpResetKey, setOtpResetKey] = useState(0);
   const { sendCode, loginWithCode, state } = useLoginWithEmail();
   const router = useRouter();
   const theme = useTheme();
@@ -43,26 +49,21 @@ export default function LoginScreen() {
 
   const handleLogin = useCallback(
     async (value: string) => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
       setError(null);
       try {
         await loginWithCode({ code: value, email: email.trim() });
         router.replace('/');
       } catch (_err) {
         setError('Invalid code. Please try again.');
-        setCode('');
+        setOtpResetKey((k) => k + 1);
+      } finally {
+        submittingRef.current = false;
       }
     },
     [email, loginWithCode, router]
   );
-
-  useEffect(() => {
-    if (code.length === 6 && !submittingRef.current) {
-      submittingRef.current = true;
-      handleLogin(code).finally(() => {
-        submittingRef.current = false;
-      });
-    }
-  }, [code, handleLogin]);
 
   const handleSendCode = async () => {
     if (!email.trim()) {
@@ -82,7 +83,7 @@ export default function LoginScreen() {
 
   const handleResend = async () => {
     if (secondsLeft > 0) return;
-    setCode('');
+    setOtpResetKey((k) => k + 1);
     setError(null);
     setSecondsLeft(RESEND_SECONDS);
     try {
@@ -105,7 +106,7 @@ export default function LoginScreen() {
               style={[styles.backButton, { backgroundColor: theme.backgroundElement }]}
               onPress={() => {
                 setCodeSent(false);
-                setCode('');
+                setOtpResetKey((k) => k + 1);
                 setError(null);
               }}
               hitSlop={8}
@@ -124,7 +125,26 @@ export default function LoginScreen() {
               </ThemedText>
 
               <View style={styles.otpBox}>
-                <OtpInput value={code} onChange={setCode} />
+                <OtpInput
+                  key={otpResetKey}
+                  otpCount={6}
+                  enableAutoFocus
+                  editable={!isSubmitting}
+                  error={!!error}
+                  onInputFinished={handleLogin}
+                  animationVariant="fadeSlideUp"
+                  inputWidth={44}
+                  inputHeight={52}
+                  inputBorderRadius={BorderRadius.md}
+                  focusedColor={theme.text}
+                  textStyle={{ color: theme.text }}
+                  focusedBackgroundColor={theme.backgroundElement}
+                  unfocusedBackgroundColor={theme.backgroundElement}
+                  focusedBorderColor={theme.brand.primary}
+                  unfocusedBorderColor={theme.border}
+                  errorBackgroundColor={theme.backgroundElement}
+                  errorBorderColor={Brand.danger}
+                />
               </View>
 
               {error ? (
@@ -153,7 +173,7 @@ export default function LoginScreen() {
                   ]}
                 >
                   {secondsLeft > 0
-                    ? `Resend code in 00:${String(secondsLeft).padStart(2, '0')}`
+                    ? `Resend code in 0:${String(secondsLeft).padStart(2, '0')}`
                     : 'Get a new code'}
                 </ThemedText>
               </TouchableOpacity>
@@ -169,12 +189,18 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.content}>
             <View style={styles.wordmark}>
+              <Image
+                source={require('@/assets/images/stryde-emblem.png')}
+                style={styles.emblem}
+                resizeMode="contain"
+              />
               <BrandWordmark width={110} color={theme.text} />
             </View>
+
             <ThemedText type="title" style={styles.title}>
               Get started
             </ThemedText>
@@ -184,7 +210,8 @@ export default function LoginScreen() {
 
             <View style={styles.form}>
               <TextField
-                placeholder="Email address"
+                label="Email"
+                placeholder="you@example.com"
                 value={email}
                 onChangeText={(value) => {
                   setEmail(value);
@@ -194,6 +221,9 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="email"
+                autoFocus
+                returnKeyType="send"
+                onSubmitEditing={handleSendCode}
                 error={error}
               />
 
@@ -230,12 +260,27 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   wordmark: {
+    alignItems: 'center',
     marginBottom: Spacing.four,
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginHorizontal: 'auto',
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: Spacing.three,
   },
   title: {
+    textAlign: 'center',
     marginBottom: Spacing.one,
   },
   subtitle: {
+    textAlign: 'center',
     marginBottom: Spacing.five,
   },
   form: {
@@ -279,5 +324,9 @@ const styles = StyleSheet.create({
   resend: {
     fontWeight: '600',
     marginTop: Spacing.two,
+  },
+  emblem: {
+    width: 29,
+    height: 40,
   },
 });
