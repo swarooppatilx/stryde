@@ -2,6 +2,7 @@ import { decodeEventLog } from 'viem';
 import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
 import { getContracts, getPublicClient } from './client';
+import { getActivitiesFromSubgraph } from './subgraph';
 
 export interface SyncedActivity {
   activityHash: string;
@@ -107,9 +108,21 @@ export async function syncActivitiesFromChain(wallet: `0x${string}`): Promise<Sy
   }
 }
 
-/** Every recorded activity across all users — there's no backend/subgraph yet, so the
- * social feed sources cross-user activity directly from ActivityRecorded logs. */
+/** Every recorded activity across all users, for the cross-user social feed.
+ * Prefers the deployed subgraph (indexed, no fromBlock:0 rescan) when one
+ * exists for the active chain mode; falls back to scanning ActivityRecorded
+ * logs directly for modes with no subgraph (e.g. local Anvil) or if the
+ * subgraph request itself fails. */
 export async function syncAllActivitiesFromChain(): Promise<SyncedActivity[]> {
+  try {
+    const fromSubgraph = await getActivitiesFromSubgraph();
+    if (fromSubgraph) {
+      return fromSubgraph.sort((a, b) => (b.activityId > a.activityId ? 1 : -1));
+    }
+  } catch {
+    // fall through to the on-chain scan below
+  }
+
   const client = getPublicClient();
   const contracts = getContracts();
 

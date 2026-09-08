@@ -6,6 +6,7 @@ export * as ens from './ens';
 export * as moveToEarnToken from './moveToEarnToken';
 export * as profile from './profile';
 export * as season from './season';
+export * as subgraph from './subgraph';
 export * as sync from './sync';
 export * as territory from './territory';
 export * as territoryNFT from './territoryNFT';

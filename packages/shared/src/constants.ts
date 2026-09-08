@@ -7,6 +7,9 @@ export interface ChainConfig {
   chain: Chain;
   chainId: number;
   rpcUrl: string;
+  /** Empty string means no subgraph is deployed for this mode — callers fall
+   * back to reading events directly off-chain (see services/sync.ts). */
+  subgraphUrl: string;
   contracts: {
     profileRegistry: `0x${string}`;
     activityRegistry: `0x${string}`;
@@ -43,6 +46,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     // on-chain but the app would spin for the full 3-minute viem timeout
     // and then report failure). publicnode's endpoint has no such gate.
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    subgraphUrl: 'https://api.studio.thegraph.com/query/1760059/stryde/v0.1.2',
     contracts: {
       profileRegistry: '0xa180433C0818518eda0Ac8c3248dCEE388a689dd',
       activityRegistry: '0xf786Fd52cfCc4c319aC5B43E2F8e856f454Dd5f2',
@@ -58,6 +62,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     chain: baseSepolia,
     chainId: 84532,
     rpcUrl: 'https://sepolia.base.org',
+    subgraphUrl: '',
     contracts: {
       profileRegistry: ZERO_ADDRESS,
       activityRegistry: ZERO_ADDRESS,
@@ -73,6 +78,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     chain: foundry,
     chainId: 31337,
     rpcUrl: DEFAULT_LOCAL_RPC,
+    subgraphUrl: '',
     contracts: {
       profileRegistry: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
       activityRegistry: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
