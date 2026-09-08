@@ -22,12 +22,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Spacing, tint } from '@/constants/theme';
+import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useEnsName } from '@/hooks/useEnsName';
 import type { SocialActivity, SocialUser } from '@/stores/socialStore';
 import { useSocialStore } from '@/stores/socialStore';
-import { formatDistance, formatDuration, getDisplayName } from '@/utils/format';
+import { formatDistance, formatDuration, getDisplayName, getInitials } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { shareRouteImage } from '@/utils/share';
 
@@ -79,12 +79,7 @@ function UserAvatar({
     );
   }
 
-  const initials = name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = getInitials(name);
 
   return (
     <View
@@ -363,10 +358,13 @@ export function FeedCard({
         {/* Territory badge */}
         {activity.territoryArea > 0 && (
           <ThemedView
-            style={[styles.territoryBadge, { backgroundColor: tint(theme.brand.success, 0.1) }]}
+            style={[
+              styles.territoryBadge,
+              { backgroundColor: theme.background, borderColor: theme.border },
+            ]}
           >
-            <Ionicons name="shield-checkmark" size={14} color={theme.brand.success} />
-            <ThemedText type="caption" style={{ color: theme.brand.success }}>
+            <Ionicons name="shield-checkmark-outline" size={14} color={theme.brand.primary} />
+            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
               Territory captured
             </ThemedText>
           </ThemedView>
@@ -542,14 +540,17 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   territoryBadge: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.one,
+    gap: Spacing.one + Spacing.half,
     marginHorizontal: Spacing.three,
     marginTop: Spacing.two,
     paddingVertical: Spacing.one,
-    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: BorderRadius.full,
   },
   socialProof: {
     flexDirection: 'row',
