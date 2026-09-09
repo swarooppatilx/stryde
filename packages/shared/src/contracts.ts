@@ -1,2 +1,2 @@
-export type { ContractName } from './abis';
-export { ABIS } from './abis';
+export type { ContractName } from './abis.js';
+export { ABIS } from './abis.js';
