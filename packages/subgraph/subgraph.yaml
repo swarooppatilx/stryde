@@ -84,12 +84,15 @@ dataSources:
       entities:
         - Season
         - Contribution
+        - SeasonParticipant
       abis:
         - name: SeasonManager
           file: ../contracts/out/SeasonManager.sol/SeasonManager.json
       eventHandlers:
         - event: SeasonStarted(indexed uint256,uint256,uint256)
           handler: handleSeasonStarted
+        - event: SeasonEnded(indexed uint256,uint256,uint256)
+          handler: handleSeasonEnded
         - event: ContributionRecorded(indexed uint256,indexed address,uint256,uint256)
           handler: handleContributionRecorded
       file: src/mappings/SeasonManager.ts

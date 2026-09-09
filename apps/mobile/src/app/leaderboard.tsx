@@ -63,12 +63,14 @@ export default function LeaderboardScreen() {
   const theme = useTheme();
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [seasonActive, setSeasonActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const currentUserId = getCurrentUserId();
 
   const load = useCallback(async () => {
     try {
       const season = await services.season.getCurrentSeason();
+      setError(null);
       setSeasonActive(season.isActive);
       if (!season.isActive) {
         setRows([]);
@@ -91,6 +93,7 @@ export default function LeaderboardScreen() {
       );
     } catch (e) {
       console.warn('[Leaderboard] Failed to load:', e);
+      setError('Failed to load the leaderboard. Check your connection and try again.');
       setRows([]);
     }
   }, []);
@@ -120,6 +123,18 @@ export default function LeaderboardScreen() {
         {rows === null ? (
           <ThemedView style={styles.empty}>
             <ActivityIndicator size="large" />
+          </ThemedView>
+        ) : error ? (
+          <ThemedView style={styles.empty}>
+            <Ionicons name="alert-circle-outline" size={40} color={theme.textSecondary} />
+            <ThemedText type="small" style={{ color: theme.textSecondary, textAlign: 'center' }}>
+              {error}
+            </ThemedText>
+            <TouchableOpacity onPress={load} hitSlop={8}>
+              <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
+                Retry
+              </ThemedText>
+            </TouchableOpacity>
           </ThemedView>
         ) : rows.length === 0 ? (
           <ThemedView style={styles.empty}>

@@ -53,6 +53,12 @@ type Contribution @entity {
   recordedAt: BigInt!
 }
 
+type SeasonParticipant @entity {
+  id: String! # seasonId-participantAddress
+  season: Season!
+  participant: Bytes!
+}
+
 type AchievementDefinition @entity {
   id: Bytes! # achievementId
   name: String!
