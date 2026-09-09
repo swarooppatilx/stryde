@@ -1,7 +1,7 @@
 import { Result } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'expo-safe-area-context';
 import { StyleSheet, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapBottomSheet } from '@/components/map-bottom-sheet';
 import { MapRoute } from '@/components/map-route';

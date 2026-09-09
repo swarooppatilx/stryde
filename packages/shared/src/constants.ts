@@ -1,5 +1,5 @@
 import { baseSepolia, type Chain, foundry, sepolia } from 'viem/chains';
-import type { ActivityType } from './types.js';
+import type { ActivityType } from './types';
 
 export type ChainMode = 'ethereum-sepolia' | 'base-sepolia' | 'local';
 
