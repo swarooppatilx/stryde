@@ -60,15 +60,15 @@ describe('formatPace', () => {
   });
 
   it('calculates pace in min/km', () => {
-    // 5 min/km = 5:00
+    // 5 min/km = 5:00/km
     const pace = formatPace(1000, 300_000); // 300s per 1000m
-    expect(pace).toBe('5:00');
+    expect(pace).toBe('5:00/km');
   });
 
   it('formats fast pace', () => {
     // 3:30/km
     const pace = formatPace(1000, 210_000); // 210s per 1000m
-    expect(pace).toBe('3:30');
+    expect(pace).toBe('3:30/km');
   });
 });
 
