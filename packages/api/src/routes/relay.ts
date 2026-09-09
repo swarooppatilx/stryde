@@ -1,8 +1,19 @@
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { Abi } from 'viem';
 import { getRelayChainConfig } from '../lib/chainConfig.js';
 import { RELAY_ABIS } from '../lib/relayAbis.js';
 import { getRelayerPublicClient, getRelayerWallet } from '../lib/relayer.js';
+
+const API_KEY = process.env.API_KEY;
+
+function requireApiKey(c: Context) {
+  const key = c.req.header('x-api-key');
+  if (!API_KEY || key !== API_KEY) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  return undefined;
+}
 
 export const relay = new Hono();
 
@@ -15,6 +26,8 @@ function getContract(name: string): { address: `0x${string}`; abi: Abi } {
 }
 
 relay.post('/mint-achievement', async (c) => {
+  const auth = requireApiKey(c);
+  if (auth) return auth;
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json({ error: 'Invalid JSON body' }, 400);
@@ -55,6 +68,8 @@ relay.post('/mint-achievement', async (c) => {
 });
 
 relay.post('/mint-reward', async (c) => {
+  const auth = requireApiKey(c);
+  if (auth) return auth;
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json({ error: 'Invalid JSON body' }, 400);
@@ -83,6 +98,8 @@ relay.post('/mint-reward', async (c) => {
 });
 
 relay.post('/mint-territory-nft', async (c) => {
+  const auth = requireApiKey(c);
+  if (auth) return auth;
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json({ error: 'Invalid JSON body' }, 400);
@@ -111,6 +128,8 @@ relay.post('/mint-territory-nft', async (c) => {
 });
 
 relay.post('/start-season', async (c) => {
+  const auth = requireApiKey(c);
+  if (auth) return auth;
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return c.json({ error: 'Invalid JSON body' }, 400);
