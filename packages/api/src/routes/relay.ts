@@ -1,40 +1,17 @@
-import { type ChainMode, getChainConfig } from '@repo/shared/constants';
-import { ABIS } from '@repo/shared/contracts';
 import { Hono } from 'hono';
 import type { Abi } from 'viem';
+import { getRelayChainConfig } from '../lib/chainConfig.js';
+import { RELAY_ABIS } from '../lib/relayAbis.js';
 import { getRelayerPublicClient, getRelayerWallet } from '../lib/relayer.js';
 
 export const relay = new Hono();
 
-const typedAbis = ABIS as Record<string, Abi>;
-
 function getContract(name: string): { address: `0x${string}`; abi: Abi } {
-  const chainId = Number(process.env.RELAYER_CHAIN_ID);
-  const modes: Record<number, ChainMode> = {
-    11155111: 'ethereum-sepolia',
-    84532: 'base-sepolia',
-    31337: 'local',
-  };
-  const mode = modes[chainId];
-  if (!mode) throw new Error(`[relay] Unknown chain ID ${chainId}`);
-  const config = getChainConfig(mode);
-  const contracts = config.contracts as Record<string, `0x${string}`>;
-  const address = contracts[name];
-  const abi = typedAbis[name];
+  const config = getRelayChainConfig();
+  const address = config.contracts[name];
+  const abi = RELAY_ABIS[name as keyof typeof RELAY_ABIS] as Abi;
   if (!address || !abi) throw new Error(`[relay] Unknown contract: ${name}`);
   return { address, abi };
-}
-
-function resolveChain() {
-  const chainId = Number(process.env.RELAYER_CHAIN_ID);
-  const modes: Record<number, ChainMode> = {
-    11155111: 'ethereum-sepolia',
-    84532: 'base-sepolia',
-    31337: 'local',
-  };
-  const mode = modes[chainId];
-  if (!mode) throw new Error(`[relay] Unknown chain ID ${chainId}`);
-  return getChainConfig(mode).chain;
 }
 
 relay.post('/mint-achievement', async (c) => {
@@ -53,7 +30,7 @@ relay.post('/mint-achievement', async (c) => {
   const wallet = getRelayerWallet();
   const publicClient = getRelayerPublicClient();
   const contract = getContract('achievementRegistry');
-  const chain = resolveChain();
+  const chain = getRelayChainConfig().chain;
   const account = wallet.account!.address;
 
   const hash = await wallet.writeContract({
@@ -90,7 +67,7 @@ relay.post('/mint-reward', async (c) => {
   const wallet = getRelayerWallet();
   const publicClient = getRelayerPublicClient();
   const contract = getContract('moveToEarnToken');
-  const chain = resolveChain();
+  const chain = getRelayChainConfig().chain;
   const account = wallet.account!.address;
 
   const hash = await wallet.writeContract({
@@ -118,7 +95,7 @@ relay.post('/mint-territory-nft', async (c) => {
   const wallet = getRelayerWallet();
   const publicClient = getRelayerPublicClient();
   const contract = getContract('territoryNFT');
-  const chain = resolveChain();
+  const chain = getRelayChainConfig().chain;
   const account = wallet.account!.address;
 
   const hash = await wallet.writeContract({
@@ -146,7 +123,7 @@ relay.post('/start-season', async (c) => {
   const wallet = getRelayerWallet();
   const publicClient = getRelayerPublicClient();
   const contract = getContract('seasonManager');
-  const chain = resolveChain();
+  const chain = getRelayChainConfig().chain;
   const account = wallet.account!.address;
 
   const hash = await wallet.writeContract({

@@ -1,6 +1,5 @@
 {
   "framework": null,
-  "outputDirectory": "public",
   "rewrites": [
     {
       "source": "/api/(.*)",
