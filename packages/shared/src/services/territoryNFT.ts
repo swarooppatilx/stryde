@@ -1,4 +1,11 @@
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import {
+  getActiveConfig,
+  getChainMode,
+  getContracts,
+  getPublicClient,
+  type getWalletClient,
+} from './client';
+import { relayMintTerritoryNFT } from './relay';
 
 export async function isMinted(polygonHash: `0x${string}`): Promise<boolean> {
   const client = getPublicClient();
@@ -45,6 +52,9 @@ export async function mintTerritoryNFT(
   polygonHash: `0x${string}`,
   recipient: `0x${string}`
 ): Promise<{ confirmed: boolean }> {
+  if (getChainMode() !== 'local') {
+    return relayMintTerritoryNFT(recipient, polygonHash);
+  }
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();

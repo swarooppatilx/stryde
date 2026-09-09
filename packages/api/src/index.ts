@@ -6,6 +6,7 @@ import { activities } from './routes/activities.js';
 import { health } from './routes/health.js';
 import { ipfs } from './routes/ipfs.js';
 import { notifications } from './routes/notifications.js';
+import { relay } from './routes/relay.js';
 
 const app = new Hono().basePath('/api');
 
@@ -71,6 +72,7 @@ const rateLimiter = async (c: Context, next: Next) => {
 
 app.use('/ipfs/*', rateLimiter);
 app.use('/activities/*', rateLimiter);
+app.use('/relay/*', rateLimiter);
 
 // Lightweight shared-secret gate for write endpoints. Not a substitute for
 // real per-user auth, but stops anonymous scraping/abuse of the IPFS pinning
@@ -98,10 +100,12 @@ const apiKeyGate = async (c: Context, next: Next) => {
 // abuse as the IPFS pinning routes, so it gets the same gate.
 app.use('/ipfs/*', apiKeyGate);
 app.use('/activities/*', apiKeyGate);
+app.use('/relay/*', apiKeyGate);
 
 app.route('/health', health);
 app.route('/activities', activities);
 app.route('/ipfs', ipfs);
 app.route('/notifications', notifications);
+app.route('/relay', relay);
 
 export default app;

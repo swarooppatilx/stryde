@@ -30,3 +30,9 @@ foundry.lock
 
 # JS tooling (if mixed into the repo later)
 node_modules/
+
+# TypeChain
+typechain-types/
+
+# Coverage
+lcov.info

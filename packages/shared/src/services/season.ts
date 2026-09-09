@@ -1,4 +1,11 @@
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import {
+  getActiveConfig,
+  getChainMode,
+  getContracts,
+  getPublicClient,
+  type getWalletClient,
+} from './client';
+import { relayStartSeason } from './relay';
 
 const THIRTY_DAYS_SECONDS = 30n * 24n * 60n * 60n;
 
@@ -80,6 +87,11 @@ export async function ensureActiveSeason(
 ): Promise<SyncedSeason> {
   const current = await getCurrentSeason();
   if (current.isActive) return current;
+
+  if (getChainMode() !== 'local') {
+    await relayStartSeason(30 * 24 * 60 * 60);
+    return getCurrentSeason();
+  }
 
   const contracts = getContracts();
   const config = getActiveConfig();

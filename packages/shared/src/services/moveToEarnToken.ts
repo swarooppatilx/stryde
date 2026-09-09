@@ -1,5 +1,12 @@
 import { parseEventLogs } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import {
+  getActiveConfig,
+  getChainMode,
+  getContracts,
+  getPublicClient,
+  type getWalletClient,
+} from './client';
+import { relayMintReward } from './relay';
 
 export async function getTokenBalance(address: `0x${string}`): Promise<bigint> {
   const client = getPublicClient();
@@ -35,6 +42,10 @@ export async function mintTokenForActivity(
   activityHash: `0x${string}`,
   distance: number
 ): Promise<{ amount: bigint; confirmed: boolean }> {
+  if (getChainMode() !== 'local') {
+    const result = await relayMintReward(recipient, activityHash, distance);
+    return { amount: 0n, confirmed: result.confirmed };
+  }
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();

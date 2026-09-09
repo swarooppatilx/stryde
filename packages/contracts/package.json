@@ -14,8 +14,17 @@
     "lint": "forge fmt --check",
     "fmt": "forge fmt",
     "sizes": "forge build --sizes",
-    "generate:abi": "./scripts/generate-abis.sh",
+    "generate": "./scripts/generate-all.sh",
+    "generate:abi": "./scripts/generate-all.sh",
+    "lint:sol": "solhint 'src/**/*.sol' 'test/**/*.sol' 'script/**/*.sol'",
+    "snapshot": "forge snapshot",
+    "snapshot:check": "forge snapshot --check",
+    "coverage": "forge coverage",
+    "coverage:report": "forge coverage --report lcov",
     "deploy:local": "./scripts/deploy-local.sh",
     "deploy:all": "./scripts/deploy-all.sh"
+  },
+  "devDependencies": {
+    "solhint": "5.0.0"
   }
 }

@@ -110,5 +110,44 @@ for addr in "${CONTRACT_ADDRESSES[@]}"; do
 done
 
 echo ""
-echo "To use these addresses, update packages/shared/src/constants.ts"
-echo "Or set CHAIN_MODE=local in your .env file"
+echo "=== Auto-updating constants.ts ==="
+
+SHARED_CONSTANTS="$SCRIPT_DIR/../../shared/src/constants.ts"
+
+python3 -c "
+import re
+
+with open('$SHARED_CONSTANTS', 'r') as f:
+    content = f.read()
+
+addresses = {}
+raw = '''$(printf '%s\n' "${CONTRACT_ADDRESSES[@]}")'''
+for line in raw.strip().split('\n'):
+    if '=' in line:
+        k, v = line.split('=', 1)
+        addresses[k.strip()] = v.strip()
+
+# Replace addresses in the local: section
+pattern = r'(local: \{[^}]*contracts: \{)([^}]*)(\}\s*,?\s*\})'
+
+def replace_addresses(match):
+    prefix, old_body, suffix = match.groups()
+    new_body = old_body
+    for key, addr in addresses.items():
+        new_body = re.sub(
+            rf'({re.escape(key)}:\s*\x27)[^\x27]*\x27',
+            r'\g<1>' + addr + r'\x27',
+            new_body
+        )
+    return prefix + new_body + suffix
+
+new_content = re.sub(pattern, replace_addresses, content, flags=re.DOTALL)
+
+with open('$SHARED_CONSTANTS', 'w') as f:
+    f.write(new_content)
+
+print('Updated local addresses in constants.ts')
+"
+
+echo ""
+echo "To use these addresses, set CHAIN_MODE=local in your .env file"

@@ -1,5 +1,12 @@
 import { keccak256, toBytes } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import {
+  getActiveConfig,
+  getChainMode,
+  getContracts,
+  getPublicClient,
+  type getWalletClient,
+} from './client';
+import { relayMintAchievement } from './relay';
 
 export interface OnchainAchievement {
   name: string;
@@ -73,6 +80,13 @@ export async function mintAchievement(
   id: string,
   name: string
 ): Promise<{ confirmed: boolean }> {
+  if (getChainMode() !== 'local') {
+    return relayMintAchievement(
+      wallet.account?.address as `0x${string}`,
+      computeAchievementId(id),
+      name
+    );
+  }
   const contracts = getContracts();
   const config = getActiveConfig();
   const client = getPublicClient();
