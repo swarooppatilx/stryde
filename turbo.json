@@ -9,7 +9,15 @@
     },
     "@repo/api#build": {
       "dependsOn": ["^build"],
-      "env": ["NODE_ENV", "CORS_ORIGIN", "API_KEY", "PINATA_API_KEY", "PINATA_SECRET_KEY"],
+      "env": [
+        "NODE_ENV",
+        "CORS_ORIGIN",
+        "API_KEY",
+        "PINATA_API_KEY",
+        "PINATA_SECRET_KEY",
+        "RELAYER_CHAIN_ID",
+        "RELAYER_RPC_URL"
+      ],
       "outputs": ["dist/**"]
     },
     "lint": {
