@@ -7,6 +7,7 @@ import { health } from './routes/health.js';
 import { ipfs } from './routes/ipfs.js';
 import { notifications } from './routes/notifications.js';
 import { relay } from './routes/relay.js';
+import { world } from './routes/world.js';
 
 const app = new Hono().basePath('/api');
 
@@ -102,10 +103,14 @@ app.use('/ipfs/*', apiKeyGate);
 app.use('/activities/*', apiKeyGate);
 app.use('/relay/*', apiKeyGate);
 
+app.use('/world/*', rateLimiter);
+app.use('/world/*', apiKeyGate);
+
 app.route('/health', health);
 app.route('/activities', activities);
 app.route('/ipfs', ipfs);
 app.route('/notifications', notifications);
+app.route('/world', world);
 app.route('/relay', relay);
 
 export default app;

@@ -28,6 +28,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
 import { useViemWallet } from '@/hooks/useViemWallet';
+import { useWorldVerification } from '@/hooks/useWorldVerification';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { territoryService } from '@/services/territoryService';
@@ -88,6 +89,7 @@ export default function ProfileScreen() {
   const totalTerritoryArea = getTotalArea(getCurrentUserId());
   const userPolygons = getUserPolygons(getCurrentUserId());
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const { isVerified, error } = useWorldVerification();
 
   const [activeTab, setActiveTab] = useState<TabKey>('Progress');
   const [avatarUploadStatus, setAvatarUploadStatus] = useState<string | null>(null);
@@ -1196,6 +1198,56 @@ export default function ProfileScreen() {
                   </ThemedView>
                 </ThemedView>
               )}
+
+              {/* World ID Verification */}
+              <ThemedView style={styles.listSection}>
+                <ThemedText
+                  type="eyebrow"
+                  style={[styles.sectionLabel, { color: theme.textSecondary }]}
+                >
+                  Verification
+                </ThemedText>
+                <List>
+                  <List.Item
+                    thumb={
+                      <ListIcon
+                        name={
+                          isVerified
+                            ? 'checkmark-circle'
+                            : error
+                              ? 'alert-circle'
+                              : 'shield-checkmark'
+                        }
+                      />
+                    }
+                    extra={
+                      <ThemedView style={styles.recordExtra}>
+                        <ThemedText
+                          type="small"
+                          style={{
+                            color: error
+                              ? theme.brand.danger
+                              : isVerified
+                                ? theme.brand.success
+                                : theme.textSecondary,
+                          }}
+                        >
+                          {error ? 'Failed' : isVerified ? 'Verified' : 'Not verified'}
+                        </ThemedText>
+                      </ThemedView>
+                    }
+                    onPress={() => router.push('/verify')}
+                    accessibilityRole="button"
+                    accessibilityLabel="World ID verification"
+                  >
+                    {error
+                      ? 'World ID — tap to retry'
+                      : isVerified
+                        ? 'World ID Selfie Check — verified'
+                        : 'World ID Selfie Check'}
+                  </List.Item>
+                </List>
+              </ThemedView>
 
               {/* Logout */}
               <TouchableOpacity

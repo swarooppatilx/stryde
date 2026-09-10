@@ -95,6 +95,7 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
       <Stack.Screen name="search" />
       <Stack.Screen name="user-profile" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="verify" />
     </Stack>
   );
 }

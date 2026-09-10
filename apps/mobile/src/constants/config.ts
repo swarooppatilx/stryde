@@ -1,5 +1,6 @@
 import { type ChainMode, DEFAULT_CHAIN_MODE, getChainConfig } from '@repo/shared';
 import { Platform } from 'react-native';
+import type { WorldIdEnvironment } from '@/types/worldId';
 
 export const ENV = {
   APP_NAME: process.env.EXPO_PUBLIC_APP_NAME || 'Stryde',
@@ -19,6 +20,9 @@ export const ENV = {
   // new users aren't blocked by an empty embedded wallet needing gas — set
   // this env var to 'false' to opt back out to the raw embedded wallet.
   USE_SMART_WALLET: process.env.EXPO_PUBLIC_USE_SMART_WALLET !== 'false',
+  WORLD_APP_ID: process.env.EXPO_PUBLIC_WORLD_APP_ID || '',
+  WORLD_RP_ID: process.env.EXPO_PUBLIC_WORLD_RP_ID || '',
+  WORLD_ENVIRONMENT: (process.env.EXPO_PUBLIC_WORLD_ENVIRONMENT || 'sandbox') as WorldIdEnvironment,
 } as const;
 
 export function getLocalRpcUrl(): string {
