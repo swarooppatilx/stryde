@@ -1,6 +1,0 @@
-{
-  "framework": null,
-  "buildCommand": "yarn workspace @repo/api build",
-  "outputDirectory": "packages/api/dist",
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
-}
