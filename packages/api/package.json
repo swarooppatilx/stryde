@@ -13,10 +13,10 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",
-    "expo-server-sdk": "^7.2.0",
-    "hono": "^4.13.3",
     "@worldcoin/idkit-core": "^4.2.4",
     "@worldcoin/idkit-server": "^1.1.1",
+    "expo-server-sdk": "^7.2.0",
+    "hono": "^4.13.3",
     "viem": "^2.56.3"
   },
   "devDependencies": {

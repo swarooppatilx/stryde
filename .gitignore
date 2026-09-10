@@ -12,12 +12,12 @@ node_modules
 # Local env files
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
+!.env.example
 
 # Testing
 coverage
+app-test/
 
 # Turbo
 .turbo
@@ -48,4 +48,3 @@ yarn-error.log*
 *.pem
 .claude/
 .vscode/
-.env*

@@ -3050,7 +3050,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@noble/hashes@npm:1.8.0, @noble/hashes@npm:^1.8.0, @noble/hashes@npm:~1.8.0":
+"@noble/hashes@npm:1.8.0, @noble/hashes@npm:^1.7.2, @noble/hashes@npm:^1.8.0, @noble/hashes@npm:~1.8.0":
   version: 1.8.0
   resolution: "@noble/hashes@npm:1.8.0"
   checksum: 10c0/06a0b52c81a6fa7f04d67762e08b2c476a00285858150caeaaff4037356dd5e119f45b2a530f638b77a5eeca013168ec1b655db41bae3236cb2e9d511484fc77
@@ -3061,6 +3061,13 @@ __metadata:
   version: 2.4.0
   resolution: "@noble/hashes@npm:2.4.0"
   checksum: 10c0/f5820a38c52886073a69722a030688ad188bbacb822d01554545371259961c2b916266c57c013c2ce5a0d78aec977142fc68fd2a79be4c97b0644fcee9bb35f6
+  languageName: node
+  linkType: hard
+
+"@noble/secp256k1@npm:^2.2.3":
+  version: 2.3.0
+  resolution: "@noble/secp256k1@npm:2.3.0"
+  checksum: 10c0/8f455b57b10ce069e445324ce88603cf2af1b37d741d33ce1ab669b47b464f864b20ec056bbc0c1b18609d27b2e4503bb915052f3d81d357e587b322c5684dbb
   languageName: node
   linkType: hard
 
@@ -4039,6 +4046,8 @@ __metadata:
     "@hono/node-server": "npm:^1.14.1"
     "@repo/typescript-config": "npm:*"
     "@types/node": "npm:26.4.1"
+    "@worldcoin/idkit-core": "npm:^4.2.4"
+    "@worldcoin/idkit-server": "npm:^1.1.1"
     expo-server-sdk: "npm:^7.2.0"
     hono: "npm:^4.13.3"
     tsx: "npm:^4.19.0"
@@ -4903,6 +4912,26 @@ __metadata:
   dependencies:
     tslib: "npm:^2.6.3"
   checksum: 10c0/d20e8d740cfa1f0eac7dce11e8a7a84f1567513a8ff0bd1772724b581a8ca77df3f9600a95047c0d2628335626113fa98367517abd01c1ff49817fccf225a29a
+  languageName: node
+  linkType: hard
+
+"@worldcoin/idkit-core@npm:^4.2.4":
+  version: 4.2.4
+  resolution: "@worldcoin/idkit-core@npm:4.2.4"
+  dependencies:
+    "@noble/hashes": "npm:^1.7.2"
+    "@worldcoin/idkit-server": "npm:1.1.1"
+  checksum: 10c0/9804b1f927162260ee99697d4d6010fa328e5de32eb7cdc12ee0b07ce016d09adf76364f7d98599124ba0865648c9dec8a9fbc3784bc17e1d815cc25ae6b9c53
+  languageName: node
+  linkType: hard
+
+"@worldcoin/idkit-server@npm:1.1.1, @worldcoin/idkit-server@npm:^1.1.1":
+  version: 1.1.1
+  resolution: "@worldcoin/idkit-server@npm:1.1.1"
+  dependencies:
+    "@noble/hashes": "npm:^1.7.2"
+    "@noble/secp256k1": "npm:^2.2.3"
+  checksum: 10c0/639870a572f58b215acd60a3a75426f1b33f5f06472ead19797e0d21d0190561c990e7ea2b1ab572efb7088c2c9804fd63a8cbdf78652d61015d8995cdea85d6
   languageName: node
   linkType: hard
 
@@ -11055,6 +11084,7 @@ __metadata:
     "@shopify/react-native-skia": "npm:2.6.2"
     "@tanstack/react-query": "npm:^5.102.8"
     "@types/react": "npm:~19.2.2"
+    "@worldcoin/idkit-core": "npm:^4.2.4"
     expo: "npm:~57.0.20"
     expo-apple-authentication: "npm:~57.0.1"
     expo-application: "npm:^57.0.2"
