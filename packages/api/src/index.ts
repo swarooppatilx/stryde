@@ -98,10 +98,13 @@ const apiKeyGate = async (c: Context, next: Next) => {
 
 // /activities/validate is the trusted oracle endpoint the client relies on
 // before recording an activity on-chain — at least as high-value a target for
-// abuse as the IPFS pinning routes, so it gets the same gate.
+// abuse as the IPFS pinning routes, so it gets the same gate. /notifications/*
+// sends real push notifications through Expo's API, so an anonymous caller
+// shouldn't be able to spam arbitrary device tokens either.
 app.use('/ipfs/*', apiKeyGate);
 app.use('/activities/*', apiKeyGate);
 app.use('/relay/*', apiKeyGate);
+app.use('/notifications/*', apiKeyGate);
 
 app.use('/world/*', rateLimiter);
 app.use('/world/*', apiKeyGate);
