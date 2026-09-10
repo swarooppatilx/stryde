@@ -24,6 +24,7 @@ contract ActivityRegistryTest is Test {
         uint256 timestamp,
         uint256 territoryArea
     );
+    event ActivityMetadataUpdated(uint256 indexed activityId, address indexed owner, string metadataCid);
 
     function setUp() public {
         registry = new ActivityRegistry();
@@ -93,6 +94,44 @@ contract ActivityRegistryTest is Test {
 
         assertEq(registry.getActivityOwner(1), alice);
         assertEq(registry.getActivityOwner(2), bob);
+    }
+
+    // ─── Activity Metadata ──────────────────────────────────────────
+
+    function test_SetActivityMetadata() public {
+        vm.startPrank(alice);
+        uint256 activityId = registry.recordActivity(TEST_HASH, 0, 5000, 1800, 42);
+
+        vm.expectEmit(true, true, false, true);
+        emit ActivityMetadataUpdated(activityId, alice, "ipfs://cid123");
+        registry.setActivityMetadata(activityId, "ipfs://cid123");
+        vm.stopPrank();
+    }
+
+    function test_SetActivityMetadata_RevertNotOwner() public {
+        vm.prank(alice);
+        uint256 activityId = registry.recordActivity(TEST_HASH, 0, 5000, 1800, 42);
+
+        vm.prank(bob);
+        vm.expectRevert(IActivityRegistry.NotActivityOwner.selector);
+        registry.setActivityMetadata(activityId, "ipfs://cid123");
+    }
+
+    function test_SetActivityMetadata_RevertNonexistentActivity() public {
+        vm.prank(alice);
+        vm.expectRevert(IActivityRegistry.ActivityNotFound.selector);
+        registry.setActivityMetadata(999, "ipfs://cid123");
+    }
+
+    function test_SetActivityMetadata_RevertWhenPaused() public {
+        vm.prank(alice);
+        uint256 activityId = registry.recordActivity(TEST_HASH, 0, 5000, 1800, 42);
+
+        registry.pause();
+
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.setActivityMetadata(activityId, "ipfs://cid123");
     }
 
     // ─── View functions ─────────────────────────────────────────────

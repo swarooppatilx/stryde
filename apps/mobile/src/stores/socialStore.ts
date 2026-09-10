@@ -126,10 +126,15 @@ export const useSocialStore = create<SocialState>()(
         }
       },
 
-      // There's no backend/subgraph yet, so the cross-user feed is sourced directly
-      // from ActivityRecorded logs. Chain-only fields (distance/duration/territoryArea)
-      // are filled from the log; richer local-only fields (name/polyline/photos) are
-      // filled in when the activity is also present in this device's own activityStore.
+      // The cross-user feed is sourced from the chain (subgraph when available,
+      // else ActivityRecorded/ActivityMetadataUpdated logs directly). Chain-only
+      // fields (distance/duration/territoryArea) come from the log/entity itself.
+      // Richer fields (name/description/photos) prefer this device's own
+      // activityStore record when present (e.g. the poster's own device, right
+      // after posting), and otherwise fall back to the IPFS metadata resolved
+      // from the activity's on-chain metadataCid — this is what lets those
+      // fields show up on *other* devices/users instead of being blank.
+      // `polyline` has no on-chain or IPFS equivalent, so it stays local-only.
       fetchActivities: async () => {
         try {
           const chainActivities = await services.sync.syncAllActivitiesFromChain();
@@ -152,21 +157,22 @@ export const useSocialStore = create<SocialState>()(
               return {
                 id: a.activityHash,
                 userId: a.owner,
-                name: local?.name,
+                name: local?.name ?? a.metadataName,
                 activityType: local?.activityType ?? a.activityType,
                 distance: local?.distance ?? a.distance,
                 duration: local?.duration ?? a.duration,
                 polyline: local?.polyline ?? '',
                 territory: local?.territory ?? null,
                 territoryArea: local?.territoryArea ?? a.territoryArea,
-                description: local?.description,
+                description: local?.description ?? a.metadataDescription,
                 feel: local?.feel,
                 privacy: local?.privacy,
-                image: local?.image,
-                images: local?.images,
+                image: local?.image ?? a.metadataPhotos?.[0],
+                images: local?.images ?? a.metadataPhotos,
                 isManual: local?.isManual,
                 activityHash: a.activityHash,
                 txHash: local?.txHash,
+                metadataCid: local?.metadataCid ?? a.metadataCid,
                 createdAt: local?.createdAt ?? new Date(a.timestamp * 1000),
                 kudos: existing?.kudos ?? [],
                 comments: existing?.comments ?? [],
@@ -293,10 +299,10 @@ export const useSocialStore = create<SocialState>()(
         const { activities, following } = get();
         const viewerId = getCurrentUserId();
         const q = query.toLowerCase();
-        // Chain-sourced activities from other users have no `name` (the subgraph's
-        // Activity entity has no name/title field and the on-chain contract event
-        // doesn't emit one either), so fall back to a sport-type label so they're
-        // still searchable.
+        // Chain-sourced activities from other users only have a `name` when the
+        // poster attached IPFS metadata via setActivityMetadata (see fetchActivities
+        // above); otherwise fall back to a sport-type label so they're still
+        // searchable.
         return activities.filter(
           (a) =>
             (a.name || getSportLabel(a.activityType)).toLowerCase().includes(q) &&

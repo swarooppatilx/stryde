@@ -31,7 +31,15 @@ export interface IActivityService {
     updates: Partial<
       Pick<
         Activity,
-        'name' | 'description' | 'feel' | 'privacy' | 'images' | 'txHash' | 'strdEarned'
+        | 'name'
+        | 'description'
+        | 'feel'
+        | 'privacy'
+        | 'images'
+        | 'txHash'
+        | 'strdEarned'
+        | 'onchainActivityId'
+        | 'metadataCid'
       >
     >
   ): void;

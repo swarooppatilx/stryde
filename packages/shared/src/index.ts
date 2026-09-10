@@ -9,4 +9,5 @@ export {
   setChainMode,
 } from './services/client';
 export * as services from './services/index';
+export { setIpfsConfig } from './services/ipfs';
 export * from './types';

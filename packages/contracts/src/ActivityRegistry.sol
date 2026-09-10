@@ -41,6 +41,14 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
         );
     }
 
+    function setActivityMetadata(uint256 activityId, string calldata metadataCid) external override whenNotPaused {
+        address activityOwner = _activities[activityId].owner;
+        if (activityOwner == address(0)) revert ActivityNotFound();
+        if (activityOwner != msg.sender) revert NotActivityOwner();
+
+        emit ActivityMetadataUpdated(activityId, msg.sender, metadataCid);
+    }
+
     function getActivityHash(uint256 activityId) external view override returns (bytes32) {
         return _activities[activityId].activityHash;
     }

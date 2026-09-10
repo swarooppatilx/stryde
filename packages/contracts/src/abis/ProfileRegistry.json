@@ -135,6 +135,19 @@
   },
   {
     "type": "function",
+    "name": "setUsername",
+    "inputs": [
+      {
+        "name": "newUsername",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "totalProfiles",
     "inputs": [],
     "outputs": [
@@ -330,6 +343,11 @@
   {
     "type": "error",
     "name": "UsernameTaken",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UsernameTooLong",
     "inputs": []
   }
 ]

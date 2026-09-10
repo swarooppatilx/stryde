@@ -13,7 +13,7 @@ type Profile @entity {
 }
 
 type Activity @entity {
-  id: Bytes! # txHash-logIndex
+  id: Bytes! # activityId (utf8-encoded)
   activityId: BigInt!
   user: Profile!
   activityHash: Bytes!
@@ -23,6 +23,7 @@ type Activity @entity {
   territoryArea: BigInt!
   blockNumber: BigInt!
   timestamp: BigInt!
+  metadataCid: String
 }
 
 type Territory @entity {

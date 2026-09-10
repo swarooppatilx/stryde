@@ -62,6 +62,16 @@ export interface Activity {
   txHash?: string;
   /** STRD tokens earned for this activity's distance, once the mint confirms. */
   strdEarned?: number;
+  /** On-chain activityId returned by recordActivity, as a string (bigint
+   * doesn't survive AsyncStorage's JSON persistence). Needed to later call
+   * setActivityMetadata for this activity. */
+  onchainActivityId?: string;
+  /** IPFS CID of this activity's off-chain metadata (name/description/
+   * photos), once successfully uploaded and attached on-chain via
+   * setActivityMetadata — lets this device confirm it doesn't need to
+   * re-upload, and lets other devices resolve the same metadata after a
+   * chain sync. */
+  metadataCid?: string;
   createdAt: Date;
 }
 

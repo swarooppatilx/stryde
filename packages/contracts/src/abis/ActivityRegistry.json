@@ -6,6 +6,35 @@
   },
   {
     "type": "function",
+    "name": "getActivity",
+    "inputs": [
+      {
+        "name": "activityId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "activityHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getActivityCount",
     "inputs": [
       {
@@ -88,6 +117,16 @@
         "name": "user",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [
@@ -180,6 +219,24 @@
   },
   {
     "type": "function",
+    "name": "setActivityMetadata",
+    "inputs": [
+      {
+        "name": "activityId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "metadataCid",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "totalActivities",
     "inputs": [],
     "outputs": [
@@ -210,6 +267,31 @@
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "ActivityMetadataUpdated",
+    "inputs": [
+      {
+        "name": "activityId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "metadataCid",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",
@@ -313,6 +395,11 @@
   },
   {
     "type": "error",
+    "name": "ActivityNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "DuplicateHash",
     "inputs": []
   },
@@ -324,6 +411,16 @@
   {
     "type": "error",
     "name": "ExpectedPause",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidActivityType",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotActivityOwner",
     "inputs": []
   },
   {

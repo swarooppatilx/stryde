@@ -4037,7 +4037,6 @@ __metadata:
   resolution: "@repo/api@workspace:packages/api"
   dependencies:
     "@hono/node-server": "npm:^1.14.1"
-    "@repo/shared": "npm:*"
     "@repo/typescript-config": "npm:*"
     "@types/node": "npm:26.4.1"
     expo-server-sdk: "npm:^7.2.0"

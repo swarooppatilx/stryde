@@ -43,6 +43,8 @@ dataSources:
       eventHandlers:
         - event: ActivityRecorded(indexed uint256,indexed address,indexed bytes32,uint8,uint256,uint256,uint256,uint256)
           handler: handleActivityRecorded
+        - event: ActivityMetadataUpdated(indexed uint256,indexed address,string)
+          handler: handleActivityMetadataUpdated
       file: src/mappings/ActivityRegistry.ts
   - kind: ethereum/contract
     name: TerritoryRegistry

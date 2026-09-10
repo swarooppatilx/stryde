@@ -13,11 +13,14 @@ interface IActivityRegistry {
         uint256 timestamp,
         uint256 territoryArea
     );
+    event ActivityMetadataUpdated(uint256 indexed activityId, address indexed owner, string metadataCid);
 
     // Errors
     error ZeroHash();
     error DuplicateHash();
     error InvalidActivityType();
+    error ActivityNotFound();
+    error NotActivityOwner();
 
     // Functions
     function recordActivity(
@@ -27,6 +30,8 @@ interface IActivityRegistry {
         uint256 duration,
         uint256 territoryArea
     ) external returns (uint256 activityId);
+
+    function setActivityMetadata(uint256 activityId, string calldata metadataCid) external;
 
     function getActivityHash(uint256 activityId) external view returns (bytes32);
     function getActivityOwner(uint256 activityId) external view returns (address);

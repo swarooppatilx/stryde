@@ -39,6 +39,7 @@ interface ActivityEntity {
   duration: string;
   territoryArea: string;
   timestamp: string;
+  metadataCid: string | null;
 }
 
 const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -60,6 +61,7 @@ function _buildActivitiesQuery(_wallet?: string): string {
     duration
     territoryArea
     timestamp
+    metadataCid
   }
 }`;
 }
@@ -76,6 +78,7 @@ const ACTIVITIES_QUERY = `
       duration
       territoryArea
       timestamp
+      metadataCid
     }
   }
 `;
@@ -131,6 +134,7 @@ export async function getActivitiesFromSubgraph(
       territoryArea: Number(a.territoryArea),
       timestamp: Number(a.timestamp),
       metadata: '',
+      metadataCid: a.metadataCid ?? undefined,
     } satisfies SyncedActivity;
   });
 }

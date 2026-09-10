@@ -1,6 +1,6 @@
 import { PrivyProvider } from '@privy-io/expo';
 import { SmartWalletsProvider } from '@privy-io/expo/smart-wallets';
-import { setChainMode } from '@repo/shared';
+import { setChainMode, setIpfsConfig } from '@repo/shared';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useState } from 'react';
@@ -28,6 +28,9 @@ const PRIVY_SUPPORTED_CHAINS: [Chain, ...Chain[]] =
 
 SplashScreen.preventAutoHideAsync();
 setChainMode(ENV.CHAIN_MODE);
+// packages/shared has no env config of its own — inject the API base URL/key
+// it needs to upload activity/profile metadata to IPFS via our relay API.
+setIpfsConfig({ apiUrl: ENV.API_URL, apiKey: ENV.API_KEY });
 
 // Privy's own init fetch (getAppConfig) has no timeout in the SDK — if the
 // underlying React Native fetch() promise never settles (a known class of RN

@@ -167,7 +167,11 @@ export default function CreateActivityScreen() {
       let onchainFailed = false;
 
       try {
-        const { txHash, confirmed } = await services.activity.recordActivity(wallet, {
+        const {
+          activityId: onchainActivityId,
+          txHash,
+          confirmed,
+        } = await services.activity.recordActivity(wallet, {
           polyline,
           activityType,
           distance,
@@ -179,6 +183,31 @@ export default function CreateActivityScreen() {
         if (!confirmed) {
           onchainFailed = true;
         } else {
+          updateActivity(activity.id, { onchainActivityId: onchainActivityId.toString() });
+
+          try {
+            // Best-effort: persists name/description/photos to IPFS and
+            // attaches the CID on-chain via setActivityMetadata, so this
+            // activity's rich metadata survives logout / a device switch
+            // instead of living only in this device's AsyncStorage. A
+            // failure here doesn't affect the activity record itself, which
+            // is already saved locally and recorded on-chain by this point.
+            const metadataResult = await services.activity.uploadAndSetActivityMetadata(
+              wallet,
+              onchainActivityId,
+              {
+                name: activity.name,
+                description: activity.description,
+                photos: uploadedPhotos.length > 0 ? uploadedPhotos : undefined,
+              }
+            );
+            if (metadataResult?.confirmed) {
+              updateActivity(activity.id, { metadataCid: metadataResult.cid });
+            }
+          } catch (err) {
+            console.warn('[CreateActivity] Activity metadata upload/set failed', err);
+          }
+
           try {
             if (address) {
               await services.season.ensureActiveSeason(wallet);
