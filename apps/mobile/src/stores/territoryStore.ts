@@ -1,3 +1,4 @@
+import { services } from '@repo/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { territoryService } from '@/services/territoryService';
@@ -17,6 +18,13 @@ interface TerritoryMetadata {
   strength: number;
   capturedAt: number;
   lastReinforced: number;
+  // Who this chain-synced territory belongs to. `setTerritories()` is fed
+  // straight from `syncTerritoriesFromChain(walletAddress)`, one wallet at a
+  // time, so every entry in a given call shares this owner. Needed because
+  // `territoryMetadata` is a flat, id-keyed map (not nested per-owner like
+  // `polygons`), so without this `getTotalArea(owner)` couldn't tell whose
+  // territory a given entry is.
+  owner: string;
 }
 
 interface TerritoryState {
@@ -26,7 +34,7 @@ interface TerritoryState {
   getUserPolygons: (owner: string) => Ring[];
   getTotalArea: (owner: string) => number;
   getTerritoryMetadata: (polygonHash: string) => TerritoryMetadata | undefined;
-  setTerritories: (owner: string, territories: TerritoryMetadata[]) => void;
+  setTerritories: (owner: string, territories: Array<Omit<TerritoryMetadata, 'owner'>>) => void;
   reset: () => void;
 }
 
@@ -53,39 +61,79 @@ export const useTerritoryStore = create<TerritoryState>()(
           return { polygons: { ...state.polygons, [owner]: [...existing, polygon] } };
         }),
       getUserPolygons: (owner) => get().polygons[owner] || EMPTY_POLYGONS,
-      getTotalArea: (owner) =>
-        (get().polygons[owner] || []).reduce(
-          (sum, polygon) => sum + territoryService.getPolygonArea(polygon),
-          0
-        ),
+      // Total territory area = chain-synced area (source of truth once a
+      // territory is confirmed on-chain) + any locally-captured polygons that
+      // haven't shown up in a chain sync yet (e.g. capture happened offline,
+      // the claimTerritory tx is still pending, or sync hasn't run since).
+      //
+      // These two sets can overlap: `capturePolygon()` always records the
+      // locally-drawn polygon before `claimTerritory()` even attempts the
+      // on-chain claim (see create-activity.tsx), and `polygons[owner]` is
+      // never cleared once that claim confirms. So the same physical
+      // territory can legitimately live in both `polygons` and
+      // `territoryMetadata` at once, and naively summing both would double
+      // count it.
+      //
+      // The on-chain territory id IS the polygon hash (TerritoryRegistry
+      // stores `_territories[polygonHash]` and returns that same value as
+      // `Territory.polygonHash`/the id from `getUserTerritories`), computed
+      // client-side by the identical `computePolygonHash()` used for both
+      // capture and claim. So a local polygon whose hash matches a
+      // `territoryMetadata` id is the same territory already counted via
+      // chain data — skip it locally and prefer the on-chain areaSqm.
+      getTotalArea: (owner) => {
+        const state = get();
+        const chainTerritories = Object.values(state.territoryMetadata).filter(
+          (t) => t.owner === owner
+        );
+        const chainAreaSqm = chainTerritories.reduce((sum, t) => sum + t.areaSqm, 0);
+        const chainHashes = new Set(chainTerritories.map((t) => t.id));
+
+        const localOnlyAreaSqm = (state.polygons[owner] || []).reduce((sum, polygon) => {
+          const hash = services.territory.computePolygonHash(polygon);
+          if (chainHashes.has(hash)) return sum;
+          return sum + territoryService.getPolygonArea(polygon);
+        }, 0);
+
+        return chainAreaSqm + localOnlyAreaSqm;
+      },
       getTerritoryMetadata: (polygonHash) => get().territoryMetadata[polygonHash],
-      setTerritories: (_owner, territories) =>
+      setTerritories: (owner, territories) =>
         set((state) => ({
           territoryMetadata: {
             ...state.territoryMetadata,
-            ...Object.fromEntries(territories.map((t) => [t.id, t])),
+            ...Object.fromEntries(territories.map((t) => [t.id, { ...t, owner }])),
           },
         })),
       reset: () => set({ polygons: {}, territoryMetadata: {} }),
     }),
     {
       name: '@stryde/territory-polygons',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({
         polygons: state.polygons,
         territoryMetadata: state.territoryMetadata,
       }),
       migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as Record<string, unknown>;
         if (version < 1) {
-          const state = persistedState as Record<string, unknown>;
-          return {
-            ...state,
-            polygons: state.polygons ?? {},
-            territoryMetadata: state.territoryMetadata ?? {},
-          };
+          state.polygons = state.polygons ?? {};
+          state.territoryMetadata = state.territoryMetadata ?? {};
         }
-        return persistedState;
+        if (version < 2) {
+          // `owner` is new in v2 — entries persisted before this fix have no
+          // owner recorded. Drop them rather than guess: the next chain sync
+          // (which runs on every app start with a connected wallet) rewrites
+          // them with `owner` set, so this is self-healing and momentary.
+          const oldMetadata = (state.territoryMetadata ?? {}) as Record<string, unknown>;
+          state.territoryMetadata = Object.fromEntries(
+            Object.entries(oldMetadata).filter(
+              ([, t]) => typeof (t as { owner?: unknown }).owner === 'string'
+            )
+          );
+        }
+        return state;
       },
     }
   )

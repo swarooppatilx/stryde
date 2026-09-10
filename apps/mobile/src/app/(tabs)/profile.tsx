@@ -73,8 +73,20 @@ export default function ProfileScreen() {
   const deleteActivity = useActivityStore((s) => s.deleteActivity);
   const getTotalArea = useTerritoryStore((s) => s.getTotalArea);
   const getUserPolygons = useTerritoryStore((s) => s.getUserPolygons);
-  const totalTerritoryArea = useMemo(() => getTotalArea(getCurrentUserId()), [getTotalArea]);
-  const userPolygons = useMemo(() => getUserPolygons(getCurrentUserId()), [getUserPolygons]);
+  // getTotalArea/getUserPolygons read live store state via `get()` rather
+  // than their arguments, so subscribing to their stable function
+  // references alone never triggers a re-render when the underlying data
+  // changes. On a fresh install, territoryMetadata starts empty and is
+  // populated asynchronously by useChainSync once syncTerritoriesFromChain
+  // resolves — subscribing to the raw state here (cheaply recomputed inline,
+  // no memoization needed) is what makes totalTerritoryArea/userPolygons
+  // pick that up instead of staying frozen at their initial values, which
+  // would otherwise leave achievements/NFT-mint logic never seeing the
+  // user's on-chain territory.
+  useTerritoryStore((s) => s.polygons);
+  useTerritoryStore((s) => s.territoryMetadata);
+  const totalTerritoryArea = getTotalArea(getCurrentUserId());
+  const userPolygons = getUserPolygons(getCurrentUserId());
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
 
   const [activeTab, setActiveTab] = useState<TabKey>('Progress');
