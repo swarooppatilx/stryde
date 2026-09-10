@@ -22,7 +22,8 @@
     "coverage": "forge coverage",
     "coverage:report": "forge coverage --report lcov",
     "deploy:local": "./scripts/deploy-local.sh",
-    "deploy:all": "./scripts/deploy-all.sh"
+    "deploy:all": "./scripts/deploy-all.sh",
+    "deploy:ci": "./scripts/deploy-ci.sh"
   },
   "devDependencies": {
     "solhint": "5.0.0"
