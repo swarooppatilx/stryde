@@ -6,9 +6,9 @@ dataSources:
     name: ProfileRegistry
     network: sepolia
     source:
-      address: "0xa180433C0818518eda0Ac8c3248dCEE388a689dd"
+      address: "0xd8f7559a9F8C3c60C06A3a3039Cf14FB69083F64"
       abi: ProfileRegistry
-      startBlock: 11681035
+      startBlock: 11689300
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -23,6 +23,8 @@ dataSources:
           handler: handleProfileCreated
         - event: AvatarUpdated(indexed address,string)
           handler: handleAvatarUpdated
+        - event: ProfileVerified(indexed address,bytes32,uint256)
+          handler: handleProfileVerified
       file: src/mappings/ProfileRegistry.ts
   - kind: ethereum/contract
     name: ActivityRegistry
@@ -149,17 +151,13 @@ dataSources:
         - event: ChallengeWithdrawn(indexed uint256,indexed address,uint256)
           handler: handleChallengeWithdrawn
       file: src/mappings/ChallengeRegistry.ts
-  # Not yet deployed — address/startBlock are placeholders (same convention
-  # used for every other registry before its first deployment; see the
-  # original commit that introduced this file). Update both once
-  # GroupRegistry is deployed and re-run `yarn deploy` / codegen.
   - kind: ethereum/contract
     name: GroupRegistry
     network: sepolia
     source:
-      address: "0x0000000000000000000000000000000000000000"
+      address: "0xbfb25ef28281CcBa4709e726dab915724964B9Bc"
       abi: GroupRegistry
-      startBlock: 0
+      startBlock: 11689566
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -181,4 +179,8 @@ dataSources:
           handler: handleGroupDissolved
         - event: GroupOwnershipTransferred(indexed uint256,indexed address,indexed address)
           handler: handleGroupOwnershipTransferred
+        - event: TreasuryDeposited(indexed uint256,indexed address,uint256,uint256)
+          handler: handleTreasuryDeposited
+        - event: TreasuryWithdrawn(indexed uint256,indexed address,uint256,uint256)
+          handler: handleTreasuryWithdrawn
       file: src/mappings/GroupRegistry.ts

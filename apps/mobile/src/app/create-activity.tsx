@@ -31,6 +31,7 @@ import { useViemWallet } from '@/hooks/useViemWallet';
 import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
+import { useWorldVerificationStore } from '@/stores/worldVerificationStore';
 import type { Activity, ActivityFeel, ActivityPrivacy, ActivityType } from '@/types';
 import { formatArea, formatDistance, formatDuration, getActivityName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
@@ -244,23 +245,42 @@ export default function CreateActivityScreen() {
       }
 
       if (territory) {
-        try {
-          const { territoryId, confirmed } = await services.territory.claimTerritory(wallet, {
-            polygon: territory,
-            areaSqm: territoryArea,
-          });
-          if (!confirmed) {
-            onchainFailed = true;
-          } else if (address) {
-            try {
-              await services.territoryNFT.mintTerritoryNFT(wallet, territoryId, address);
-            } catch (err) {
-              console.warn('[CreateActivity] Territory NFT mint failed', err);
+        // World ID Selfie Check gate: a UX-level sybil-resistance signal, not
+        // a security control — a modified client could skip this check
+        // client-side just as easily as it could call claimTerritory
+        // directly. Real abuse-prevention would need this enforced on-chain
+        // (see FEEDBACK.md / TRACKS.md for context on why that's out of
+        // scope for the hackathon timeline). Unverified users still get
+        // their activity + distance recorded above; only the territory
+        // claim is skipped.
+        if (!useWorldVerificationStore.getState().isVerified) {
+          Alert.alert(
+            'Verify to claim territory',
+            'Verify with World ID Selfie Check to claim territory and help keep the map fair for everyone.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Verify', onPress: () => router.push('/verify') },
+            ]
+          );
+        } else {
+          try {
+            const { territoryId, confirmed } = await services.territory.claimTerritory(wallet, {
+              polygon: territory,
+              areaSqm: territoryArea,
+            });
+            if (!confirmed) {
+              onchainFailed = true;
+            } else if (address) {
+              try {
+                await services.territoryNFT.mintTerritoryNFT(wallet, territoryId, address);
+              } catch (err) {
+                console.warn('[CreateActivity] Territory NFT mint failed', err);
+              }
             }
+          } catch (err) {
+            console.warn('[CreateActivity] claimTerritory failed', err);
+            onchainFailed = true;
           }
-        } catch (err) {
-          console.warn('[CreateActivity] claimTerritory failed', err);
-          onchainFailed = true;
         }
       }
 

@@ -37,11 +37,12 @@ export function handleContributionRecorded(event: ContributionRecorded): void {
   if (!seasonParticipant) {
     seasonParticipant = new SeasonParticipant(participantId);
     seasonParticipant.season = event.params.seasonId.toString();
-    seasonParticipant.participant = event.params.participant;
-    seasonParticipant.save();
+    seasonParticipant.user = event.params.participant;
 
     season.participantCount = season.participantCount.plus(BigInt.fromI32(1));
   }
+  seasonParticipant.totalContribution = event.params.total;
+  seasonParticipant.save();
 
   season.save();
 

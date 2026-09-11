@@ -4,7 +4,10 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { formatEther, parseEther } from 'viem';
 
+import { AppButton } from '@/components/button';
+import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
@@ -40,6 +43,16 @@ const SPORT_LABEL: Record<string, string> = {
 
 const formatMemberCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
 
+function parseAmountToWei(input: string): bigint | null {
+  const trimmed = input.trim();
+  if (!trimmed || !/^\d*\.?\d*$/.test(trimmed)) return null;
+  try {
+    return parseEther(trimmed);
+  } catch {
+    return null;
+  }
+}
+
 export default function ClubDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -55,14 +68,34 @@ export default function ClubDetailScreen() {
   const { transact } = useTransactor();
   const [isPending, setIsPending] = useState(false);
 
+  // Group Treasury: a shared organization wallet for the club, distinct from
+  // any individual member's own wallet — funded via depositToTreasury (any
+  // wallet, member or not) and spent from via withdrawFromTreasury (owner
+  // only). Both route through the same gasless Privy smart-account `wallet`
+  // used for every other write on this screen.
+  const [treasuryBalance, setTreasuryBalance] = useState<bigint | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [isTreasuryPending, setIsTreasuryPending] = useState(false);
+
   const club = getClubById(id ?? '');
   const isJoined = club ? joinedClubIds.includes(club.id) : false;
+  const isOwner = !!(club && address && club.owner.toLowerCase() === address.toLowerCase());
+
+  const refreshTreasury = useCallback(() => {
+    if (!club) return;
+    services.group
+      .getGroupTreasury(BigInt(club.id))
+      .then(setTreasuryBalance)
+      .catch((e) => console.warn('[ClubDetail] Failed to fetch treasury balance:', e));
+  }, [club]);
 
   useFocusEffect(
     useCallback(() => {
       fetchClubs();
       if (address) fetchJoinedClubs(address);
-    }, [fetchClubs, fetchJoinedClubs, address])
+      refreshTreasury();
+    }, [fetchClubs, fetchJoinedClubs, address, refreshTreasury])
   );
 
   if (!club) {
@@ -107,6 +140,54 @@ export default function ClubDetailScreen() {
       }
     } finally {
       setIsPending(false);
+    }
+  };
+
+  const handleDeposit = async () => {
+    if (!wallet || !club || isTreasuryPending) return;
+    const amountWei = parseAmountToWei(depositAmount);
+    if (amountWei === null || amountWei <= 0n) return;
+    haptics.impactMedium();
+
+    setIsTreasuryPending(true);
+    try {
+      const result = await transact(
+        () => services.group.depositToTreasury(wallet, BigInt(club.id), amountWei),
+        { pending: 'Contributing to treasury...', success: 'Contributed to treasury' }
+      );
+      if (result?.confirmed) {
+        setDepositAmount('');
+        refreshTreasury();
+      }
+    } finally {
+      setIsTreasuryPending(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!wallet || !club || !address || isTreasuryPending) return;
+    const amountWei = parseAmountToWei(withdrawAmount);
+    if (amountWei === null || amountWei <= 0n) return;
+    haptics.impactMedium();
+
+    setIsTreasuryPending(true);
+    try {
+      const result = await transact(
+        () =>
+          services.group.withdrawFromTreasury(
+            wallet,
+            BigInt(club.id),
+            amountWei,
+            address as `0x${string}`
+          ),
+        { pending: 'Withdrawing from treasury...', success: 'Withdrawn from treasury' }
+      );
+      if (result?.confirmed) {
+        setWithdrawAmount('');
+        refreshTreasury();
+      }
+    } finally {
+      setIsTreasuryPending(false);
     }
   };
 
@@ -173,6 +254,67 @@ export default function ClubDetailScreen() {
             <ThemedText type="small" style={{ color: theme.text }}>
               {club.description}
             </ThemedText>
+          </ThemedView>
+
+          {/* Group Treasury */}
+          <ThemedView style={[styles.treasuryCard, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedView style={styles.treasuryHeader}>
+              <Ionicons name="wallet-outline" size={18} color={theme.brand.primary} />
+              <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+                Club Treasury
+              </ThemedText>
+            </ThemedView>
+            <ThemedText style={[styles.treasuryBalance, { color: theme.text }]}>
+              {treasuryBalance === null ? '—' : `${formatEther(treasuryBalance)} ETH`}
+            </ThemedText>
+            <ThemedText
+              type="caption"
+              style={{ color: theme.textSecondary, marginBottom: Spacing.two }}
+            >
+              Shared, on-chain funds owned by the club — not any one member's wallet.
+            </ThemedText>
+
+            <ThemedView style={styles.treasuryRow}>
+              <View style={styles.treasuryInput}>
+                <TextField
+                  placeholder="Amount (ETH)"
+                  value={depositAmount}
+                  onChangeText={setDepositAmount}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <AppButton
+                variant="secondary"
+                onPress={handleDeposit}
+                disabled={!wallet || isTreasuryPending || parseAmountToWei(depositAmount) === null}
+                loading={isTreasuryPending}
+              >
+                Contribute
+              </AppButton>
+            </ThemedView>
+
+            {isOwner && (
+              <ThemedView style={[styles.treasuryRow, { marginTop: Spacing.two }]}>
+                <View style={styles.treasuryInput}>
+                  <TextField
+                    placeholder="Amount (ETH)"
+                    value={withdrawAmount}
+                    onChangeText={setWithdrawAmount}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <AppButton
+                  variant="secondary"
+                  onPress={handleWithdraw}
+                  disabled={
+                    !wallet || isTreasuryPending || parseAmountToWei(withdrawAmount) === null
+                  }
+                  loading={isTreasuryPending}
+                >
+                  Withdraw
+                </AppButton>
+              </ThemedView>
+            )}
           </ThemedView>
 
           {/* Join Button */}
@@ -257,6 +399,28 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  treasuryCard: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.four,
+    gap: Spacing.half,
+  },
+  treasuryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  treasuryBalance: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  treasuryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  treasuryInput: {
+    flex: 1,
   },
   joinBtn: {
     alignItems: 'center',

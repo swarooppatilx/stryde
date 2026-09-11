@@ -12,8 +12,22 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
     mapping(uint256 => address) private _walletOf;
     mapping(string => bool) private _usernameTaken;
     mapping(uint256 => string) private _usernameOf;
+    mapping(address => bool) private _verified;
 
-    constructor() Ownable(msg.sender) {}
+    /// @dev Address authorized to call verify() — the backend's relayer
+    /// wallet, which calls this after a confirmed World ID Selfie Check.
+    /// A single settable address (rather than AccessControl) to keep this
+    /// consistent with this contract's existing plain-Ownable style.
+    address public verifierAddress;
+
+    modifier onlyVerifier() {
+        if (msg.sender != verifierAddress) revert NotAuthorizedVerifier();
+        _;
+    }
+
+    constructor() Ownable(msg.sender) {
+        verifierAddress = msg.sender;
+    }
 
     function register(string calldata username) external override whenNotPaused returns (uint256 profileId) {
         if (_profileIdOf[msg.sender] != 0) revert AlreadyRegistered();
@@ -70,6 +84,21 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
 
     function totalProfiles() external view override returns (uint256) {
         return _nextProfileId - 1;
+    }
+
+    function verify(address wallet, bytes32 nullifierHash) external override onlyVerifier {
+        if (_verified[wallet]) revert AlreadyVerified();
+        _verified[wallet] = true;
+        emit ProfileVerified(wallet, nullifierHash, block.timestamp);
+    }
+
+    function isVerified(address wallet) external view override returns (bool) {
+        return _verified[wallet];
+    }
+
+    function setVerifier(address newVerifier) external override onlyOwner {
+        verifierAddress = newVerifier;
+        emit VerifierUpdated(newVerifier);
     }
 
     function pause() external onlyOwner {

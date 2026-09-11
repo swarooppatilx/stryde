@@ -4,6 +4,8 @@ type Profile @entity {
   profileId: BigInt!
   createdAt: BigInt!
   avatarCid: String
+  isVerified: Boolean!
+  verifiedAt: BigInt
   activities: [Activity!]! @derivedFrom(field: "user")
   territories: [Territory!]! @derivedFrom(field: "owner")
   contributions: [Contribution!]! @derivedFrom(field: "user")
@@ -59,7 +61,8 @@ type Contribution @entity {
 type SeasonParticipant @entity {
   id: String! # seasonId-participantAddress
   season: Season!
-  participant: Bytes!
+  user: Profile!
+  totalContribution: BigInt!
 }
 
 type AchievementDefinition @entity {
@@ -104,6 +107,7 @@ type Group @entity {
   memberCount: BigInt!
   createdAt: BigInt!
   active: Boolean! # false once dissolved (owner left as the last member)
+  treasuryBalance: BigInt! # wei held in the group's shared on-chain treasury
   members: [GroupMember!]! @derivedFrom(field: "group")
 }
 

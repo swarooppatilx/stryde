@@ -25,9 +25,14 @@ contract GroupRegistryTest is Test {
     event GroupLeft(uint256 indexed groupId, address indexed member, uint256 memberCount);
     event GroupDissolved(uint256 indexed groupId, address indexed lastOwner, uint256 dissolvedAt);
     event GroupOwnershipTransferred(uint256 indexed groupId, address indexed previousOwner, address indexed newOwner);
+    event TreasuryDeposited(uint256 indexed groupId, address indexed from, uint256 amount, uint256 newBalance);
+    event TreasuryWithdrawn(uint256 indexed groupId, address indexed to, uint256 amount, uint256 newBalance);
 
     function setUp() public {
         registry = new GroupRegistry();
+        vm.deal(alice, 10 ether);
+        vm.deal(bob, 10 ether);
+        vm.deal(carol, 10 ether);
     }
 
     function _createGroup() internal returns (uint256) {
@@ -350,6 +355,135 @@ contract GroupRegistryTest is Test {
         vm.prank(alice);
         registry.createGroup("Name", "Loc", "desc", 0);
         assertEq(registry.getGroupCount(), 1);
+    }
+
+    // ─── Treasury ───────────────────────────────────────────────────
+
+    function test_DepositToTreasury() public {
+        uint256 groupId = _createGroup();
+
+        vm.expectEmit(true, true, false, true);
+        emit TreasuryDeposited(groupId, bob, 1 ether, 1 ether);
+
+        vm.prank(bob);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+
+        assertEq(registry.getGroupTreasury(groupId), 1 ether);
+    }
+
+    function test_DepositToTreasury_AnyoneCanContribute() public {
+        uint256 groupId = _createGroup();
+
+        // carol is not a member — a sponsor/external donor should still be
+        // able to fund a group's shared treasury.
+        vm.prank(carol);
+        registry.depositToTreasury{value: 0.5 ether}(groupId);
+
+        assertEq(registry.getGroupTreasury(groupId), 0.5 ether);
+    }
+
+    function test_DepositToTreasury_Accumulates() public {
+        uint256 groupId = _createGroup();
+
+        vm.prank(alice);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+        vm.prank(bob);
+        registry.depositToTreasury{value: 2 ether}(groupId);
+
+        assertEq(registry.getGroupTreasury(groupId), 3 ether);
+    }
+
+    function test_DepositToTreasury_RevertZeroAmount() public {
+        uint256 groupId = _createGroup();
+
+        vm.prank(alice);
+        vm.expectRevert(IGroupRegistry.ZeroAmount.selector);
+        registry.depositToTreasury{value: 0}(groupId);
+    }
+
+    function test_DepositToTreasury_RevertNonexistentGroup() public {
+        vm.prank(alice);
+        vm.expectRevert(IGroupRegistry.GroupNotFound.selector);
+        registry.depositToTreasury{value: 1 ether}(999);
+    }
+
+    function test_WithdrawFromTreasury() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 2 ether}(groupId);
+
+        uint256 carolBalanceBefore = carol.balance;
+
+        vm.expectEmit(true, true, false, true);
+        emit TreasuryWithdrawn(groupId, carol, 1 ether, 1 ether);
+
+        vm.prank(alice);
+        registry.withdrawFromTreasury(groupId, 1 ether, carol);
+
+        assertEq(registry.getGroupTreasury(groupId), 1 ether);
+        assertEq(carol.balance, carolBalanceBefore + 1 ether);
+    }
+
+    function test_WithdrawFromTreasury_RevertNotOwner() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+
+        vm.prank(bob);
+        vm.expectRevert(IGroupRegistry.NotGroupOwner.selector);
+        registry.withdrawFromTreasury(groupId, 1 ether, bob);
+    }
+
+    function test_WithdrawFromTreasury_RevertInsufficientBalance() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+
+        vm.prank(alice);
+        vm.expectRevert(IGroupRegistry.InsufficientTreasuryBalance.selector);
+        registry.withdrawFromTreasury(groupId, 2 ether, alice);
+    }
+
+    function test_WithdrawFromTreasury_RevertZeroAmount() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+
+        vm.prank(alice);
+        vm.expectRevert(IGroupRegistry.ZeroAmount.selector);
+        registry.withdrawFromTreasury(groupId, 0, alice);
+    }
+
+    function test_WithdrawFromTreasury_RevertZeroAddress() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+
+        vm.prank(alice);
+        vm.expectRevert(IGroupRegistry.ZeroAddress.selector);
+        registry.withdrawFromTreasury(groupId, 1 ether, address(0));
+    }
+
+    function test_WithdrawFromTreasury_RevertNonexistentGroup() public {
+        vm.prank(alice);
+        vm.expectRevert(IGroupRegistry.GroupNotFound.selector);
+        registry.withdrawFromTreasury(999, 1 ether, alice);
+    }
+
+    function test_GetGroupTreasury_ZeroByDefault() public {
+        uint256 groupId = _createGroup();
+        assertEq(registry.getGroupTreasury(groupId), 0);
+    }
+
+    function testFuzz_DepositToTreasury(uint96 amount) public {
+        vm.assume(amount > 0);
+        vm.deal(alice, uint256(amount));
+        uint256 groupId = _createGroup();
+
+        vm.prank(alice);
+        registry.depositToTreasury{value: amount}(groupId);
+
+        assertEq(registry.getGroupTreasury(groupId), amount);
     }
 
     // ─── Fuzz ───────────────────────────────────────────────────────

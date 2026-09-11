@@ -23,6 +23,8 @@ interface LeaderboardRow {
   wallet: string;
   username: string;
   distance: number;
+  territoryArea: number;
+  achievementCount: number;
 }
 
 const ENS_CONCURRENCY = 5;
@@ -73,6 +75,15 @@ const LeaderboardRowItem = memo(function LeaderboardRowItem({
         <ThemedText type="smallBold" numberOfLines={1}>
           {isMe ? 'You' : ensName || row.username}
         </ThemedText>
+        {(row.territoryArea > 0 || row.achievementCount > 0) && (
+          <ThemedText type="small" style={{ color: theme.textSecondary }} numberOfLines={1}>
+            {row.territoryArea > 0 ? `${Math.round(row.territoryArea)} m² territory` : ''}
+            {row.territoryArea > 0 && row.achievementCount > 0 ? ' · ' : ''}
+            {row.achievementCount > 0
+              ? `${row.achievementCount} achievement${row.achievementCount === 1 ? '' : 's'}`
+              : ''}
+          </ThemedText>
+        )}
       </ThemedView>
       <ThemedText type="smallBold">{formatDistance(row.distance)}</ThemedText>
     </ThemedView>
@@ -100,16 +111,19 @@ export default function LeaderboardScreen() {
       }
 
       const users = await services.profile.getRegisteredUsers();
-      const entries = await services.season.getLeaderboard(
+      const usernameByWallet = new Map(users.map((u) => [u.wallet.toLowerCase(), u.username]));
+      const entries = await services.season.getWeightedLeaderboard(
         season.id,
-        users.map((u) => u.wallet as `0x${string}`)
+        users.map((u) => u.wallet as `0x${string}`),
+        usernameByWallet
       );
 
-      const usernameByWallet = new Map(users.map((u) => [u.wallet.toLowerCase(), u.username]));
       const leaderboardRows = entries.map((e) => ({
-        wallet: e.participant,
-        username: usernameByWallet.get(e.participant.toLowerCase()) ?? 'Unknown',
-        distance: Number(e.contribution),
+        wallet: e.wallet,
+        username: usernameByWallet.get(e.wallet.toLowerCase()) ?? (e.username || 'Unknown'),
+        distance: e.distance,
+        territoryArea: e.territoryArea,
+        achievementCount: e.achievementCount,
       }));
       setRows(leaderboardRows);
       resolveEnsNamesBatch(leaderboardRows.map((r) => r.wallet)).then((names) => {

@@ -15,6 +15,7 @@ contract GroupRegistry is IGroupRegistry, Ownable, Pausable {
     // TerritoryRegistry's _userTerritories/_territoryIndex).
     mapping(address => uint256[]) private _userGroups;
     mapping(address => mapping(uint256 => uint256)) private _userGroupIndex;
+    mapping(uint256 => uint256) private _treasuryBalance;
 
     constructor() Ownable(msg.sender) {}
 
@@ -93,6 +94,38 @@ contract GroupRegistry is IGroupRegistry, Ownable, Pausable {
         g.owner = newOwner;
 
         emit GroupOwnershipTransferred(groupId, previousOwner, newOwner);
+    }
+
+    function depositToTreasury(uint256 groupId) external payable override whenNotPaused {
+        Group storage g = _groups[groupId];
+        if (!g.active) revert GroupNotFound();
+        if (msg.value == 0) revert ZeroAmount();
+
+        uint256 newBalance = _treasuryBalance[groupId] + msg.value;
+        _treasuryBalance[groupId] = newBalance;
+
+        emit TreasuryDeposited(groupId, msg.sender, msg.value, newBalance);
+    }
+
+    function withdrawFromTreasury(uint256 groupId, uint256 amount, address to) external override whenNotPaused {
+        Group storage g = _groups[groupId];
+        if (!g.active) revert GroupNotFound();
+        if (msg.sender != g.owner) revert NotGroupOwner();
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (amount > _treasuryBalance[groupId]) revert InsufficientTreasuryBalance();
+
+        uint256 newBalance = _treasuryBalance[groupId] - amount;
+        _treasuryBalance[groupId] = newBalance;
+
+        (bool success,) = to.call{value: amount}("");
+        if (!success) revert TreasuryTransferFailed();
+
+        emit TreasuryWithdrawn(groupId, to, amount, newBalance);
+    }
+
+    function getGroupTreasury(uint256 groupId) external view override returns (uint256) {
+        return _treasuryBalance[groupId];
     }
 
     function getGroup(uint256 groupId) external view override returns (Group memory) {

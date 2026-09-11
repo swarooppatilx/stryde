@@ -13,6 +13,8 @@ contract ProfileRegistryTest is Test {
 
     event ProfileCreated(uint256 indexed profileId, address indexed wallet, string username, uint256 joinedAt);
     event AvatarUpdated(address indexed wallet, string cid);
+    event ProfileVerified(address indexed wallet, bytes32 nullifierHash, uint256 verifiedAt);
+    event VerifierUpdated(address indexed newVerifier);
 
     function setUp() public {
         registry = new ProfileRegistry();
@@ -145,6 +147,58 @@ contract ProfileRegistryTest is Test {
         vm.prank(alice);
         registry.register("alice");
         assertTrue(registry.isRegistered(alice));
+    }
+
+    // ─── Verification ───────────────────────────────────────────────
+
+    function test_Verify() public {
+        bytes32 nullifier = keccak256("alice-nullifier");
+
+        vm.expectEmit(true, false, false, true);
+        emit ProfileVerified(alice, nullifier, block.timestamp);
+        registry.verify(alice, nullifier);
+
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_Verify_RevertIfNotVerifier() public {
+        vm.prank(alice);
+        vm.expectRevert(IProfileRegistry.NotAuthorizedVerifier.selector);
+        registry.verify(bob, keccak256("bob-nullifier"));
+    }
+
+    function test_Verify_RevertIfAlreadyVerified() public {
+        registry.verify(alice, keccak256("alice-nullifier"));
+
+        vm.expectRevert(IProfileRegistry.AlreadyVerified.selector);
+        registry.verify(alice, keccak256("alice-nullifier-2"));
+    }
+
+    function test_IsVerified_ReturnsFalseByDefault() public {
+        assertFalse(registry.isVerified(alice));
+    }
+
+    function test_SetVerifier() public {
+        vm.expectEmit(true, false, false, false);
+        emit VerifierUpdated(bob);
+        registry.setVerifier(bob);
+
+        assertEq(registry.verifierAddress(), bob);
+
+        // Old verifier (this test contract, the deployer) can no longer verify.
+        vm.expectRevert(IProfileRegistry.NotAuthorizedVerifier.selector);
+        registry.verify(alice, keccak256("alice-nullifier"));
+
+        // New verifier can.
+        vm.prank(bob);
+        registry.verify(alice, keccak256("alice-nullifier"));
+        assertTrue(registry.isVerified(alice));
+    }
+
+    function test_SetVerifier_RevertIfNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.setVerifier(bob);
     }
 
     // ─── Fuzz ───────────────────────────────────────────────────────

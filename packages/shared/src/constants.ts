@@ -51,9 +51,9 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     // on-chain but the app would spin for the full 3-minute viem timeout
     // and then report failure). publicnode's endpoint has no such gate.
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
-    subgraphUrl: 'https://api.studio.thegraph.com/query/1760059/stryde/v0.1.2',
+    subgraphUrl: 'https://api.studio.thegraph.com/query/1760059/stryde/v0.4.0',
     contracts: {
-      profileRegistry: '0xEb5d78a3d1d852a823AF8283d4f6869610b1269a',
+      profileRegistry: '0xd8f7559a9F8C3c60C06A3a3039Cf14FB69083F64',
       activityRegistry: '0x1A90B0B3D2EDe91eB8C036c2c9Fa82f1654c76Fe',
       territoryRegistry: '0x0437De17688BD16AcD2B793d1446d5E775a056C8',
       seasonManager: '0xE9aB491b2Ca50523EC681476c05db7A5D59Bfc8F',
@@ -61,7 +61,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       challengeRegistry: '0x321aFdf640f95c3C9964299767594Cd69DFcB13a',
       territoryNFT: '0xe5c66b5a52CAe8848C848CC548D3054622Ef8aed',
       moveToEarnToken: '0xAb3e840c8C2e811D4D1AbFE98c992f652e722359',
-      groupRegistry: ZERO_ADDRESS,
+      groupRegistry: '0xbfb25ef28281CcBa4709e726dab915724964B9Bc',
     },
   },
   'base-sepolia': {

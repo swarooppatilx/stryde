@@ -9,11 +9,15 @@ interface GraphQLResponse<T> {
   errors?: { message: string }[];
 }
 
-async function querySubgraph<T>(url: string, query: string): Promise<T> {
+async function querySubgraph<T>(
+  url: string,
+  query: string,
+  variables?: Record<string, unknown>
+): Promise<T> {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(variables ? { query, variables } : { query }),
   });
 
   if (!response.ok) {
@@ -200,6 +204,289 @@ export async function getProfilesFromSubgraph(): Promise<
     wallet: p.id,
     username: p.username,
   }));
+}
+
+interface AthleteCompositeEntity {
+  id: string;
+  username: string;
+  profileId: string;
+  avatarCid: string | null;
+  isVerified: boolean;
+  verifiedAt: string | null;
+  activities: {
+    activityId: string;
+    activityHash: string;
+    activityType: number;
+    distance: string;
+    duration: string;
+    territoryArea: string;
+    timestamp: string;
+    metadataCid: string | null;
+  }[];
+  territories: {
+    id: string;
+    area: string;
+    strength: string;
+    isActive: boolean;
+    capturedAt: string;
+    lastReinforced: string;
+  }[];
+  contributions: {
+    distance: string;
+    season: { id: string; isActive: boolean; totalContributions: string };
+  }[];
+  achievements: {
+    id: string;
+    achievementId: string;
+    mintedAt: string;
+    definition: { name: string } | null;
+  }[];
+}
+
+/** A single GraphQL document spanning ProfileRegistry, ActivityRegistry,
+ * TerritoryRegistry, SeasonManager and AchievementRegistry data — one round
+ * trip composing across every registry's indexed data via the `Profile`
+ * entity's @derivedFrom relations, rather than one query per registry. */
+const ATHLETE_COMPOSITE_QUERY = `
+  query GetAthleteComposite($id: Bytes!) {
+    profile(id: $id) {
+      id
+      username
+      profileId
+      avatarCid
+      isVerified
+      verifiedAt
+      activities(first: 20, orderBy: timestamp, orderDirection: desc) {
+        activityId
+        activityHash
+        activityType
+        distance
+        duration
+        territoryArea
+        timestamp
+        metadataCid
+      }
+      territories(first: 50) {
+        id
+        area
+        strength
+        isActive
+        capturedAt
+        lastReinforced
+      }
+      contributions(first: 10) {
+        distance
+        season {
+          id
+          isActive
+          totalContributions
+        }
+      }
+      achievements(first: 20) {
+        id
+        achievementId
+        mintedAt
+        definition {
+          name
+        }
+      }
+    }
+  }
+`;
+
+export interface AthleteCompositeTerritory {
+  id: string;
+  areaSqm: number;
+  strength: number;
+  isActive: boolean;
+  capturedAt: number;
+  lastReinforced: number;
+}
+
+export interface AthleteComposite {
+  wallet: string;
+  username: string;
+  profileId: bigint;
+  avatarCid?: string;
+  isVerified: boolean;
+  verifiedAt?: number;
+  activities: SyncedActivity[];
+  territories: AthleteCompositeTerritory[];
+  contributions: {
+    distance: number;
+    seasonId: string;
+    seasonActive: boolean;
+    seasonTotalContributions: number;
+  }[];
+  achievements: {
+    id: string;
+    achievementId: string;
+    mintedAt: number;
+    name?: string;
+  }[];
+}
+
+/** Composed athlete profile: one query spanning Profile + Activity + Territory
+ * + Season/Contribution + Achievement data, rather than separate queries per
+ * registry. Returns null when no subgraph is configured for the active chain
+ * mode, or when the wallet has no indexed profile yet, so callers can fall
+ * back to the on-chain per-registry sync path. */
+export async function getAthleteComposite(wallet: `0x${string}`): Promise<AthleteComposite | null> {
+  if (!HEX_ADDRESS_RE.test(wallet)) {
+    throw new Error(`Invalid wallet address for subgraph query: ${wallet}`);
+  }
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const data = await querySubgraph<{ profile: AthleteCompositeEntity | null }>(
+    subgraphUrl,
+    ATHLETE_COMPOSITE_QUERY,
+    { id: wallet.toLowerCase() }
+  );
+
+  const p = data.profile;
+  if (!p) return null;
+
+  return {
+    wallet: p.id,
+    username: p.username,
+    profileId: BigInt(p.profileId),
+    avatarCid: p.avatarCid ?? undefined,
+    isVerified: p.isVerified,
+    verifiedAt: p.verifiedAt ? Number(p.verifiedAt) : undefined,
+    activities: p.activities.map(
+      (a) =>
+        ({
+          activityHash: a.activityHash,
+          owner: p.id,
+          activityId: BigInt(a.activityId),
+          activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
+          distance: Number(a.distance),
+          duration: Number(a.duration),
+          territoryArea: Number(a.territoryArea),
+          timestamp: Number(a.timestamp),
+          metadata: '',
+          metadataCid: a.metadataCid ?? undefined,
+        }) satisfies SyncedActivity
+    ),
+    territories: p.territories.map((t) => ({
+      id: t.id,
+      areaSqm: Number(t.area),
+      strength: Number(t.strength),
+      isActive: t.isActive,
+      capturedAt: Number(t.capturedAt),
+      lastReinforced: Number(t.lastReinforced),
+    })),
+    contributions: p.contributions.map((c) => ({
+      distance: Number(c.distance),
+      seasonId: c.season.id,
+      seasonActive: c.season.isActive,
+      seasonTotalContributions: Number(c.season.totalContributions),
+    })),
+    achievements: p.achievements.map((a) => ({
+      id: a.id,
+      achievementId: a.achievementId,
+      mintedAt: Number(a.mintedAt),
+      name: a.definition?.name,
+    })),
+  };
+}
+
+interface SeasonParticipantEntity {
+  totalContribution: string;
+  user: {
+    id: string;
+    username: string;
+    isVerified: boolean;
+    territories: { area: string }[];
+    achievements: { id: string }[];
+  };
+}
+
+/** One query spanning SeasonManager (contribution totals) + TerritoryRegistry
+ * (active territory area) + AchievementRegistry (achievement count) +
+ * ProfileRegistry (username + World ID verification status), via the
+ * SeasonParticipant -> Profile relation — a composed multi-metric leaderboard
+ * rather than a single-registry query. */
+const SEASON_LEADERBOARD_QUERY = `
+  query GetSeasonLeaderboard($seasonId: String!) {
+    seasonParticipants(
+      first: 1000
+      where: { season: $seasonId }
+      orderBy: totalContribution
+      orderDirection: desc
+    ) {
+      totalContribution
+      user {
+        id
+        username
+        isVerified
+        territories(first: 1000, where: { isActive: true }) {
+          area
+        }
+        achievements(first: 1000) {
+          id
+        }
+      }
+    }
+  }
+`;
+
+export interface SubgraphLeaderboardEntry {
+  wallet: string;
+  username: string;
+  isVerified: boolean;
+  distance: number;
+  territoryArea: number;
+  achievementCount: number;
+  /** Weighted composite rank: distance + a fraction of territory area (sqm)
+   * + a fixed bonus per achievement, then a sybil-resistance multiplier for
+   * World ID Selfie Check-verified athletes. Weights are tuned for a running
+   * app where distances are in meters (hundreds-thousands) and territory
+   * areas are typically larger (thousands-tens of thousands of sqm). */
+  score: number;
+}
+
+const TERRITORY_AREA_WEIGHT = 0.05;
+const ACHIEVEMENT_WEIGHT = 500;
+/** World ID-verified athletes rank 10% higher at equal raw stats — a UX-level
+ * sybil-resistance signal (see FEEDBACK.md), not a hard requirement. */
+const VERIFIED_SCORE_MULTIPLIER = 1.1;
+
+/** Multi-metric leaderboard (distance + territory area + achievements) for a
+ * season, ranked by a weighted composite score. Returns null (rather than
+ * throwing) when no subgraph is configured for the active chain mode, so
+ * callers can fall back to the on-chain, distance-only leaderboard. */
+export async function getLeaderboardFromSubgraph(
+  seasonId: bigint
+): Promise<SubgraphLeaderboardEntry[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const data = await querySubgraph<{ seasonParticipants: SeasonParticipantEntity[] }>(
+    subgraphUrl,
+    SEASON_LEADERBOARD_QUERY,
+    { seasonId: seasonId.toString() }
+  );
+
+  const entries = data.seasonParticipants.map((sp) => {
+    const distance = Number(sp.totalContribution);
+    const territoryArea = sp.user.territories.reduce((sum, t) => sum + Number(t.area), 0);
+    const achievementCount = sp.user.achievements.length;
+    const rawScore =
+      distance + territoryArea * TERRITORY_AREA_WEIGHT + achievementCount * ACHIEVEMENT_WEIGHT;
+    return {
+      wallet: sp.user.id,
+      isVerified: sp.user.isVerified,
+      username: sp.user.username,
+      distance,
+      territoryArea,
+      achievementCount,
+      score: sp.user.isVerified ? rawScore * VERIFIED_SCORE_MULTIPLIER : rawScore,
+    } satisfies SubgraphLeaderboardEntry;
+  });
+
+  return entries.sort((a, b) => b.score - a.score);
 }
 
 interface GroupEntity {

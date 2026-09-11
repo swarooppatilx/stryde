@@ -7,6 +7,9 @@ import {
   type getWalletClient,
 } from './client';
 import { relayStartSeason } from './relay';
+import { getLeaderboardFromSubgraph, type SubgraphLeaderboardEntry } from './subgraph';
+
+export type { SubgraphLeaderboardEntry } from './subgraph';
 
 const THIRTY_DAYS_SECONDS = 30n * 24n * 60n * 60n;
 const CURRENT_SEASON_TTL_MS = 10 * 1000;
@@ -133,6 +136,37 @@ async function batchGetContributions(
     results.push(...chunkResults);
   }
   return results;
+}
+
+/** Multi-metric leaderboard (distance + territory area + achievements),
+ * composed via a single subgraph query (see getLeaderboardFromSubgraph) when
+ * one is configured for the active chain mode. Falls back to the on-chain,
+ * distance-only getLeaderboard for chain modes with no subgraph (e.g. local
+ * Anvil) or if the subgraph query itself fails — `usernameByWallet` fills in
+ * display names for the fallback path, since the on-chain path has no
+ * username data of its own. */
+export async function getWeightedLeaderboard(
+  seasonId: bigint,
+  participants: `0x${string}`[],
+  usernameByWallet: Map<string, string>
+): Promise<SubgraphLeaderboardEntry[]> {
+  try {
+    const fromSubgraph = await getLeaderboardFromSubgraph(seasonId);
+    if (fromSubgraph) return fromSubgraph;
+  } catch (e) {
+    console.warn('[Season] Subgraph leaderboard fetch failed, falling back to on-chain:', e);
+  }
+
+  const entries = await getLeaderboard(seasonId, participants);
+  return entries.map((e) => ({
+    wallet: e.participant,
+    username: usernameByWallet.get(e.participant.toLowerCase()) ?? 'Unknown',
+    isVerified: false,
+    distance: Number(e.contribution),
+    territoryArea: 0,
+    achievementCount: 0,
+    score: Number(e.contribution),
+  }));
 }
 
 /**

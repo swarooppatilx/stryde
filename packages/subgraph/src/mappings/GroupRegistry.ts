@@ -5,6 +5,8 @@ import {
   GroupJoined,
   GroupLeft,
   GroupOwnershipTransferred,
+  TreasuryDeposited,
+  TreasuryWithdrawn,
 } from '../../generated/GroupRegistry/GroupRegistry';
 import { Group, GroupMember } from '../../generated/schema';
 
@@ -24,6 +26,7 @@ export function handleGroupCreated(event: GroupCreated): void {
   group.memberCount = BigInt.fromI32(1);
   group.createdAt = event.params.createdAt;
   group.active = true;
+  group.treasuryBalance = BigInt.fromI32(0);
   group.save();
 
   const member = new GroupMember(memberId(groupId, event.params.owner.toHexString()));
@@ -92,5 +95,23 @@ export function handleGroupOwnershipTransferred(event: GroupOwnershipTransferred
   if (!group) return;
 
   group.owner = event.params.newOwner;
+  group.save();
+}
+
+export function handleTreasuryDeposited(event: TreasuryDeposited): void {
+  const groupId = event.params.groupId.toString();
+  const group = Group.load(groupId);
+  if (!group) return;
+
+  group.treasuryBalance = event.params.newBalance;
+  group.save();
+}
+
+export function handleTreasuryWithdrawn(event: TreasuryWithdrawn): void {
+  const groupId = event.params.groupId.toString();
+  const group = Group.load(groupId);
+  if (!group) return;
+
+  group.treasuryBalance = event.params.newBalance;
   group.save();
 }

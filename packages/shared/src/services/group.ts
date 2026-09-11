@@ -240,6 +240,75 @@ export async function leaveGroup(
   return { confirmed: receipt.status === 'success', txHash: hash };
 }
 
+/** A group's shared on-chain treasury balance, in wei. The natural fit for
+ * the Privy "business/organization managing digital assets" track — this is
+ * an organization (the group/club), not an individual, holding and spending
+ * pooled funds. */
+export async function getGroupTreasury(groupId: bigint): Promise<bigint> {
+  const client = getPublicClient();
+  const contracts = getContracts();
+  return client.readContract({
+    ...contracts.groupRegistry,
+    functionName: 'getGroupTreasury',
+    args: [groupId],
+  }) as Promise<bigint>;
+}
+
+/** Contribute to a group's shared treasury. Any wallet may contribute
+ * (members or outside sponsors) — routes through whatever wallet client the
+ * caller passes in, so it rides the same gasless Privy smart-account path as
+ * every other write in the app when one is configured (see useViemWallet). */
+export async function depositToTreasury(
+  wallet: ReturnType<typeof getWalletClient>,
+  groupId: bigint,
+  amountWei: bigint
+): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
+  const contracts = getContracts();
+  const config = getActiveConfig();
+  const client = getPublicClient();
+  const account = wallet.account?.address;
+  if (!account) throw new Error('No wallet account found');
+
+  const hash = await wallet.writeContract({
+    ...contracts.groupRegistry,
+    functionName: 'depositToTreasury',
+    args: [groupId],
+    value: amountWei,
+    account,
+    chain: config.chain,
+  });
+
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  return { confirmed: receipt.status === 'success', txHash: hash };
+}
+
+/** Spend from a group's shared treasury — owner-gated on-chain (single
+ * signer, not a real multisig/threshold approval; see FEEDBACK.md for the
+ * stated production follow-up). */
+export async function withdrawFromTreasury(
+  wallet: ReturnType<typeof getWalletClient>,
+  groupId: bigint,
+  amountWei: bigint,
+  to: `0x${string}`
+): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
+  const contracts = getContracts();
+  const config = getActiveConfig();
+  const client = getPublicClient();
+  const account = wallet.account?.address;
+  if (!account) throw new Error('No wallet account found');
+
+  const hash = await wallet.writeContract({
+    ...contracts.groupRegistry,
+    functionName: 'withdrawFromTreasury',
+    args: [groupId, amountWei, to],
+    account,
+    chain: config.chain,
+  });
+
+  const receipt = await client.waitForTransactionReceipt({ hash });
+  return { confirmed: receipt.status === 'success', txHash: hash };
+}
+
 export async function transferGroupOwnership(
   wallet: ReturnType<typeof getWalletClient>,
   groupId: bigint,
