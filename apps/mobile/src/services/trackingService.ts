@@ -18,6 +18,9 @@ export class TrackingService implements ITrackingService {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private storage: StorageAdapter;
   private static readonly PERSIST_INTERVAL = 5000;
+  private static readonly AUTO_PAUSE_SPEED_MS = 1;
+  private static readonly AUTO_PAUSE_HOLD_MS = 5000;
+  private static readonly AUTO_PAUSE_RESUME_MOVE_M = 2;
 
   private lastGpsLocation: Location | null = null;
   private stepLength = DEFAULT_STEP_LENGTH;
@@ -25,6 +28,10 @@ export class TrackingService implements ITrackingService {
   private lastInterpolatedLocation: Location | null = null;
   private useGyroscope = true;
   private maxSpeedKmh = 25;
+  private autoPauseEnabled = false;
+  private autoPaused = false;
+  private lowSpeedSince: number | null = null;
+  private pauseLocation: Location | null = null;
 
   private constructor(storage: StorageAdapter = asyncStorageAdapter) {
     this.storage = storage;
@@ -45,6 +52,18 @@ export class TrackingService implements ITrackingService {
     this.maxSpeedKmh = kmh;
   }
 
+  setAutoPauseEnabled(enabled: boolean): void {
+    this.autoPauseEnabled = enabled;
+    if (!enabled) {
+      this.lowSpeedSince = null;
+      this.autoPaused = false;
+    }
+  }
+
+  getIsAutoPaused(): boolean {
+    return this.autoPaused;
+  }
+
   async startTracking(): Promise<void> {
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
@@ -59,16 +78,24 @@ export class TrackingService implements ITrackingService {
     this.lastGpsLocation = null;
     this.stepsSinceLastGps = 0;
     this.lastInterpolatedLocation = null;
+    this.autoPaused = false;
+    this.lowSpeedSince = null;
+    this.pauseLocation = null;
     await this.persist();
   }
 
   async pauseTracking(): Promise<void> {
+    this.autoPaused = false;
+    this.lowSpeedSince = null;
     this.isTracking = false;
     this.pauseStartTime = Date.now();
     await this.persist();
   }
 
   async resumeTracking(): Promise<void> {
+    this.autoPaused = false;
+    this.pauseLocation = null;
+    this.lowSpeedSince = null;
     if (this.pauseStartTime) {
       this.pausedDuration += Date.now() - this.pauseStartTime;
       this.pauseStartTime = null;
@@ -78,6 +105,9 @@ export class TrackingService implements ITrackingService {
   }
 
   async stopTracking(): Promise<{ success: boolean; error?: string }> {
+    this.autoPaused = false;
+    this.lowSpeedSince = null;
+    this.pauseLocation = null;
     this.isTracking = false;
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
@@ -107,9 +137,10 @@ export class TrackingService implements ITrackingService {
   }
 
   addLocation(location: Location): void {
-    if (this.isTracking) {
-      if (location.accuracy > 30) return;
+    if (location.accuracy > 30) return;
+    this.updateAutoPause(location);
 
+    if (this.isTracking) {
       if (this.locations.length > 0) {
         const prev = this.locations[this.locations.length - 1];
         const dist = haversineDistance(
@@ -145,6 +176,55 @@ export class TrackingService implements ITrackingService {
       this.stepsSinceLastGps = 0;
       this.lastInterpolatedLocation = location;
       this.schedulePersist();
+    }
+  }
+
+  private updateAutoPause(location: Location): void {
+    if (!this.autoPauseEnabled) return;
+
+    if (this.autoPaused) {
+      if (!this.pauseLocation) return;
+      const moved = haversineDistance(
+        this.pauseLocation.latitude,
+        this.pauseLocation.longitude,
+        location.latitude,
+        location.longitude
+      );
+      const dt = (location.timestamp - this.pauseLocation.timestamp) / 1000;
+      if (
+        dt > 0 &&
+        moved / dt > TrackingService.AUTO_PAUSE_SPEED_MS &&
+        moved >= TrackingService.AUTO_PAUSE_RESUME_MOVE_M
+      ) {
+        this.autoPaused = false;
+        this.pauseLocation = null;
+        this.lowSpeedSince = null;
+        this.resumeTracking();
+      }
+      return;
+    }
+
+    if (!this.isTracking || !this.lastGpsLocation) return;
+
+    const prev = this.lastGpsLocation;
+    const dt = (location.timestamp - prev.timestamp) / 1000;
+    const speed =
+      dt > 0
+        ? haversineDistance(prev.latitude, prev.longitude, location.latitude, location.longitude) /
+          dt
+        : 0;
+
+    if (speed < TrackingService.AUTO_PAUSE_SPEED_MS) {
+      this.lowSpeedSince ??= location.timestamp;
+      if (location.timestamp - this.lowSpeedSince >= TrackingService.AUTO_PAUSE_HOLD_MS) {
+        this.pauseTracking();
+        this.autoPaused = true;
+        this.pauseLocation = location;
+        this.lowSpeedSince = null;
+        this.persist();
+      }
+    } else {
+      this.lowSpeedSince = null;
     }
   }
 
@@ -229,6 +309,12 @@ export class TrackingService implements ITrackingService {
         }
         if (data.lastInterpolatedLocation) {
           this.lastInterpolatedLocation = data.lastInterpolatedLocation;
+        }
+        if (typeof data.autoPaused === 'boolean') {
+          this.autoPaused = data.autoPaused;
+        }
+        if (data.pauseLocation) {
+          this.pauseLocation = data.pauseLocation;
         }
       }
     } catch (err) {
@@ -339,6 +425,8 @@ export class TrackingService implements ITrackingService {
           stepLength: this.stepLength,
           lastGpsLocation: this.lastGpsLocation,
           lastInterpolatedLocation: this.lastInterpolatedLocation,
+          autoPaused: this.autoPaused,
+          pauseLocation: this.pauseLocation,
         })
       );
     } catch (err) {

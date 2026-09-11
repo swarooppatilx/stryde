@@ -15,6 +15,8 @@ export interface ITrackingService {
   generatePolyline(): string;
   setUseGyroscope(enabled: boolean): void;
   setMaxSpeed(kmh: number): void;
+  setAutoPauseEnabled(enabled: boolean): void;
+  getIsAutoPaused(): boolean;
   getInterpolatedDistance(): number;
   generateInterpolatedPolyline(): string;
   generateInterpolatedPoint(): Location | null;
