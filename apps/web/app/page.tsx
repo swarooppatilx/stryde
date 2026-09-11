@@ -1,5 +1,14 @@
-import { Button } from '@repo/ui/button';
 import Link from 'next/link';
+
+const linkStyle = {
+  padding: '0.6rem 1.25rem',
+  borderRadius: 8,
+  textDecoration: 'none',
+  fontWeight: 600,
+} as const;
+
+const primaryLinkStyle = { ...linkStyle, background: '#111', color: '#fff' };
+const secondaryLinkStyle = { ...linkStyle, background: '#eee', color: '#111' };
 
 export default function Home() {
   return (
@@ -16,11 +25,11 @@ export default function Home() {
         Move-to-earn on-chain. Claim territory, verify with World ID, earn tokens.
       </p>
       <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-        <Link href="/verify">
-          <Button>Verify with World ID</Button>
+        <Link href="/verify" style={primaryLinkStyle}>
+          Verify with World ID
         </Link>
-        <Link href="/dashboard">
-          <Button variant="secondary">Dashboard</Button>
+        <Link href="/dashboard" style={secondaryLinkStyle}>
+          Dashboard
         </Link>
       </div>
     </main>
