@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.1",
+    "@types/node": "26.4.1",
     "@worldcoin/idkit-core": "^4.2.4",
     "@worldcoin/idkit-server": "^1.1.1",
     "expo-server-sdk": "^7.2.0",
@@ -21,7 +22,6 @@
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
-    "@types/node": "26.4.1",
     "tsx": "^4.19.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.0"

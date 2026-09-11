@@ -82,23 +82,15 @@ export default function SettingsScreen() {
   const weeklyGoalActivities = useProfileStore((s) => s.settings.weeklyGoalActivities);
   const weeklyGoalTime = useProfileStore((s) => s.settings.weeklyGoalTime);
   const updateSettings = useProfileStore((s) => s.updateSettings);
-  const {
-    useGyroscopeAssist,
-    sensorUpdateRate,
-    autoPause,
-    setGyroscopeAssist,
-    setSensorUpdateRate,
-    setAutoPause,
-  } = useSettingsStore(
-    useShallow((s) => ({
-      useGyroscopeAssist: s.useGyroscopeAssist,
-      sensorUpdateRate: s.sensorUpdateRate,
-      autoPause: s.autoPause,
-      setGyroscopeAssist: s.setGyroscopeAssist,
-      setSensorUpdateRate: s.setSensorUpdateRate,
-      setAutoPause: s.setAutoPause,
-    }))
-  );
+  const { useGyroscopeAssist, sensorUpdateRate, setGyroscopeAssist, setSensorUpdateRate } =
+    useSettingsStore(
+      useShallow((s) => ({
+        useGyroscopeAssist: s.useGyroscopeAssist,
+        sensorUpdateRate: s.sensorUpdateRate,
+        setGyroscopeAssist: s.setGyroscopeAssist,
+        setSensorUpdateRate: s.setSensorUpdateRate,
+      }))
+    );
   const { user } = usePrivy();
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
   const { transact } = useTransactor();
@@ -323,14 +315,6 @@ export default function SettingsScreen() {
               }
             >
               Gyroscope Assist
-            </List.Item>
-            <List.Item
-              thumb={<ListIcon name="pause-circle-outline" />}
-              extra={
-                <Switch checked={autoPause} onChange={setAutoPause} color={theme.brand.primary} />
-              }
-            >
-              Auto-pause
             </List.Item>
           </List>
           {useGyroscopeAssist ? (
