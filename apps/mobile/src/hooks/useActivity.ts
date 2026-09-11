@@ -28,7 +28,7 @@ export function useActivity() {
   const viewRef = useRef<View>(null);
 
   const activity: Activity | undefined = id
-    ? (getActivityById(id) ?? (socialActivities.find((a) => a.id === id) as Activity | undefined))
+    ? (getActivityById(id) ?? socialActivities[id.toLowerCase()])
     : undefined;
 
   const coordinates = useMemo(

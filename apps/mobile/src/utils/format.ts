@@ -25,13 +25,11 @@ export function formatDistance(meters: number, unitSystem: UnitSystem = 'metric'
 
 export function parsePolyline(polyline: string): [number, number][] {
   if (!polyline) return [];
-  return polyline
-    .split(';')
-    .map((pair) => {
-      const [lng, lat] = pair.split(',').map(Number);
-      return [lng, lat] as [number, number];
-    })
-    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+  return polyline.split(';').flatMap((pair) => {
+    const [lng, lat] = pair.split(',').map(Number);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [];
+    return [[lng, lat] as [number, number]];
+  });
 }
 
 export function formatArea(squareMeters: number, unitSystem: UnitSystem = 'metric'): string {
@@ -133,18 +131,23 @@ export function getWeeklyStats(activities: Activity[]): WeeklyStats {
   weekStart.setDate(now.getDate() - now.getDay());
   weekStart.setHours(0, 0, 0, 0);
 
-  const weekActivities = activities.filter((a) => new Date(a.createdAt) >= weekStart);
-
   const dailyActivityCount = [0, 0, 0, 0, 0, 0, 0];
-  weekActivities.forEach((a) => {
-    const day = new Date(a.createdAt).getDay();
-    dailyActivityCount[day]++;
-  });
+  let activityCount = 0;
+  let totalDistance = 0;
+  let totalDuration = 0;
+  for (const a of activities) {
+    const createdAt = new Date(a.createdAt);
+    if (createdAt < weekStart) continue;
+    activityCount++;
+    totalDistance += a.distance;
+    totalDuration += a.duration;
+    dailyActivityCount[createdAt.getDay()]++;
+  }
 
   return {
-    activityCount: weekActivities.length,
-    totalDistance: weekActivities.reduce((sum, a) => sum + a.distance, 0),
-    totalDuration: weekActivities.reduce((sum, a) => sum + a.duration, 0),
+    activityCount,
+    totalDistance,
+    totalDuration,
     dailyActivityCount,
   };
 }

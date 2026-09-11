@@ -248,7 +248,7 @@ function MapRouteFallback({
   );
 }
 
-function MapLibreRouteInternal({
+const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   coordinates,
   territoryPolygons = [],
   territoryColor = Brand.primary,
@@ -454,15 +454,15 @@ function MapLibreRouteInternal({
       ))}
     </MapLibreMap>
   );
-}
+});
 
-export function MapRoute(props: MapRouteProps) {
+export const MapRoute = React.memo(function MapRoute(props: MapRouteProps) {
   return (
     <MapErrorBoundary fallback={<MapRouteFallback {...props} />}>
       <MapLibreRouteInternal {...props} />
     </MapErrorBoundary>
   );
-}
+});
 
 const styles = StyleSheet.create({
   map: {

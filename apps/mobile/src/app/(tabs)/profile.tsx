@@ -111,32 +111,24 @@ export default function ProfileScreen() {
     useCallback(() => {
       if (!walletAddress) return;
       let cancelled = false;
-      services.client
-        .getBalance(walletAddress)
-        .then((wei) => {
-          if (!cancelled) setBalanceWei(wei);
-        })
-        .catch(() => {
-          if (!cancelled) setBalanceWei(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [walletAddress])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!walletAddress) return;
-      let cancelled = false;
-      services.moveToEarnToken
-        .getTokenBalance(walletAddress)
-        .then((wei) => {
-          if (!cancelled) setStrdBalanceWei(wei);
-        })
-        .catch(() => {
-          if (!cancelled) setStrdBalanceWei(null);
-        });
+      Promise.all([
+        services.client
+          .getBalance(walletAddress)
+          .then((wei) => {
+            if (!cancelled) setBalanceWei(wei);
+          })
+          .catch(() => {
+            if (!cancelled) setBalanceWei(null);
+          }),
+        services.moveToEarnToken
+          .getTokenBalance(walletAddress)
+          .then((wei) => {
+            if (!cancelled) setStrdBalanceWei(wei);
+          })
+          .catch(() => {
+            if (!cancelled) setStrdBalanceWei(null);
+          }),
+      ]);
       return () => {
         cancelled = true;
       };

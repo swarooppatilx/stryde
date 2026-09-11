@@ -37,7 +37,7 @@ export default function UserProfileScreen() {
     () => (id ? getUserActivities(id) : []),
     [id, getUserActivities, following]
   );
-  const isFollowing = user ? following.includes(user.id) : false;
+  const isFollowing = user ? following.has(user.id.toLowerCase()) : false;
 
   const totalDistance = useMemo(
     () => activities.reduce((sum, a) => sum + a.distance, 0),

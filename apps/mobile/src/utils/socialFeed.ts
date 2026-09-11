@@ -2,19 +2,22 @@ import type { SocialActivity } from '../stores/socialStore';
 import type { Activity } from '../types';
 
 export function mergeLocalActivities(
-  activities: SocialActivity[],
+  activities: Record<string, SocialActivity>,
   localActivities: Activity[]
-): SocialActivity[] {
-  const merged = new Map(activities.map((a) => [a.activityHash || a.id, a]));
+): Record<string, SocialActivity> {
+  const merged: Record<string, SocialActivity> = {};
+  for (const activity of Object.values(activities)) {
+    merged[(activity.activityHash || activity.id).toLowerCase()] = activity;
+  }
   for (const local of localActivities) {
-    const key = local.activityHash || local.id;
-    const existing = merged.get(key);
-    merged.set(key, {
+    const key = (local.activityHash || local.id).toLowerCase();
+    const existing = merged[key];
+    merged[key] = {
       ...existing,
       ...local,
       kudos: existing?.kudos ?? local.kudos ?? [],
       comments: existing?.comments ?? local.comments ?? [],
-    });
+    };
   }
-  return [...merged.values()];
+  return merged;
 }

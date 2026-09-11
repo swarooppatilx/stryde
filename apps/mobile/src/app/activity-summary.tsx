@@ -107,6 +107,25 @@ export default function ActivitySummaryScreen() {
     return () => clearTimeout(timer);
   }, [coordinates, activity?.territory]);
 
+  const markers = useMemo<MapMarker[]>(() => {
+    const list: MapMarker[] = [];
+    if (coordinates.length > 0) {
+      list.push({
+        id: 'start',
+        coordinate: coordinates[0],
+        color: theme.brand.success,
+        icon: 'play',
+      });
+      list.push({
+        id: 'end',
+        coordinate: coordinates[coordinates.length - 1],
+        color: theme.brand.danger,
+        icon: 'stop',
+      });
+    }
+    return list;
+  }, [coordinates, activity?.territory, theme]);
+
   if (!activity) {
     return (
       <ThemedView type="background" style={styles.container}>
@@ -117,22 +136,6 @@ export default function ActivitySummaryScreen() {
         </SafeAreaView>
       </ThemedView>
     );
-  }
-
-  const markers: MapMarker[] = [];
-  if (coordinates.length > 0) {
-    markers.push({
-      id: 'start',
-      coordinate: coordinates[0],
-      color: theme.brand.success,
-      icon: 'play',
-    });
-    markers.push({
-      id: 'end',
-      coordinate: coordinates[coordinates.length - 1],
-      color: theme.brand.danger,
-      icon: 'stop',
-    });
   }
 
   const icon = getSportIcon(activity.activityType);

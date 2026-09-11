@@ -5,11 +5,12 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  FlatList,
   Image,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
+  View,
 } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +35,12 @@ function getGreeting(): string {
   if (hour < 12) return 'Good morning';
   if (hour < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+type FeedItem = { activity: SocialActivity; user: SocialUser };
+
+function FeedSeparator() {
+  return <View style={styles.separator} />;
 }
 
 export default function HomeScreen() {
@@ -73,7 +80,7 @@ export default function HomeScreen() {
   // them out here too, so the empty state reflects what's actually shown.
   // biome-ignore lint/correctness/useExhaustiveDependencies: getUserById reads socialUsers/profile internally
   const feedItems = useMemo(() => {
-    const items: { activity: SocialActivity; user: SocialUser }[] = [];
+    const items: FeedItem[] = [];
     for (const activity of feed) {
       const user = getUserById(activity.userId);
       if (user) items.push({ activity, user });
@@ -121,10 +128,119 @@ export default function HomeScreen() {
     }
   };
 
+  const renderFeedItem = useCallback(
+    ({ item }: { item: FeedItem }) => (
+      <Animated.View entering={FadeInUp.delay(300).duration(300)}>
+        <FeedCard
+          activity={item.activity}
+          user={item.user}
+          onKudos={() => toggleKudos(item.activity.id)}
+          onComment={() => setCommentActivityId(item.activity.id)}
+          onPress={() => router.push(`/activity-summary?id=${item.activity.id}`)}
+          onMapPress={() => router.push(`/activity-summary?id=${item.activity.id}`)}
+          onUserPress={() => router.push(`/user-profile?id=${item.activity.userId}`)}
+        />
+      </Animated.View>
+    ),
+    [toggleKudos, router]
+  );
+
+  const listHeader = useMemo(
+    () => (
+      <ThemedView style={styles.listHeader}>
+        {/* ── Top Bar ── */}
+        <ThemedView style={styles.topBar}>
+          <ThemedText type="subtitle" numberOfLines={1} style={styles.greeting}>
+            {greeting}
+          </ThemedText>
+          <ThemedView style={styles.topBarActions}>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+              onPress={() => Toast.show({ content: 'Notifications coming soon', duration: 1 })}
+            >
+              <Ionicons name="notifications-outline" size={18} color={theme.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Search"
+              onPress={() => router.push('/search')}
+            >
+              <Ionicons name="search-outline" size={18} color={theme.text} />
+            </TouchableOpacity>
+          </ThemedView>
+        </ThemedView>
+
+        {/* ── Week Banner ── */}
+        <Animated.View entering={FadeInUp.delay(100).duration(300)}>
+          <ThemedView style={[styles.weekBanner, { backgroundColor: theme.backgroundElement }]}>
+            <Image
+              source={require('@/assets/images/stryde-emblem.png')}
+              style={styles.weekBannerEmblem}
+              resizeMode="contain"
+            />
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              This week: {weekStats.count} {weekStats.count === 1 ? 'activity' : 'activities'} ·{' '}
+              {formatDistanceLocal(weekStats.distance)}
+            </ThemedText>
+          </ThemedView>
+        </Animated.View>
+
+        {/* ── Start Activity CTA ── */}
+        <Animated.View entering={FadeInUp.delay(200).duration(300)}>
+          <AppButton
+            icon={<Ionicons name="play" size={18} color={Brand.white} />}
+            onPress={() => router.push('/(tabs)/tracking')}
+            style={styles.startButton}
+          >
+            Start Activity
+          </AppButton>
+        </Animated.View>
+
+        {/* ── Feed ── */}
+        <ThemedView style={styles.sectionHeader}>
+          <ThemedText type="sectionTitle">Feed</ThemedText>
+        </ThemedView>
+      </ThemedView>
+    ),
+    [theme, greeting, weekStats, router]
+  );
+
+  const renderEmptyFeed = useCallback(
+    () => (
+      <EmptyInboxState
+        title="No posts yet"
+        description="Your activities and posts from the community will appear here."
+        actionLabel="Find friends"
+        onActionPress={() => router.push('/find-friends')}
+        animated={false}
+        colors={{
+          screen: 'transparent',
+          title: theme.text,
+          description: theme.textSecondary,
+          skeleton: theme.backgroundElement,
+          skeletonStrong: theme.backgroundSelected,
+        }}
+        style={styles.emptyCard}
+      />
+    ),
+    [router, theme]
+  );
+
   return (
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView
+        <FlatList
+          data={feedItems}
+          keyExtractor={(item) => item.activity.id}
+          renderItem={renderFeedItem}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={renderEmptyFeed}
+          ItemSeparatorComponent={FeedSeparator}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -135,101 +251,10 @@ export default function HomeScreen() {
               colors={[theme.brand.primary]}
             />
           }
-        >
-          {/* ── Top Bar ── */}
-          <ThemedView style={styles.topBar}>
-            <ThemedText type="subtitle" numberOfLines={1} style={styles.greeting}>
-              {greeting}
-            </ThemedText>
-            <ThemedView style={styles.topBarActions}>
-              <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-                onPress={() => Toast.show({ content: 'Notifications coming soon', duration: 1 })}
-              >
-                <Ionicons name="notifications-outline" size={18} color={theme.text} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Search"
-                onPress={() => router.push('/search')}
-              >
-                <Ionicons name="search-outline" size={18} color={theme.text} />
-              </TouchableOpacity>
-            </ThemedView>
-          </ThemedView>
-
-          {/* ── Week Banner ── */}
-          <Animated.View entering={FadeInUp.delay(100).duration(300)}>
-            <ThemedView style={[styles.weekBanner, { backgroundColor: theme.backgroundElement }]}>
-              <Image
-                source={require('@/assets/images/stryde-emblem.png')}
-                style={styles.weekBannerEmblem}
-                resizeMode="contain"
-              />
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                This week: {weekStats.count} {weekStats.count === 1 ? 'activity' : 'activities'} ·{' '}
-                {formatDistanceLocal(weekStats.distance)}
-              </ThemedText>
-            </ThemedView>
-          </Animated.View>
-
-          {/* ── Start Activity CTA ── */}
-          <Animated.View entering={FadeInUp.delay(200).duration(300)}>
-            <AppButton
-              icon={<Ionicons name="play" size={18} color={Brand.white} />}
-              onPress={() => router.push('/(tabs)/tracking')}
-              style={styles.startButton}
-            >
-              Start Activity
-            </AppButton>
-          </Animated.View>
-
-          {/* ── Feed ── */}
-          <ThemedView style={styles.section}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedText type="sectionTitle">Feed</ThemedText>
-            </ThemedView>
-
-            {feedItems.length > 0 ? (
-              feedItems.map(({ activity, user }, index) => (
-                <Animated.View
-                  key={activity.id}
-                  entering={FadeInUp.delay(300 + index * 80).duration(300)}
-                >
-                  <FeedCard
-                    activity={activity}
-                    user={user}
-                    onKudos={() => toggleKudos(activity.id)}
-                    onComment={() => setCommentActivityId(activity.id)}
-                    onPress={() => router.push(`/activity-summary?id=${activity.id}`)}
-                    onMapPress={() => router.push(`/activity-summary?id=${activity.id}`)}
-                    onUserPress={() => router.push(`/user-profile?id=${activity.userId}`)}
-                  />
-                </Animated.View>
-              ))
-            ) : (
-              <EmptyInboxState
-                title="No posts yet"
-                description="Your activities and posts from the community will appear here."
-                hideAction
-                animated={false}
-                colors={{
-                  screen: 'transparent',
-                  title: theme.text,
-                  description: theme.textSecondary,
-                  skeleton: theme.backgroundElement,
-                  skeletonStrong: theme.backgroundSelected,
-                }}
-                style={styles.emptyCard}
-              />
-            )}
-          </ThemedView>
-        </ScrollView>
+          initialNumToRender={6}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+        />
       </SafeAreaView>
 
       {/* ── FAB ── */}
@@ -310,7 +335,8 @@ function formatDistanceLocal(meters: number): string {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  scroll: { padding: Spacing.four, gap: Spacing.three },
+  scroll: { padding: Spacing.four },
+  listHeader: { gap: Spacing.three, marginBottom: Spacing.two },
 
   /* Top Bar */
   topBar: {
@@ -347,11 +373,15 @@ const styles = StyleSheet.create({
   startButton: { borderRadius: BorderRadius.full },
 
   /* Section */
-  section: { gap: Spacing.two },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+
+  /* Item separator */
+  separator: {
+    height: Spacing.two,
   },
 
   /* Empty State */

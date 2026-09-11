@@ -4,8 +4,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
@@ -34,6 +34,13 @@ import { haptics } from '@/utils/haptics';
 const TABS = ['Clubs', 'Events', 'Challenges'] as const;
 type TabKey = (typeof TABS)[number];
 
+type ChallengeItem = Awaited<ReturnType<typeof services.challenge.getUserChallenges>>[number];
+
+type Row =
+  | { kind: 'club'; club: Club }
+  | { kind: 'event'; event: ChallengeEvent }
+  | { kind: 'challenge'; challenge: ChallengeItem };
+
 const CHALLENGE_STATUS_LABEL = ['Open', 'Accepted', 'Settled', 'Cancelled'];
 
 const SPORT_ICON_NAME = (sport: ActivityType | 'multi'): keyof typeof Ionicons.glyphMap => {
@@ -61,7 +68,7 @@ const formatDateRange = (start: Date, end: Date) => {
 export default function CommunityScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const listRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<Row>>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>('Clubs');
   const [clubQuery, setClubQuery] = useState('');
@@ -150,7 +157,7 @@ export default function CommunityScreen() {
   const handleTabChange = (tab: TabKey) => {
     haptics.selection();
     setActiveTab(tab);
-    listRef.current?.scrollTo({ y: 0, animated: false });
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
   const handleJoinClub = async (club: Club) => {
@@ -345,11 +352,198 @@ export default function CommunityScreen() {
     );
   };
 
+  const listData = useMemo<Row[]>(() => {
+    if (isClubs) return filteredClubs.map((club) => ({ kind: 'club', club }));
+    if (isEvents) return filteredEvents.map((event) => ({ kind: 'event', event }));
+    return (challenges ?? []).map((challenge) => ({ kind: 'challenge', challenge }));
+  }, [isClubs, isEvents, filteredClubs, filteredEvents, challenges]);
+
+  const keyExtractor = useCallback((item: Row) => {
+    if (item.kind === 'club') return item.club.id;
+    if (item.kind === 'event') return item.event.id;
+    return item.challenge.id.toString();
+  }, []);
+
+  const renderRow = ({ item }: { item: Row }) => {
+    if (item.kind === 'club') return renderClub(item.club);
+    if (item.kind === 'event') return renderEvent(item.event);
+    return renderChallenge(item.challenge);
+  };
+
+  const renderSkeleton = () => (
+    <ThemedView style={styles.challengeSkeletonList}>
+      {[0, 1, 2].map((i) => (
+        <ThemedView key={i} style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+          <ThemedView style={styles.cardRow}>
+            <Shimmer isLoading preset={theme.isDark ? 'dark' : 'light'} style={styles.iconCircle} />
+            <ThemedView style={styles.cardInfo}>
+              <Shimmer
+                isLoading
+                preset={theme.isDark ? 'dark' : 'light'}
+                style={styles.skeletonLine}
+              />
+              <Shimmer
+                isLoading
+                preset={theme.isDark ? 'dark' : 'light'}
+                style={styles.skeletonLineShort}
+              />
+            </ThemedView>
+          </ThemedView>
+        </ThemedView>
+      ))}
+    </ThemedView>
+  );
+
+  const renderEmpty = () => {
+    if (isClubs) {
+      if (clubsLoading && clubs.length === 0) return renderSkeleton();
+      return (
+        <ThemedView style={styles.empty}>
+          <Ionicons name="people-outline" size={32} color={theme.textSecondary} />
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            {clubs.length === 0 ? 'No clubs yet. Create the first one!' : 'No clubs found'}
+          </ThemedText>
+        </ThemedView>
+      );
+    }
+    if (isEvents) {
+      return (
+        <ThemedView style={styles.empty}>
+          <Ionicons name="trophy-outline" size={32} color={theme.textSecondary} />
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            No events found
+          </ThemedText>
+        </ThemedView>
+      );
+    }
+    if (challenges === null) return renderSkeleton();
+    return (
+      <ThemedView style={styles.empty}>
+        <Ionicons name="flag-outline" size={32} color={theme.textSecondary} />
+        <ThemedText type="small" style={{ color: theme.textSecondary }}>
+          No challenges yet. Challenge a friend!
+        </ThemedText>
+      </ThemedView>
+    );
+  };
+
+  const listHeader = (
+    <>
+      {/* Header */}
+      <ThemedView style={styles.header}>
+        <ThemedText type="headline">Groups</ThemedText>
+      </ThemedView>
+
+      {/* Sub-Tab Bar */}
+      <ThemedView style={[styles.tabBar, { borderBottomColor: theme.border }]}>
+        {TABS.map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.tabItem,
+              activeTab === tab && { borderBottomColor: theme.brand.primary },
+            ]}
+            onPress={() => handleTabChange(tab)}
+            activeOpacity={0.7}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === tab }}
+          >
+            <ThemedText
+              type="small"
+              style={{
+                fontWeight: activeTab === tab ? '700' : '500',
+                color: activeTab === tab ? theme.brand.primary : theme.textSecondary,
+              }}
+            >
+              {tab}
+            </ThemedText>
+          </TouchableOpacity>
+        ))}
+      </ThemedView>
+
+      {/* Demo vs on-chain data indicator */}
+      <ThemedView
+        style={[
+          styles.dataBadge,
+          {
+            backgroundColor: isEvents ? theme.backgroundElement : theme.brand.primaryTint,
+          },
+        ]}
+      >
+        <Ionicons
+          name={isEvents ? 'flask-outline' : 'link'}
+          size={12}
+          color={isEvents ? theme.textSecondary : theme.brand.primary}
+        />
+        <ThemedText
+          type="caption"
+          style={{
+            color: isEvents ? theme.textSecondary : theme.brand.primary,
+          }}
+        >
+          {isEvents ? 'Demo data' : 'On-chain'}
+        </ThemedText>
+      </ThemedView>
+
+      {/* Search Bar */}
+      {(isClubs || isEvents) && (
+        <SearchBar
+          value={query}
+          onChangeText={setQuery}
+          placeholder={isClubs ? 'Search clubs...' : 'Search events...'}
+        />
+      )}
+
+      {/* Sport Filter Chips */}
+      {isClubs && <FilterChips value={sportFilter} onChange={setSportFilter} />}
+      {isEvents && <FilterChips value={eventSportFilter} onChange={setEventSportFilter} />}
+
+      {/* Create buttons */}
+      {isClubs && (
+        <AppButton
+          variant="secondary"
+          onPress={() => {
+            haptics.tap();
+            router.push('/create-club');
+          }}
+          style={styles.newChallengeBtn}
+        >
+          + Create Club
+        </AppButton>
+      )}
+      {activeTab === 'Challenges' && (
+        <AppButton
+          variant="secondary"
+          onPress={() => {
+            haptics.tap();
+            router.push('/create-challenge');
+          }}
+          style={styles.newChallengeBtn}
+        >
+          + New Challenge
+        </AppButton>
+      )}
+    </>
+  );
+
   return (
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView
+        <FlatList
           ref={listRef}
+          data={listData}
+          keyExtractor={keyExtractor}
+          renderItem={renderRow}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={renderEmpty}
+          extraData={[
+            activeTab,
+            clubsLoading,
+            challenges,
+            joinedClubIds,
+            joinedEvents,
+            pendingClubId,
+          ]}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -359,199 +553,7 @@ export default function CommunityScreen() {
               tintColor={theme.brand.primary}
             />
           }
-        >
-          {/* Header */}
-          <ThemedView style={styles.header}>
-            <ThemedText type="headline">Groups</ThemedText>
-          </ThemedView>
-
-          {/* Sub-Tab Bar */}
-          <ThemedView style={[styles.tabBar, { borderBottomColor: theme.border }]}>
-            {TABS.map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                style={[
-                  styles.tabItem,
-                  activeTab === tab && { borderBottomColor: theme.brand.primary },
-                ]}
-                onPress={() => handleTabChange(tab)}
-                activeOpacity={0.7}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: activeTab === tab }}
-              >
-                <ThemedText
-                  type="small"
-                  style={{
-                    fontWeight: activeTab === tab ? '700' : '500',
-                    color: activeTab === tab ? theme.brand.primary : theme.textSecondary,
-                  }}
-                >
-                  {tab}
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
-          </ThemedView>
-
-          {/* Demo vs on-chain data indicator */}
-          <ThemedView
-            style={[
-              styles.dataBadge,
-              {
-                backgroundColor: isEvents ? theme.backgroundElement : theme.brand.primaryTint,
-              },
-            ]}
-          >
-            <Ionicons
-              name={isEvents ? 'flask-outline' : 'link'}
-              size={12}
-              color={isEvents ? theme.textSecondary : theme.brand.primary}
-            />
-            <ThemedText
-              type="caption"
-              style={{
-                color: isEvents ? theme.textSecondary : theme.brand.primary,
-              }}
-            >
-              {isEvents ? 'Demo data' : 'On-chain'}
-            </ThemedText>
-          </ThemedView>
-
-          {/* Search Bar */}
-          {(isClubs || isEvents) && (
-            <SearchBar
-              value={query}
-              onChangeText={setQuery}
-              placeholder={isClubs ? 'Search clubs...' : 'Search events...'}
-            />
-          )}
-
-          {/* Sport Filter Chips */}
-          {isClubs && <FilterChips value={sportFilter} onChange={setSportFilter} />}
-          {isEvents && <FilterChips value={eventSportFilter} onChange={setEventSportFilter} />}
-
-          {/* Cards */}
-          {isClubs && (
-            <>
-              <AppButton
-                variant="secondary"
-                onPress={() => {
-                  haptics.tap();
-                  router.push('/create-club');
-                }}
-                style={styles.newChallengeBtn}
-              >
-                + Create Club
-              </AppButton>
-
-              {clubsLoading && clubs.length === 0 ? (
-                <ThemedView style={styles.challengeSkeletonList}>
-                  {[0, 1, 2].map((i) => (
-                    <ThemedView
-                      key={i}
-                      style={[styles.card, { backgroundColor: theme.backgroundElement }]}
-                    >
-                      <ThemedView style={styles.cardRow}>
-                        <Shimmer
-                          isLoading
-                          preset={theme.isDark ? 'dark' : 'light'}
-                          style={styles.iconCircle}
-                        />
-                        <ThemedView style={styles.cardInfo}>
-                          <Shimmer
-                            isLoading
-                            preset={theme.isDark ? 'dark' : 'light'}
-                            style={styles.skeletonLine}
-                          />
-                          <Shimmer
-                            isLoading
-                            preset={theme.isDark ? 'dark' : 'light'}
-                            style={styles.skeletonLineShort}
-                          />
-                        </ThemedView>
-                      </ThemedView>
-                    </ThemedView>
-                  ))}
-                </ThemedView>
-              ) : filteredClubs.length === 0 ? (
-                <ThemedView style={styles.empty}>
-                  <Ionicons name="people-outline" size={32} color={theme.textSecondary} />
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    {clubs.length === 0 ? 'No clubs yet. Create the first one!' : 'No clubs found'}
-                  </ThemedText>
-                </ThemedView>
-              ) : (
-                filteredClubs.map(renderClub)
-              )}
-            </>
-          )}
-
-          {isEvents &&
-            (filteredEvents.length === 0 ? (
-              <ThemedView style={styles.empty}>
-                <Ionicons name="trophy-outline" size={32} color={theme.textSecondary} />
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  No events found
-                </ThemedText>
-              </ThemedView>
-            ) : (
-              filteredEvents.map(renderEvent)
-            ))}
-
-          {activeTab === 'Challenges' && (
-            <>
-              <AppButton
-                variant="secondary"
-                onPress={() => {
-                  haptics.tap();
-                  router.push('/create-challenge');
-                }}
-                style={styles.newChallengeBtn}
-              >
-                + New Challenge
-              </AppButton>
-
-              {challenges === null ? (
-                <ThemedView style={styles.challengeSkeletonList}>
-                  {[0, 1, 2].map((i) => (
-                    <ThemedView
-                      key={i}
-                      style={[styles.card, { backgroundColor: theme.backgroundElement }]}
-                    >
-                      <ThemedView style={styles.cardRow}>
-                        <Shimmer
-                          isLoading
-                          preset={theme.isDark ? 'dark' : 'light'}
-                          style={styles.iconCircle}
-                        />
-                        <ThemedView style={styles.cardInfo}>
-                          <Shimmer
-                            isLoading
-                            preset={theme.isDark ? 'dark' : 'light'}
-                            style={styles.skeletonLine}
-                          />
-                          <Shimmer
-                            isLoading
-                            preset={theme.isDark ? 'dark' : 'light'}
-                            style={styles.skeletonLineShort}
-                          />
-                        </ThemedView>
-                      </ThemedView>
-                    </ThemedView>
-                  ))}
-                </ThemedView>
-              ) : challenges.length === 0 ? (
-                <ThemedView style={styles.empty}>
-                  <Ionicons name="flag-outline" size={32} color={theme.textSecondary} />
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    No challenges yet. Challenge a friend!
-                  </ThemedText>
-                </ThemedView>
-              ) : (
-                challenges.map(renderChallenge)
-              )}
-            </>
-          )}
-        </ScrollView>
+        />
       </SafeAreaView>
     </ThemedView>
   );

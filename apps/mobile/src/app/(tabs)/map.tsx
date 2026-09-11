@@ -1,5 +1,6 @@
 import { Result } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,10 +30,14 @@ export default function MapScreen() {
   } = useMap();
   const insets = useSafeAreaInsets();
 
-  const routes = activityRoutes.map((r) => ({
-    ...r,
-    color: theme.brand.primary,
-  }));
+  const routes = useMemo(
+    () =>
+      activityRoutes.map((r) => ({
+        ...r,
+        color: theme.brand.primary,
+      })),
+    [activityRoutes, theme]
+  );
 
   return (
     <ThemedView type="background" style={styles.container}>

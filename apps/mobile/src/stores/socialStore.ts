@@ -11,14 +11,24 @@ import type { Activity, User } from '@/types';
 import { mergeLocalActivities } from '@/utils/socialFeed';
 import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
 
-/**
- * getCurrentUserId() is checksummed (from Privy/viem) while activity.userId /
- * user.id often come from the subgraph, which returns lowercase addresses —
- * so exact string equality between the two fails even when they refer to the
- * same wallet.
- */
 function sameAddress(a: string | undefined, b: string | undefined): boolean {
   return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
+
+function toUserRecord(users: SocialUser[]): Record<string, SocialUser> {
+  const record: Record<string, SocialUser> = {};
+  for (const user of users) {
+    record[user.id.toLowerCase()] = user;
+  }
+  return record;
+}
+
+function toActivityRecord(activities: SocialActivity[]): Record<string, SocialActivity> {
+  const record: Record<string, SocialActivity> = {};
+  for (const activity of activities) {
+    record[activity.id.toLowerCase()] = activity;
+  }
+  return record;
 }
 
 export interface SocialUser extends User {
@@ -34,26 +44,30 @@ export interface SocialActivity extends Activity {
   comments: SocialComment[];
 }
 
-/**
- * Privacy is set and persisted purely on the poster's own device — there's no
- * backend/subgraph to propagate it, so a chain-sourced activity with no local
- * record on this device has no privacy data to enforce and defaults to visible.
- * The poster's own device always sees everything they posted regardless.
- */
 function isVisibleToViewer(
   activity: SocialActivity,
   viewerId: string,
-  following: string[]
+  following: ReadonlySet<string>
 ): boolean {
   if (sameAddress(activity.userId, viewerId)) return true;
   switch (activity.privacy) {
     case 'only_me':
       return false;
     case 'followers':
-      return following.some((f) => sameAddress(f, activity.userId));
+      return following.has(activity.userId.toLowerCase());
     default:
       return true;
   }
+}
+
+function visibleActivities(
+  activities: SocialActivity[],
+  viewerId: string,
+  following: ReadonlySet<string>
+): SocialActivity[] {
+  return activities
+    .filter((a) => isVisibleToViewer(a, viewerId, following))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export interface SocialComment {
@@ -65,10 +79,10 @@ export interface SocialComment {
 }
 
 interface SocialState {
-  users: SocialUser[];
-  activities: SocialActivity[];
-  currentUserKudos: string[];
-  following: string[];
+  users: Record<string, SocialUser>;
+  activities: Record<string, SocialActivity>;
+  currentUserKudos: Set<string>;
+  following: Set<string>;
 
   fetchUsers: () => Promise<void>;
   fetchActivities: () => Promise<void>;
@@ -84,16 +98,17 @@ interface SocialState {
   searchActivities: (query: string) => SocialActivity[];
   getUserById: (id: string) => SocialUser | undefined;
   getUserActivities: (userId: string) => SocialActivity[];
+  getSuggestions: () => SocialUser[];
   reset: () => void;
 }
 
 export const useSocialStore = create<SocialState>()(
   persist(
     (set, get) => ({
-      users: [],
-      activities: [],
-      currentUserKudos: [],
-      following: [],
+      users: {},
+      activities: {},
+      currentUserKudos: new Set<string>(),
+      following: new Set<string>(),
 
       syncLocalActivities: () =>
         set((state) => ({
@@ -120,21 +135,12 @@ export const useSocialStore = create<SocialState>()(
             followers: 0,
             following: 0,
           }));
-          set({ users: socialUsers });
+          set({ users: toUserRecord(socialUsers) });
         } catch (e) {
           console.warn('[Social] Failed to fetch users:', e);
         }
       },
 
-      // The cross-user feed is sourced from the chain (subgraph when available,
-      // else ActivityRecorded/ActivityMetadataUpdated logs directly). Chain-only
-      // fields (distance/duration/territoryArea) come from the log/entity itself.
-      // Richer fields (name/description/photos) prefer this device's own
-      // activityStore record when present (e.g. the poster's own device, right
-      // after posting), and otherwise fall back to the IPFS metadata resolved
-      // from the activity's on-chain metadataCid — this is what lets those
-      // fields show up on *other* devices/users instead of being blank.
-      // `polyline` has no on-chain or IPFS equivalent, so it stays local-only.
       fetchActivities: async () => {
         try {
           const chainActivities = await services.sync.syncAllActivitiesFromChain();
@@ -147,7 +153,7 @@ export const useSocialStore = create<SocialState>()(
 
           set((state) => {
             const existingByHash = new Map(
-              state.activities.map((a) => [a.activityHash || a.id, a])
+              Object.values(state.activities).map((a) => [a.activityHash || a.id, a])
             );
 
             const socialActivities: SocialActivity[] = chainActivities.map((a) => {
@@ -179,16 +185,15 @@ export const useSocialStore = create<SocialState>()(
               };
             });
 
-            // Keep local-only posts and their social interactions across refreshes.
             const localKeys = new Set(
               useActivityStore.getState().activities.map((a) => a.activityHash || a.id)
             );
-            const localSocial = state.activities.filter((a) =>
+            const localSocial = Object.values(state.activities).filter((a) =>
               localKeys.has(a.activityHash || a.id)
             );
             return {
               activities: mergeLocalActivities(
-                [...localSocial, ...socialActivities],
+                toActivityRecord([...localSocial, ...socialActivities]),
                 useActivityStore.getState().activities
               ),
             };
@@ -200,20 +205,28 @@ export const useSocialStore = create<SocialState>()(
 
       toggleKudos: (activityId: string) =>
         set((state) => {
-          const hasKudos = state.currentUserKudos.includes(activityId);
-          const updatedKudos = hasKudos
-            ? state.currentUserKudos.filter((id) => id !== activityId)
-            : [...state.currentUserKudos, activityId];
+          const currentUserId = getCurrentUserId();
+          const hasKudos = state.currentUserKudos.has(activityId);
+          const updatedKudos = new Set(state.currentUserKudos);
+          if (hasKudos) {
+            updatedKudos.delete(activityId);
+          } else {
+            updatedKudos.add(activityId);
+          }
 
-          const updatedActivities = state.activities.map((a) => {
-            if (a.id !== activityId) return a;
-            const kudos = hasKudos
-              ? a.kudos.filter((id) => id !== getCurrentUserId())
-              : [...a.kudos, getCurrentUserId()];
-            return { ...a, kudos };
-          });
+          const activity = state.activities[activityId];
+          if (!activity) return { currentUserKudos: updatedKudos };
 
-          return { currentUserKudos: updatedKudos, activities: updatedActivities };
+          const updatedActivity = {
+            ...activity,
+            kudos: hasKudos
+              ? activity.kudos.filter((id) => id !== currentUserId)
+              : [...activity.kudos, currentUserId],
+          };
+          return {
+            currentUserKudos: updatedKudos,
+            activities: { ...state.activities, [activityId]: updatedActivity },
+          };
         }),
 
       addComment: (activityId: string, text: string) =>
@@ -226,71 +239,86 @@ export const useSocialStore = create<SocialState>()(
             likedBy: [],
           };
 
-          const updatedActivities = state.activities.map((a) =>
-            a.id === activityId ? { ...a, comments: [...a.comments, comment] } : a
-          );
-
-          return { activities: updatedActivities };
+          const activity = state.activities[activityId];
+          if (!activity) return state;
+          return {
+            activities: {
+              ...state.activities,
+              [activityId]: { ...activity, comments: [...activity.comments, comment] },
+            },
+          };
         }),
 
       toggleCommentLike: (activityId: string, commentId: string) =>
         set((state) => {
-          const updatedActivities = state.activities.map((a) => {
-            if (a.id !== activityId) return a;
-            return {
-              ...a,
-              comments: a.comments.map((c) => {
-                if (c.id !== commentId) return c;
-                const hasLiked = (c.likedBy ?? []).includes(getCurrentUserId());
-                return {
-                  ...c,
-                  likedBy: hasLiked
-                    ? (c.likedBy ?? []).filter((id) => id !== getCurrentUserId())
-                    : [...(c.likedBy ?? []), getCurrentUserId()],
-                };
-              }),
-            };
-          });
-          return { activities: updatedActivities };
+          const activity = state.activities[activityId];
+          if (!activity) return state;
+          const currentUserId = getCurrentUserId();
+          const updatedActivity = {
+            ...activity,
+            comments: activity.comments.map((c) => {
+              if (c.id !== commentId) return c;
+              const hasLiked = (c.likedBy ?? []).includes(currentUserId);
+              return {
+                ...c,
+                likedBy: hasLiked
+                  ? (c.likedBy ?? []).filter((id) => id !== currentUserId)
+                  : [...(c.likedBy ?? []), currentUserId],
+              };
+            }),
+          };
+          return { activities: { ...state.activities, [activityId]: updatedActivity } };
         }),
 
       updateActivity: (activityId: string, updates: Partial<SocialActivity>) =>
-        set((state) => ({
-          activities: state.activities.map((a) => (a.id === activityId ? { ...a, ...updates } : a)),
-        })),
+        set((state) => {
+          const activity = state.activities[activityId];
+          if (!activity) return state;
+          return {
+            activities: { ...state.activities, [activityId]: { ...activity, ...updates } },
+          };
+        }),
 
       toggleFollow: (userId: string) =>
         set((state) => {
-          const isFollowing = state.following.some((id) => sameAddress(id, userId));
-          const updatedFollowing = isFollowing
-            ? state.following.filter((id) => !sameAddress(id, userId))
-            : [...state.following, userId];
+          const key = userId.toLowerCase();
+          const isCurrentlyFollowing = state.following.has(key);
+          const updatedFollowing = new Set(state.following);
+          if (isCurrentlyFollowing) {
+            updatedFollowing.delete(key);
+          } else {
+            updatedFollowing.add(key);
+          }
 
-          const updatedUsers = state.users.map((u) => {
-            if (!sameAddress(u.id, userId)) return u;
-            return {
-              ...u,
-              followers: isFollowing ? u.followers - 1 : u.followers + 1,
-            };
-          });
+          const existingUser = state.users[key];
+          if (!existingUser) return { following: updatedFollowing };
 
-          return { following: updatedFollowing, users: updatedUsers };
+          return {
+            following: updatedFollowing,
+            users: {
+              ...state.users,
+              [key]: {
+                ...existingUser,
+                followers: isCurrentlyFollowing
+                  ? existingUser.followers - 1
+                  : existingUser.followers + 1,
+              },
+            },
+          };
         }),
 
-      isFollowing: (userId: string) => get().following.some((id) => sameAddress(id, userId)),
+      isFollowing: (userId: string) => get().following.has(userId.toLowerCase()),
 
       getFeed: () => {
-        const { activities, following } = get();
         const viewerId = getCurrentUserId();
-        return activities
-          .filter((a) => isVisibleToViewer(a, viewerId, following))
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const { activities, following } = get();
+        return visibleActivities(Object.values(activities), viewerId, following);
       },
 
       searchUsers: (query: string) => {
         const { users } = get();
         const q = query.toLowerCase();
-        return users.filter(
+        return Object.values(users).filter(
           (u) => u.username.toLowerCase().includes(q) || u.id.toLowerCase().includes(q)
         );
       },
@@ -299,11 +327,7 @@ export const useSocialStore = create<SocialState>()(
         const { activities, following } = get();
         const viewerId = getCurrentUserId();
         const q = query.toLowerCase();
-        // Chain-sourced activities from other users only have a `name` when the
-        // poster attached IPFS metadata via setActivityMetadata (see fetchActivities
-        // above); otherwise fall back to a sport-type label so they're still
-        // searchable.
-        return activities.filter(
+        return Object.values(activities).filter(
           (a) =>
             (a.name || getSportLabel(a.activityType)).toLowerCase().includes(q) &&
             isVisibleToViewer(a, viewerId, following)
@@ -312,7 +336,7 @@ export const useSocialStore = create<SocialState>()(
 
       getUserById: (id: string) => {
         const { users } = get();
-        const user = users.find((u) => sameAddress(u.id, id));
+        const user = users[id.toLowerCase()];
         if (sameAddress(id, getCurrentUserId())) {
           const profile = useProfileStore.getState();
           return {
@@ -327,7 +351,7 @@ export const useSocialStore = create<SocialState>()(
             avatar: profile.avatar || undefined,
             createdAt: new Date(profile.createdAt ?? 0),
             followers: user?.followers ?? 0,
-            following: get().following.length,
+            following: get().following.size,
           };
         }
         return user;
@@ -336,26 +360,128 @@ export const useSocialStore = create<SocialState>()(
       getUserActivities: (userId: string) => {
         const { activities, following } = get();
         const viewerId = getCurrentUserId();
-        return activities
-          .filter((a) => sameAddress(a.userId, userId) && isVisibleToViewer(a, viewerId, following))
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return visibleActivities(
+          Object.values(activities).filter((a) => sameAddress(a.userId, userId)),
+          viewerId,
+          following
+        );
       },
 
-      reset: () => set({ users: [], activities: [], currentUserKudos: [], following: [] }),
+      getSuggestions: () => {
+        const { users, activities, following } = get();
+        const currentUserId = getCurrentUserId();
+        const allActivities = Object.values(activities);
+        const followedLowercase = new Set([...following].map((f) => f.toLowerCase()));
+
+        // Shared-territory suggestion scoring is not possible with the current data model
+        // (territory ownership lives on-chain, not in the socialStore).
+        return Object.values(users)
+          .filter((u) => {
+            const userKey = u.id.toLowerCase();
+            return !sameAddress(u.id, currentUserId) && !followedLowercase.has(userKey);
+          })
+          .map((u) => {
+            const userActivities = allActivities.filter((a) => sameAddress(a.userId, u.id));
+            let score = 0;
+
+            const lastActivity = userActivities.reduce<{ date: Date } | null>((latest, a) => {
+              const created = new Date(a.createdAt);
+              if (!latest || created > latest.date) {
+                return { date: created };
+              }
+              return latest;
+            }, null);
+
+            if (lastActivity && Date.now() - lastActivity.date.getTime() < 14 * 86400_000) {
+              score += 3;
+            }
+
+            if (userActivities.some((a) => a.territoryArea > 0)) {
+              score += 2;
+            }
+
+            if (userActivities.length >= 3) {
+              score += 1;
+            }
+
+            if (u.avatar) {
+              score += 1;
+            }
+
+            return {
+              user: u,
+              score,
+              lastActivityDate: lastActivity?.date ?? new Date(0),
+            };
+          })
+          .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            if (b.lastActivityDate.getTime() !== a.lastActivityDate.getTime())
+              return b.lastActivityDate.getTime() - a.lastActivityDate.getTime();
+            return (a.user.username || '').localeCompare(b.user.username || '');
+          })
+          .slice(0, 10)
+          .map((s) => s.user);
+      },
+
+      reset: () =>
+        set({
+          users: {},
+          activities: {},
+          currentUserKudos: new Set(),
+          following: new Set(),
+        }),
     }),
     {
       name: 'stryde-social',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      partialize: (state) => ({
+        users: state.users,
+        activities: state.activities,
+        currentUserKudos: [...state.currentUserKudos],
+        following: [...state.following],
+      }),
+      merge: (persistedState: unknown, currentState: SocialState) => {
+        const state = (persistedState as Record<string, unknown>) ?? {};
+        return {
+          ...currentState,
+          ...state,
+          following: Array.isArray(state.following)
+            ? new Set(state.following.map((a: string) => a.toLowerCase()))
+            : currentState.following,
+          currentUserKudos: Array.isArray(state.currentUserKudos)
+            ? new Set(state.currentUserKudos)
+            : currentState.currentUserKudos,
+        };
+      },
       migrate: (persistedState: unknown, version: number) => {
         if (version < 4) {
           const state = persistedState as Record<string, unknown>;
           return {
-            ...state,
-            activities: (state.activities as unknown[]) ?? [],
-            users: (state.users as Record<string, unknown>[]) ?? [],
-            following: (state.following as `0x${string}`[]) ?? [],
+            users: {} as Record<string, SocialUser>,
+            activities: {} as Record<string, SocialActivity>,
+            following: [] as string[],
+            currentUserKudos: [] as string[],
             blockedUsers: (state.blockedUsers as `0x${string}`[]) ?? [],
+          };
+        }
+        if (version < 5) {
+          const state = persistedState as Record<string, unknown>;
+          return {
+            ...state,
+            users: Array.isArray(state.users)
+              ? toUserRecord(state.users as SocialUser[])
+              : ((state.users as Record<string, SocialUser>) ?? {}),
+            activities: Array.isArray(state.activities)
+              ? toActivityRecord(state.activities as SocialActivity[])
+              : ((state.activities as Record<string, SocialActivity>) ?? {}),
+            following: Array.isArray(state.following)
+              ? new Set(state.following.map((a: string) => a.toLowerCase()))
+              : (state.following ?? []),
+            currentUserKudos: Array.isArray(state.currentUserKudos)
+              ? new Set(state.currentUserKudos)
+              : (state.currentUserKudos ?? []),
           };
         }
         return persistedState;

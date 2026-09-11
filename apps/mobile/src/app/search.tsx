@@ -33,11 +33,14 @@ export default function SearchScreen() {
       return;
     }
     let cancelled = false;
-    services.ens.resolveEnsAddress(trimmedQuery).then((addr) => {
-      if (!cancelled) setEnsResolvedAddress(addr);
-    });
+    const timer = setTimeout(() => {
+      services.ens.resolveEnsAddress(trimmedQuery).then((addr) => {
+        if (!cancelled) setEnsResolvedAddress(addr);
+      });
+    }, 350);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [trimmedQuery]);
 

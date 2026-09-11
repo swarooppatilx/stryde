@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -17,7 +17,6 @@ import { ThemedView } from '@/components/themed-view';
 import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useEnsName } from '@/hooks/useEnsName';
 import { formatDistance } from '@/utils/format';
 
 interface LeaderboardRow {
@@ -26,18 +25,40 @@ interface LeaderboardRow {
   distance: number;
 }
 
-function LeaderboardRowItem({
+const ENS_CONCURRENCY = 5;
+
+async function resolveEnsNamesBatch(wallets: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(wallets.map((w) => w.toLowerCase()))];
+  const resolved = new Map<string, string>();
+  for (let i = 0; i < unique.length; i += ENS_CONCURRENCY) {
+    const chunk = unique.slice(i, i + ENS_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (addr) => {
+        try {
+          const name = await services.ens.resolveEnsName(addr as `0x${string}`);
+          if (name) resolved.set(addr, name);
+        } catch (error) {
+          console.warn('[Leaderboard] ENS resolution failed', addr, error);
+        }
+      })
+    );
+  }
+  return resolved;
+}
+
+const LeaderboardRowItem = memo(function LeaderboardRowItem({
   row,
   rank,
   isMe,
   theme,
+  ensName,
 }: {
   row: LeaderboardRow;
   rank: number;
   isMe: boolean;
   theme: ReturnType<typeof useTheme>;
+  ensName: string | null;
 }) {
-  const ensName = useEnsName(row.wallet);
   return (
     <ThemedView
       style={[
@@ -56,7 +77,7 @@ function LeaderboardRowItem({
       <ThemedText type="smallBold">{formatDistance(row.distance)}</ThemedText>
     </ThemedView>
   );
-}
+});
 
 export default function LeaderboardScreen() {
   const router = useRouter();
@@ -65,6 +86,7 @@ export default function LeaderboardScreen() {
   const [seasonActive, setSeasonActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [ensNames, setEnsNames] = useState<Map<string, string>>(() => new Map());
   const currentUserId = getCurrentUserId();
 
   const load = useCallback(async () => {
@@ -84,13 +106,15 @@ export default function LeaderboardScreen() {
       );
 
       const usernameByWallet = new Map(users.map((u) => [u.wallet.toLowerCase(), u.username]));
-      setRows(
-        entries.map((e) => ({
-          wallet: e.participant,
-          username: usernameByWallet.get(e.participant.toLowerCase()) ?? 'Unknown',
-          distance: Number(e.contribution),
-        }))
-      );
+      const leaderboardRows = entries.map((e) => ({
+        wallet: e.participant,
+        username: usernameByWallet.get(e.participant.toLowerCase()) ?? 'Unknown',
+        distance: Number(e.contribution),
+      }));
+      setRows(leaderboardRows);
+      resolveEnsNamesBatch(leaderboardRows.map((r) => r.wallet)).then((names) => {
+        setEnsNames(names);
+      });
     } catch (e) {
       console.warn('[Leaderboard] Failed to load:', e);
       setError('Failed to load the leaderboard. Check your connection and try again.');
@@ -166,6 +190,7 @@ export default function LeaderboardScreen() {
                   rank={index + 1}
                   isMe={isMe}
                   theme={theme}
+                  ensName={ensNames.get(row.wallet.toLowerCase()) ?? null}
                 />
               );
             })}

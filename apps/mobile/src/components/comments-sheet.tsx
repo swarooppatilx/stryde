@@ -39,7 +39,7 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
 
   // Subscribe to store by activity ID — always fresh, never stale
   const activity = useSocialStore((s) =>
-    activityId ? (s.activities.find((a) => a.id === activityId) ?? null) : null
+    activityId ? (s.activities[activityId.toLowerCase()] ?? null) : null
   );
   const addComment = useSocialStore((s) => s.addComment);
   const toggleCommentLike = useSocialStore((s) => s.toggleCommentLike);

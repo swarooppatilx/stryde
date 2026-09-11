@@ -25,32 +25,39 @@ describe('mergeLocalActivities', () => {
       kudos: [],
       comments: [],
     };
-    const remote = [other];
+    const remote: Record<string, SocialActivity> = { other };
     const result = mergeLocalActivities(remote, [local]);
-    expect(result.map((a) => a.id)).toEqual(['other', 'local-1']);
-    expect(result[1]).toMatchObject({ privacy: 'only_me', kudos: [], comments: [] });
-    expect(remote).toEqual([other]);
+    expect(Object.values(result).map((a) => a.id)).toEqual(['other', 'local-1']);
+    expect(result.other).toMatchObject({ id: 'other', kudos: [], comments: [] });
+    expect(result['local-1']).toMatchObject({ privacy: 'only_me', kudos: [], comments: [] });
+    expect(remote).toEqual({ other });
   });
 
   it('deduplicates chain records by hash, retaining local details and social interactions', () => {
-    const remote: SocialActivity = {
-      ...local,
-      id: 'hash-1',
-      activityHash: 'hash-1',
-      polyline: '',
-      kudos: ['friend'],
-      comments: [],
+    const remote: Record<string, SocialActivity> = {
+      'hash-1': {
+        ...local,
+        id: 'hash-1',
+        activityHash: 'hash-1',
+        polyline: '',
+        kudos: ['friend'],
+        comments: [],
+      },
     };
-    const result = mergeLocalActivities([remote], [{ ...local, activityHash: 'hash-1' }]);
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ id: 'local-1', polyline: 'local-route', kudos: ['friend'] });
+    const result = mergeLocalActivities(remote, [{ ...local, activityHash: 'hash-1' }]);
+    expect(Object.keys(result)).toEqual(['hash-1']);
+    expect(result['hash-1']).toMatchObject({
+      id: 'local-1',
+      polyline: 'local-route',
+      kudos: ['friend'],
+    });
   });
 
   it('keeps local-only interactions when synchronized repeatedly', () => {
-    const first = mergeLocalActivities([], [local]);
-    first[0].kudos = ['friend'];
+    const first = mergeLocalActivities({}, [local]);
+    first['local-1'].kudos = ['friend'];
     const second = mergeLocalActivities(first, [local]);
-    expect(second).toHaveLength(1);
-    expect(second[0].kudos).toEqual(['friend']);
+    expect(Object.keys(second)).toEqual(['local-1']);
+    expect(second['local-1'].kudos).toEqual(['friend']);
   });
 });
