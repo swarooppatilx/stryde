@@ -31,7 +31,24 @@ export async function getOwnedTerritoryIds(owner: `0x${string}`): Promise<bigint
 export async function getMintedTerritoryIds(
   polygonHashes: `0x${string}`[]
 ): Promise<Set<`0x${string}`>> {
-  const results = await Promise.all(polygonHashes.map((hash) => isMinted(hash)));
+  if (polygonHashes.length === 0) return new Set();
+
+  const client = getPublicClient();
+  const contracts = getContracts();
+  const results: boolean[] = [];
+  for (let i = 0; i < polygonHashes.length; i += 100) {
+    const chunk = polygonHashes.slice(i, i + 100);
+    const chunkResults = (await client.multicall({
+      allowFailure: false,
+      contracts: chunk.map((hash) => ({
+        ...contracts.territoryNFT,
+        functionName: 'isMinted',
+        args: [hash],
+      })),
+    })) as boolean[];
+    results.push(...chunkResults);
+  }
+
   const minted = new Set<`0x${string}`>();
   polygonHashes.forEach((hash, i) => {
     if (results[i]) minted.add(hash);

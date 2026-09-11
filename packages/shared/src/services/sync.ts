@@ -278,45 +278,47 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
     return [];
   }
 
-  const rawTerritories = await Promise.all(
-    territoryIds.map(async (id) => {
-      try {
-        const t = (await client.readContract({
-          ...contracts.territoryRegistry,
-          functionName: 'getTerritory',
-          args: [id],
-        })) as {
-          controller: `0x${string}`;
-          capturedAt: bigint;
-          lastReinforced: bigint;
-          controlStrength: bigint;
-          areaSqm: bigint;
-          polygonHash: `0x${string}`;
-          minLng: number;
-          minLat: number;
-          maxLng: number;
-          maxLat: number;
-        };
+  const results = await client.multicall({
+    allowFailure: true,
+    contracts: territoryIds.map((id) => ({
+      ...contracts.territoryRegistry,
+      functionName: 'getTerritory',
+      args: [id],
+    })),
+  });
 
-        return {
-          id: id as string,
-          controller: t.controller,
-          capturedAt: Number(t.capturedAt),
-          lastReinforced: Number(t.lastReinforced),
-          controlStrength: Number(t.controlStrength),
-          areaSqm: Number(t.areaSqm),
-          polygonHash: t.polygonHash,
-          minLng: t.minLng,
-          minLat: t.minLat,
-          maxLng: t.maxLng,
-          maxLat: t.maxLat,
-        } as SyncedTerritory;
-      } catch (e) {
-        console.warn('[Sync] Failed to read territory details:', e);
-        return null;
-      }
-    })
-  );
+  const rawTerritories = results.map((callResult, i): SyncedTerritory | null => {
+    if (callResult.status === 'failure') {
+      console.warn('[Sync] Failed to read territory details:', callResult.error);
+      return null;
+    }
+    const t = callResult.result as {
+      controller: `0x${string}`;
+      capturedAt: bigint;
+      lastReinforced: bigint;
+      controlStrength: bigint;
+      areaSqm: bigint;
+      polygonHash: `0x${string}`;
+      minLng: number;
+      minLat: number;
+      maxLng: number;
+      maxLat: number;
+    };
+
+    return {
+      id: territoryIds[i] as string,
+      controller: t.controller,
+      capturedAt: Number(t.capturedAt),
+      lastReinforced: Number(t.lastReinforced),
+      controlStrength: Number(t.controlStrength),
+      areaSqm: Number(t.areaSqm),
+      polygonHash: t.polygonHash,
+      minLng: t.minLng,
+      minLat: t.minLat,
+      maxLng: t.maxLng,
+      maxLat: t.maxLat,
+    } as SyncedTerritory;
+  });
 
   return rawTerritories.filter((t): t is SyncedTerritory => t !== null);
 }

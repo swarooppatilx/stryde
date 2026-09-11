@@ -1,8 +1,12 @@
 import { parseEventLogs } from 'viem';
 import { ACTIVITY_TYPE_MAP } from '../constants';
 import type { ActivityType } from '../types';
+import { createTtlCache } from './cache';
 import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
 import { syncActivitiesFromChain } from './sync';
+
+const WINNER_CACHE_TTL_MS = 30 * 1000;
+const winnerCache = createTtlCache<`0x${string}` | null>(WINNER_CACHE_TTL_MS);
 
 export const ChallengeStatus = {
   Open: 0,
@@ -157,6 +161,10 @@ export async function acceptChallenge(
  * `settleChallenge` submits the result, since settlement itself is permissionless.
  */
 export async function determineWinner(challenge: OnchainChallenge): Promise<`0x${string}` | null> {
+  const key = challenge.id.toString();
+  const cached = winnerCache.get(key);
+  if (cached !== undefined) return cached;
+
   const client = getPublicClient();
   const contracts = getContracts();
 
@@ -200,8 +208,14 @@ export async function determineWinner(challenge: OnchainChallenge): Promise<`0x$
   const challengerDistance = sumDistance(challengerActivities);
   const opponentDistance = sumDistance(opponentActivities);
 
-  if (challengerDistance === opponentDistance) return null;
-  return challengerDistance > opponentDistance ? challenge.challenger : challenge.opponent;
+  let winner: `0x${string}` | null;
+  if (challengerDistance === opponentDistance) {
+    winner = null;
+  } else {
+    winner = challengerDistance > opponentDistance ? challenge.challenger : challenge.opponent;
+  }
+  winnerCache.set(key, winner);
+  return winner;
 }
 
 export async function settleChallenge(

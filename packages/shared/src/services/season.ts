@@ -1,3 +1,4 @@
+import { createTtlCache } from './cache';
 import {
   getActiveConfig,
   getChainMode,
@@ -8,6 +9,10 @@ import {
 import { relayStartSeason } from './relay';
 
 const THIRTY_DAYS_SECONDS = 30n * 24n * 60n * 60n;
+const CURRENT_SEASON_TTL_MS = 10 * 1000;
+const CONTRIBUTION_TTL_MS = 10 * 1000;
+const LEADERBOARD_TTL_MS = 15 * 1000;
+const MULTICALL_CHUNK_SIZE = 100;
 
 export interface SyncedSeason {
   id: bigint;
@@ -32,27 +37,50 @@ function toSyncedSeason(raw: RawSeason): SyncedSeason {
   };
 }
 
+const currentSeasonCache = createTtlCache<SyncedSeason>(CURRENT_SEASON_TTL_MS);
+const contributionCache = createTtlCache<bigint>(CONTRIBUTION_TTL_MS);
+const leaderboardCache = createTtlCache<LeaderboardEntry[]>(LEADERBOARD_TTL_MS);
+
+export function invalidateSeasonCaches(): void {
+  currentSeasonCache.clear();
+  contributionCache.clear();
+  leaderboardCache.clear();
+}
+
 export async function getCurrentSeason(): Promise<SyncedSeason> {
+  const key = `${getChainMode()}:${getActiveConfig().rpcUrl}`;
+  const cached = currentSeasonCache.get(key);
+  if (cached !== undefined) return cached;
+
   const client = getPublicClient();
   const contracts = getContracts();
   const raw = (await client.readContract({
     ...contracts.seasonManager,
     functionName: 'getCurrentSeason',
   })) as RawSeason;
-  return toSyncedSeason(raw);
+  const season = toSyncedSeason(raw);
+  currentSeasonCache.set(key, season);
+  return season;
 }
 
 export async function getParticipantContribution(
   seasonId: bigint,
   participant: `0x${string}`
 ): Promise<bigint> {
+  const key = `${seasonId.toString()}:${participant.toLowerCase()}`;
+  const cached = contributionCache.get(key);
+  if (cached !== undefined) return cached;
+
   const client = getPublicClient();
   const contracts = getContracts();
-  return client.readContract({
+  const contribution = (await client.readContract({
     ...contracts.seasonManager,
     functionName: 'getParticipantContribution',
     args: [seasonId, participant],
-  }) as Promise<bigint>;
+  })) as bigint;
+
+  contributionCache.set(key, contribution);
+  return contribution;
 }
 
 export interface LeaderboardEntry {
@@ -64,16 +92,47 @@ export async function getLeaderboard(
   seasonId: bigint,
   participants: `0x${string}`[]
 ): Promise<LeaderboardEntry[]> {
-  const contributions = await Promise.all(
-    participants.map((p) => getParticipantContribution(seasonId, p))
-  );
+  const key = `${seasonId.toString()}:${participants
+    .map((p) => p.toLowerCase())
+    .sort()
+    .join(',')}`;
+  const cached = leaderboardCache.get(key);
+  if (cached !== undefined) return cached;
 
-  return participants
+  const contributions = await batchGetContributions(seasonId, participants);
+
+  const leaderboard = participants
     .map((participant, i) => ({ participant, contribution: contributions[i] ?? 0n }))
     .filter((entry) => entry.contribution > 0n)
     .sort((a, b) =>
       b.contribution > a.contribution ? 1 : a.contribution > b.contribution ? -1 : 0
     );
+
+  leaderboardCache.set(key, leaderboard);
+  return leaderboard;
+}
+
+async function batchGetContributions(
+  seasonId: bigint,
+  participants: `0x${string}`[]
+): Promise<bigint[]> {
+  if (participants.length === 0) return [];
+  const client = getPublicClient();
+  const contracts = getContracts();
+  const results: bigint[] = [];
+  for (let i = 0; i < participants.length; i += MULTICALL_CHUNK_SIZE) {
+    const chunk = participants.slice(i, i + MULTICALL_CHUNK_SIZE);
+    const chunkResults = (await client.multicall({
+      allowFailure: false,
+      contracts: chunk.map((participant) => ({
+        ...contracts.seasonManager,
+        functionName: 'getParticipantContribution',
+        args: [seasonId, participant],
+      })),
+    })) as bigint[];
+    results.push(...chunkResults);
+  }
+  return results;
 }
 
 /**
@@ -90,6 +149,7 @@ export async function ensureActiveSeason(
 
   if (getChainMode() !== 'local') {
     await relayStartSeason(30 * 24 * 60 * 60);
+    currentSeasonCache.clear();
     return getCurrentSeason();
   }
 
@@ -108,6 +168,7 @@ export async function ensureActiveSeason(
   });
   await client.waitForTransactionReceipt({ hash });
 
+  currentSeasonCache.clear();
   return getCurrentSeason();
 }
 
@@ -131,5 +192,8 @@ export async function recordContribution(
   });
 
   const receipt = await client.waitForTransactionReceipt({ hash });
+  if (receipt.status === 'success') {
+    invalidateSeasonCaches();
+  }
   return { confirmed: receipt.status === 'success' };
 }

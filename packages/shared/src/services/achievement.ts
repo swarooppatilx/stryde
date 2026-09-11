@@ -55,7 +55,22 @@ export async function getMintedAchievementIds(
   const tokenIds = await getTokenIds(user);
   if (tokenIds.length === 0) return new Set();
 
-  const hashes = await Promise.all(tokenIds.map((id) => getTokenAchievement(id)));
+  const client = getPublicClient();
+  const contracts = getContracts();
+  const hashes: `0x${string}`[] = [];
+  for (let i = 0; i < tokenIds.length; i += 100) {
+    const chunk = tokenIds.slice(i, i + 100);
+    const chunkResults = (await client.multicall({
+      allowFailure: false,
+      contracts: chunk.map((tokenId) => ({
+        ...contracts.achievementRegistry,
+        functionName: 'getTokenAchievement',
+        args: [tokenId],
+      })),
+    })) as `0x${string}`[];
+    hashes.push(...chunkResults);
+  }
+
   const idByHash = new Map(achievementIds.map((id) => [computeAchievementId(id), id]));
 
   const minted = new Set<string>();
