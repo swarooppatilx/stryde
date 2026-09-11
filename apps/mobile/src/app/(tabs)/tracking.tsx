@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   type LayoutChangeEvent,
@@ -53,6 +53,9 @@ const SPEED_LIMITS_KMH: Record<ActivityType, number> = {
 
 const SHEET_SPRING = { damping: 22, stiffness: 200 };
 
+const ROUTE_SYNC_INTERVAL_MS = 1000;
+const MAX_ROUTE_POINTS = 2000;
+
 export default function TrackingScreen() {
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -65,18 +68,54 @@ export default function TrackingScreen() {
   const [secondaryStatsHeight, setSecondaryStatsHeight] = useState(0);
   const expandProgress = useSharedValue(0);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const routeCoordsRef = useRef<[number, number][]>([]);
+  const lastRouteSyncRef = useRef(0);
+  const [routePointCount, setRoutePointCount] = useState(0);
   const [trackedPolygon, setTrackedPolygon] = useState<Ring | null>(null);
   const [startLocation, setStartLocation] = useState<[number, number] | null>(null);
-  const { useGyroscopeAssist, sensorUpdateRate } = useSettingsStore(
+  const { useGyroscopeAssist, sensorUpdateRate, autoPause } = useSettingsStore(
     useShallow((s) => ({
       useGyroscopeAssist: s.useGyroscopeAssist,
       sensorUpdateRate: s.sensorUpdateRate,
+      autoPause: s.autoPause,
     }))
   );
   const router = useRouter();
   const navigation = useNavigation();
   const theme = useTheme();
   const wasLoopClosedRef = useRef(false);
+
+  const syncRouteToState = useCallback(() => {
+    lastRouteSyncRef.current = Date.now();
+    const coords = routeCoordsRef.current;
+    if (coords.length > MAX_ROUTE_POINTS) {
+      const stride = Math.ceil(coords.length / MAX_ROUTE_POINTS);
+      const downsampled: [number, number][] = [];
+      for (let i = 0; i < coords.length; i += stride) {
+        downsampled.push(coords[i]);
+      }
+      const last = coords[coords.length - 1];
+      if (downsampled[downsampled.length - 1] !== last) {
+        downsampled.push(last);
+      }
+      routeCoordsRef.current = downsampled;
+      setRoutePointCount(downsampled.length);
+      setRouteCoordinates(downsampled);
+    } else {
+      setRouteCoordinates(coords);
+    }
+  }, []);
+
+  const pushRoutePoint = useCallback(
+    (lng: number, lat: number) => {
+      routeCoordsRef.current.push([lng, lat]);
+      setRoutePointCount(routeCoordsRef.current.length);
+      if (Date.now() - lastRouteSyncRef.current >= ROUTE_SYNC_INTERVAL_MS) {
+        syncRouteToState();
+      }
+    },
+    [syncRouteToState]
+  );
 
   const isSessionActive = isTracking || isPaused;
 
@@ -128,12 +167,17 @@ export default function TrackingScreen() {
     trackingService.restoreSession().then(() => {
       const wasTracking = trackingService.getIsTracking();
       setIsTracking(wasTracking);
+      setIsPaused(trackingService.getIsAutoPaused());
       setDistance(trackingService.getDistance());
       setDuration(trackingService.getDuration());
       if (wasTracking) {
         setShowTypePicker(false);
         const locs = trackingService.getLocations();
-        setRouteCoordinates(locs.map((l) => [l.longitude, l.latitude]));
+        const route: [number, number][] = locs.map((l) => [l.longitude, l.latitude]);
+        routeCoordsRef.current = route;
+        lastRouteSyncRef.current = Date.now();
+        setRoutePointCount(route.length);
+        setRouteCoordinates(route);
         if (locs.length > 0) {
           setStartLocation([locs[0].longitude, locs[0].latitude]);
           wasLoopClosedRef.current = territoryService.isClosedLoop(locs);
@@ -174,7 +218,7 @@ export default function TrackingScreen() {
             };
             setLocation(loc);
             trackingService.addLocation(loc);
-            setRouteCoordinates((prev) => [...prev, [loc.longitude, loc.latitude]]);
+            pushRoutePoint(loc.longitude, loc.latitude);
 
             const locs = trackingService.getLocations();
             const isClosed = territoryService.isClosedLoop(locs);
@@ -201,7 +245,7 @@ export default function TrackingScreen() {
         locationSubscription.remove();
       }
     };
-  }, [isTracking]);
+  }, [isTracking, pushRoutePoint]);
 
   useEffect(() => {
     if (isTracking && useGyroscopeAssist) {
@@ -225,18 +269,23 @@ export default function TrackingScreen() {
     const interpolationInterval = setInterval(() => {
       const interpolatedPoint = trackingService.generateInterpolatedPoint();
       if (interpolatedPoint) {
-        setRouteCoordinates((prev) => [
-          ...prev,
-          [interpolatedPoint.longitude, interpolatedPoint.latitude],
-        ]);
+        pushRoutePoint(interpolatedPoint.longitude, interpolatedPoint.latitude);
       }
     }, 500);
 
     return () => clearInterval(interpolationInterval);
-  }, [isTracking, useGyroscopeAssist]);
+  }, [isTracking, useGyroscopeAssist, pushRoutePoint]);
+
+  useEffect(() => {
+    trackingService.setAutoPauseEnabled(autoPause);
+  }, [autoPause]);
 
   useEffect(() => {
     const interval = setInterval(() => {
+      if (trackingService.getIsAutoPaused()) {
+        setIsPaused(true);
+        setIsTracking(false);
+      }
       if (isTracking) {
         const newDistance = useGyroscopeAssist
           ? trackingService.getInterpolatedDistance()
@@ -256,6 +305,10 @@ export default function TrackingScreen() {
     setIsPaused(false);
     setShowTypePicker(false);
     wasLoopClosedRef.current = false;
+    routeCoordsRef.current = [];
+    lastRouteSyncRef.current = 0;
+    setRoutePointCount(0);
+    setRouteCoordinates([]);
     if (location) {
       setStartLocation([location.longitude, location.latitude]);
     }
@@ -333,30 +386,39 @@ export default function TrackingScreen() {
     }
   };
 
-  const mapCenter: [number, number] = location
-    ? [location.longitude, location.latitude]
-    : DEFAULT_CENTER;
+  const mapCenter: [number, number] = useMemo(
+    () => (location ? [location.longitude, location.latitude] : DEFAULT_CENTER),
+    [location]
+  );
 
   const activeType = ACTIVITY_TYPES.find((t) => t.type === activityType);
   const territoryArea = trackedPolygon ? territoryService.getPolygonArea(trackedPolygon) : 0;
 
-  const markers: MapMarker[] = [];
-  if (startLocation && (isTracking || duration > 0)) {
-    markers.push({
-      id: 'start',
-      coordinate: startLocation,
-      color: Brand.success,
-      icon: 'play',
-    });
-  }
-  if (location && isTracking && routeCoordinates.length > 1) {
-    markers.push({
-      id: 'current',
-      coordinate: [location.longitude, location.latitude],
-      color: Brand.primary,
-      icon: 'walk',
-    });
-  }
+  const markers: MapMarker[] = useMemo(() => {
+    const next: MapMarker[] = [];
+    if (startLocation && (isTracking || duration > 0)) {
+      next.push({
+        id: 'start',
+        coordinate: startLocation,
+        color: Brand.success,
+        icon: 'play',
+      });
+    }
+    if (location && isTracking && routePointCount > 1) {
+      next.push({
+        id: 'current',
+        coordinate: [location.longitude, location.latitude],
+        color: Brand.primary,
+        icon: 'walk',
+      });
+    }
+    return next;
+  }, [startLocation, location, isTracking, duration, routePointCount]);
+
+  const territoryPolygons = useMemo<Ring[]>(
+    () => (trackedPolygon ? [trackedPolygon] : []),
+    [trackedPolygon]
+  );
 
   if (showTypePicker && !isTracking && duration === 0) {
     return (
@@ -451,7 +513,7 @@ export default function TrackingScreen() {
       <View style={styles.mapContainer}>
         <MapRoute
           coordinates={routeCoordinates.length > 1 ? routeCoordinates : undefined}
-          territoryPolygons={trackedPolygon ? [trackedPolygon] : []}
+          territoryPolygons={territoryPolygons}
           territoryColor={Brand.success}
           territoryOpacity={0.22}
           markers={markers}
@@ -557,7 +619,7 @@ export default function TrackingScreen() {
                 <View style={styles.stat}>
                   <Ionicons name="location" size={16} color={Colors.dark.textSecondary} />
                   <NumberFlow
-                    value={routeCoordinates.length}
+                    value={routePointCount}
                     fontSize={15}
                     fontWeight="700"
                     color={Colors.dark.text}
