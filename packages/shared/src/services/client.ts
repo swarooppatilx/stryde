@@ -28,7 +28,12 @@ let cachedPublicClient: { key: string; client: PublicClient } | null = null;
 let cachedWalletClient: { key: string; client: WalletClient } | null = null;
 let contractsCache: {
   key: string;
-  contracts: Record<string, { address: `0x${string}`; abi: readonly unknown[] }>;
+  contracts: {
+    [Name in keyof typeof ABIS]: {
+      address: `0x${string}`;
+      abi: (typeof ABIS)[Name];
+    };
+  };
 } | null = null;
 
 let currentMode: ChainMode = DEFAULT_CHAIN_MODE;

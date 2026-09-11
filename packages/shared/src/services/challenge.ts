@@ -101,7 +101,7 @@ export async function createChallenge(
       BigInt(Math.round(params.targetMetric)),
       BigInt(Math.round(params.durationSeconds)),
     ],
-    value: params.stakeWei as unknown,
+    value: params.stakeWei,
     account,
     chain: config.chain,
   });
@@ -141,7 +141,7 @@ export async function acceptChallenge(
     ...contracts.challengeRegistry,
     functionName: 'acceptChallenge',
     args: [challengeId],
-    value: stakeWei as unknown,
+    value: stakeWei,
     account,
     chain: config.chain,
   });

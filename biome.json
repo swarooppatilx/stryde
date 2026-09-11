@@ -16,6 +16,7 @@
       "!**/public/**/*.svg",
       "!**/lib",
       "!**/cache",
+      "!**/next-env.d.ts",
       "!packages/subgraph/src",
       "!packages/shared/src/abis.ts"
     ]

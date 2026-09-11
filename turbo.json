@@ -1,24 +1,22 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "globalDependencies": ["biome.json", "**/tsconfig.json", "yarn.lock"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "env": ["NEXT_PUBLIC_*"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "out/**", "build/**", "dist/**"]
     },
     "@repo/api#build": {
       "dependsOn": ["^build"],
-      "env": [
-        "NODE_ENV",
-        "CORS_ORIGIN",
-        "API_KEY",
-        "PINATA_API_KEY",
-        "PINATA_SECRET_KEY",
-        "RELAYER_CHAIN_ID",
-        "RELAYER_RPC_URL"
-      ],
+      "env": ["NODE_ENV", "CORS_ORIGIN"],
       "outputs": ["dist/**"]
+    },
+    "@repo/contracts#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["out/**", "cache/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
@@ -29,10 +27,6 @@
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "biome:check": {
-      "cache": true,
-      "inputs": ["$TURBO_DEFAULT$", "*.json"]
     },
     "test": {
       "dependsOn": ["^build"],
