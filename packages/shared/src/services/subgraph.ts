@@ -1,6 +1,7 @@
 import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
 import { getActiveConfig } from './client';
+import type { OnchainGroup } from './group';
 import type { SyncedActivity } from './sync';
 
 interface GraphQLResponse<T> {
@@ -199,4 +200,139 @@ export async function getProfilesFromSubgraph(): Promise<
     wallet: p.id,
     username: p.username,
   }));
+}
+
+interface GroupEntity {
+  id: string;
+  owner: { id: string } | null;
+  name: string;
+  location: string;
+  description: string;
+  sportType: number;
+  memberCount: string;
+  createdAt: string;
+  active: boolean;
+}
+
+const GROUPS_QUERY = `
+  query GetGroups($first: Int!, $skip: Int!) {
+    groups(first: $first, skip: $skip, where: { active: true }, orderBy: createdAt, orderDirection: desc) {
+      id
+      owner { id }
+      name
+      location
+      description
+      sportType
+      memberCount
+      createdAt
+      active
+    }
+  }
+`;
+
+function mapGroupEntity(g: GroupEntity): OnchainGroup {
+  return {
+    id: BigInt(g.id),
+    owner: (g.owner?.id ?? '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    name: g.name,
+    location: g.location,
+    description: g.description,
+    sportType: g.sportType,
+    memberCount: Number(g.memberCount),
+    createdAt: Number(g.createdAt),
+    active: g.active,
+  };
+}
+
+/** Every active group, for the community/groups tab. Returns null (rather
+ * than throwing) when no subgraph is configured for the active chain mode, so
+ * callers can fall back to the on-chain getGroupCount()+getGroup() scan
+ * without treating "not deployed here" as an error. */
+export async function getGroupsFromSubgraph(): Promise<OnchainGroup[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const allGroups: GroupEntity[] = [];
+  let skip = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(subgraphUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: GROUPS_QUERY,
+        variables: { first: PAGE_SIZE, skip },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status}`);
+    }
+
+    const body = (await response.json()) as GraphQLResponse<{ groups: GroupEntity[] }>;
+    if (body.errors?.length) {
+      throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+    }
+
+    const groups = body.data?.groups ?? [];
+    allGroups.push(...groups);
+    hasMore = groups.length === PAGE_SIZE;
+    skip += PAGE_SIZE;
+  }
+
+  return allGroups.map(mapGroupEntity);
+}
+
+const USER_GROUPS_QUERY = `
+  query GetUserGroups($wallet: String!) {
+    groupMembers(first: 1000, where: { user_: { id: $wallet }, active: true }) {
+      group {
+        id
+        owner { id }
+        name
+        location
+        description
+        sportType
+        memberCount
+        createdAt
+        active
+      }
+    }
+  }
+`;
+
+/** The groups a single wallet currently belongs to (owner or member). Returns
+ * null (rather than throwing) when no subgraph is configured for the active
+ * chain mode, so callers can fall back to the on-chain
+ * getUserGroupIds()+getGroup() scan without treating "not deployed here" as
+ * an error. */
+export async function getUserGroupsFromSubgraph(
+  wallet: `0x${string}`
+): Promise<OnchainGroup[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const response = await fetch(subgraphUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: USER_GROUPS_QUERY,
+      variables: { wallet: wallet.toLowerCase() },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Subgraph request failed: ${response.status}`);
+  }
+
+  const body = (await response.json()) as GraphQLResponse<{
+    groupMembers: { group: GroupEntity }[];
+  }>;
+  if (body.errors?.length) {
+    throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+  }
+
+  const groupMembers = body.data?.groupMembers ?? [];
+  return groupMembers.filter((m) => m.group.active).map((m) => mapGroupEntity(m.group));
 }

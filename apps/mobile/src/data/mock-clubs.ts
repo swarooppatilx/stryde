@@ -1,15 +1,5 @@
 import type { ActivityType } from '@/types';
 
-export interface Club {
-  id: string;
-  name: string;
-  location: string;
-  memberCount: number;
-  sportType: ActivityType | 'multi';
-  avatarIcon: string;
-  description: string;
-}
-
 export interface ChallengeEvent {
   id: string;
   title: string;
@@ -23,81 +13,9 @@ export interface ChallengeEvent {
 
 const daysFromNow = (d: number) => new Date(Date.now() + d * 86400000);
 
-export const MOCK_CLUBS: Club[] = [
-  {
-    id: 'club-1',
-    name: 'Pune Trail Runners',
-    location: 'Pune, India',
-    memberCount: 342,
-    sportType: 'run',
-    avatarIcon: 'walk',
-    description: 'Weekly trail runs through Sahyadri foothills.',
-  },
-  {
-    id: 'club-2',
-    name: 'Mumbai Cyclists Collective',
-    location: 'Mumbai, India',
-    memberCount: 891,
-    sportType: 'ride',
-    avatarIcon: 'bicycle',
-    description: 'Group rides every weekend along Marine Drive and beyond.',
-  },
-  {
-    id: 'club-3',
-    name: 'Bangalore Hiking Club',
-    location: 'Bangalore, India',
-    memberCount: 567,
-    sportType: 'hike',
-    avatarIcon: 'leaf',
-    description: 'Exploring trails around Nandi Hills and Coorg.',
-  },
-  {
-    id: 'club-4',
-    name: 'Deccan Swim Club',
-    location: 'Pune, India',
-    memberCount: 198,
-    sportType: 'swim',
-    avatarIcon: 'water',
-    description: 'Open water and pool sessions for all levels.',
-  },
-  {
-    id: 'club-5',
-    name: 'Western Ghats Cycling',
-    location: 'Pune, India',
-    memberCount: 445,
-    sportType: 'ride',
-    avatarIcon: 'bicycle',
-    description: 'Challenging rides through the Western Ghats.',
-  },
-  {
-    id: 'club-6',
-    name: 'India Multi-Sport',
-    location: 'Mumbai, India',
-    memberCount: 234,
-    sportType: 'multi',
-    avatarIcon: 'fitness',
-    description: 'Run, ride, swim — we do it all.',
-  },
-  {
-    id: 'club-7',
-    name: 'Pune Runners Collective',
-    location: 'Pune, India',
-    memberCount: 1203,
-    sportType: 'run',
-    avatarIcon: 'walk',
-    description: "Pune's largest running community. All paces welcome.",
-  },
-  {
-    id: 'club-8',
-    name: 'Koramangala Runners',
-    location: 'Bangalore, India',
-    memberCount: 678,
-    sportType: 'run',
-    avatarIcon: 'walk',
-    description: 'Morning runs from Cubbon Park. 5K to half-marathon.',
-  },
-];
-
+// Clubs/Groups are real on-chain data now (see @/stores/communityStore and
+// @repo/shared's services.group) — only Events remain demo data pending their
+// own on-chain backing.
 export const MOCK_EVENTS: ChallengeEvent[] = [
   {
     id: 'event-1',

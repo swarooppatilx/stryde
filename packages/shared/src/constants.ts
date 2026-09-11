@@ -19,6 +19,9 @@ export interface ChainConfig {
     challengeRegistry: `0x${string}`;
     territoryNFT: `0x${string}`;
     moveToEarnToken: `0x${string}`;
+    /** Not yet deployed to any network — see GroupRegistry PR notes. Zero
+     * address on every chain mode until a human runs the deploy script. */
+    groupRegistry: `0x${string}`;
   };
 }
 
@@ -58,6 +61,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       challengeRegistry: '0x321aFdf640f95c3C9964299767594Cd69DFcB13a',
       territoryNFT: '0xe5c66b5a52CAe8848C848CC548D3054622Ef8aed',
       moveToEarnToken: '0xAb3e840c8C2e811D4D1AbFE98c992f652e722359',
+      groupRegistry: ZERO_ADDRESS,
     },
   },
   'base-sepolia': {
@@ -74,6 +78,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       challengeRegistry: ZERO_ADDRESS,
       territoryNFT: ZERO_ADDRESS,
       moveToEarnToken: ZERO_ADDRESS,
+      groupRegistry: ZERO_ADDRESS,
     },
   },
   local: {
@@ -90,6 +95,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       challengeRegistry: '0x9E545E3C0baAB3E08CdfD552C960A1050f373042',
       territoryNFT: '0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9',
       moveToEarnToken: '0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8',
+      groupRegistry: ZERO_ADDRESS,
     },
   },
 };

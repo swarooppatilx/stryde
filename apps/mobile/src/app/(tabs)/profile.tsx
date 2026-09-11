@@ -33,6 +33,7 @@ import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { territoryService } from '@/services/territoryService';
 import { useActivityStore } from '@/stores/activityStore';
+import { useCommunityStore } from '@/stores/communityStore';
 import { useProfileStore } from '@/stores/profileStore';
 import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
@@ -264,6 +265,7 @@ export default function ProfileScreen() {
             useActivityStore.getState().reset();
             useTerritoryStore.getState().reset();
             useSocialStore.getState().reset();
+            useCommunityStore.getState().reset();
             router.replace('/login');
           } catch (error) {
             console.error('[Profile] Logout failed', error);

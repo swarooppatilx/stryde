@@ -69,5 +69,12 @@ forge script script/DeployMoveToEarnToken.s.sol \
   --verify 2>&1 | tee /tmp/deploy-movetoearn.log
 
 echo ""
+echo "=== Deploying GroupRegistry ==="
+forge script script/DeployGroupRegistry.s.sol \
+  --rpc-url "$RPC_URL" \
+  --broadcast \
+  --verify 2>&1 | tee /tmp/deploy-group.log
+
+echo ""
 echo "=== Deployment Complete ==="
 echo "Check /tmp/deploy-*.log for transaction hashes"

@@ -10,6 +10,8 @@ type Profile @entity {
   achievements: [Achievement!]! @derivedFrom(field: "recipient")
   challengesAsChallenger: [Challenge!]! @derivedFrom(field: "challenger")
   challengesAsOpponent: [Challenge!]! @derivedFrom(field: "opponent")
+  groupsOwned: [Group!]! @derivedFrom(field: "owner")
+  groupMemberships: [GroupMember!]! @derivedFrom(field: "user")
 }
 
 type Activity @entity {
@@ -90,4 +92,25 @@ type Challenge @entity {
   challengerWithdrawn: Boolean! # true once the challenger has claimed their own stake/payout
   opponentWithdrawn: Boolean! # true once the opponent has claimed their own stake/payout
   withdrawnAt: BigInt # timestamp of the most recent withdrawal
+}
+
+type Group @entity {
+  id: String! # groupId
+  owner: Profile
+  name: String!
+  location: String!
+  description: String!
+  sportType: Int!
+  memberCount: BigInt!
+  createdAt: BigInt!
+  active: Boolean! # false once dissolved (owner left as the last member)
+  members: [GroupMember!]! @derivedFrom(field: "group")
+}
+
+type GroupMember @entity {
+  id: String! # groupId-memberAddress
+  group: Group!
+  user: Profile!
+  joinedAt: BigInt!
+  active: Boolean! # false once this member has left the group
 }

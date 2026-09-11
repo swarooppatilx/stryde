@@ -35,6 +35,7 @@ export const ABIS = {
   challengeRegistry: challengeRegistryAbi,
   territoryNFT: territoryNFTAbi,
   moveToEarnToken: moveToEarnTokenAbi,
+  groupRegistry: groupRegistryAbi,
 } as const;
 
 export type ContractName = keyof typeof ABIS;

@@ -10,6 +10,7 @@ import {AchievementRegistry} from "../src/AchievementRegistry.sol";
 import {ChallengeRegistry} from "../src/ChallengeRegistry.sol";
 import {TerritoryNFT} from "../src/TerritoryNFT.sol";
 import {MoveToEarnToken} from "../src/MoveToEarnToken.sol";
+import {GroupRegistry} from "../src/GroupRegistry.sol";
 
 contract DeployAll is Script {
     function run() external {
@@ -40,6 +41,9 @@ contract DeployAll is Script {
         MoveToEarnToken moveToEarnToken = new MoveToEarnToken();
         console.log("MoveToEarnToken:", address(moveToEarnToken));
 
+        GroupRegistry groupRegistry = new GroupRegistry();
+        console.log("GroupRegistry:", address(groupRegistry));
+
         vm.stopBroadcast();
 
         console.log("\n=== All contracts deployed ===");
@@ -51,5 +55,6 @@ contract DeployAll is Script {
         console.log("challengeRegistry=", address(challengeRegistry));
         console.log("territoryNFT=", address(territoryNFT));
         console.log("moveToEarnToken=", address(moveToEarnToken));
+        console.log("groupRegistry=", address(groupRegistry));
     }
 }

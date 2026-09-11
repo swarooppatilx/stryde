@@ -102,6 +102,15 @@ MOVE_TO_EARN_ADDRESS=$(echo "$OUTPUT" | grep -oP 'MoveToEarnToken deployed at: \
 CONTRACT_ADDRESSES+=("moveToEarnToken=$MOVE_TO_EARN_ADDRESS")
 
 echo ""
+echo "--- GroupRegistry ---"
+OUTPUT=$(forge script script/DeployGroupRegistry.s.sol \
+  --rpc-url "$ANVIL_RPC" \
+  --broadcast 2>&1)
+echo "$OUTPUT"
+GROUP_ADDRESS=$(echo "$OUTPUT" | grep -oP 'GroupRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+CONTRACT_ADDRESSES+=("groupRegistry=$GROUP_ADDRESS")
+
+echo ""
 echo "=== Local Deployment Complete ==="
 echo ""
 echo "Contract Addresses:"

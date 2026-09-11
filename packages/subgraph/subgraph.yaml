@@ -149,3 +149,36 @@ dataSources:
         - event: ChallengeWithdrawn(indexed uint256,indexed address,uint256)
           handler: handleChallengeWithdrawn
       file: src/mappings/ChallengeRegistry.ts
+  # Not yet deployed — address/startBlock are placeholders (same convention
+  # used for every other registry before its first deployment; see the
+  # original commit that introduced this file). Update both once
+  # GroupRegistry is deployed and re-run `yarn deploy` / codegen.
+  - kind: ethereum/contract
+    name: GroupRegistry
+    network: sepolia
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: GroupRegistry
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Group
+        - GroupMember
+      abis:
+        - name: GroupRegistry
+          file: ../contracts/out/GroupRegistry.sol/GroupRegistry.json
+      eventHandlers:
+        - event: GroupCreated(indexed uint256,indexed address,string,string,string,uint8,uint256)
+          handler: handleGroupCreated
+        - event: GroupJoined(indexed uint256,indexed address,uint256)
+          handler: handleGroupJoined
+        - event: GroupLeft(indexed uint256,indexed address,uint256)
+          handler: handleGroupLeft
+        - event: GroupDissolved(indexed uint256,indexed address,uint256)
+          handler: handleGroupDissolved
+        - event: GroupOwnershipTransferred(indexed uint256,indexed address,indexed address)
+          handler: handleGroupOwnershipTransferred
+      file: src/mappings/GroupRegistry.ts

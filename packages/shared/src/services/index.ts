@@ -3,6 +3,7 @@ export * as activity from './activity';
 export * as challenge from './challenge';
 export * as client from './client';
 export * as ens from './ens';
+export * as group from './group';
 export * as ipfs from './ipfs';
 export * as moveToEarnToken from './moveToEarnToken';
 export * as profile from './profile';

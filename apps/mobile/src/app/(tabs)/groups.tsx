@@ -2,7 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
 
@@ -15,10 +21,11 @@ import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
-import type { ChallengeEvent, Club } from '@/data/mock-clubs';
+import type { ChallengeEvent } from '@/data/mock-clubs';
 import { useTheme } from '@/hooks/use-theme';
+import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
-import { useCommunityStore } from '@/stores/communityStore';
+import { type Club, useCommunityStore } from '@/stores/communityStore';
 import { useSocialStore } from '@/stores/socialStore';
 import type { ActivityType } from '@/types';
 import { formatDistance as formatActivityDistance, getDisplayName } from '@/utils/format';
@@ -64,10 +71,14 @@ export default function CommunityScreen() {
 
   const searchClubs = useCommunityStore((s) => s.searchClubs);
   const searchEvents = useCommunityStore((s) => s.searchEvents);
-  const toggleJoinClub = useCommunityStore((s) => s.toggleJoinClub);
   const toggleJoinEvent = useCommunityStore((s) => s.toggleJoinEvent);
-  const joinedClubs = useCommunityStore((s) => s.joinedClubs);
   const joinedEvents = useCommunityStore((s) => s.joinedEvents);
+  const clubs = useCommunityStore((s) => s.clubs);
+  const clubsLoading = useCommunityStore((s) => s.clubsLoading);
+  const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
+  const fetchClubs = useCommunityStore((s) => s.fetchClubs);
+  const fetchJoinedClubs = useCommunityStore((s) => s.fetchJoinedClubs);
+  const applyClubMembership = useCommunityStore((s) => s.applyClubMembership);
 
   const filteredClubs = useMemo(
     () => searchClubs(clubQuery, sportFilter),
@@ -78,12 +89,14 @@ export default function CommunityScreen() {
     [eventQuery, eventSportFilter, searchEvents]
   );
 
-  const { address } = useViemWallet(ENV.CHAIN_MODE);
+  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const { transact } = useTransactor();
   const getUserById = useSocialStore((s) => s.getUserById);
   const [challenges, setChallenges] = useState<Awaited<
     ReturnType<typeof services.challenge.getUserChallenges>
   > | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingClubId, setPendingClubId] = useState<string | null>(null);
 
   const loadChallenges = useCallback(async () => {
     if (!address) return;
@@ -103,11 +116,31 @@ export default function CommunityScreen() {
     }, [activeTab, address, loadChallenges])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'Clubs') return;
+      fetchClubs();
+    }, [activeTab, fetchClubs])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'Clubs' || !address) return;
+      fetchJoinedClubs(address);
+    }, [activeTab, address, fetchJoinedClubs])
+  );
+
   const onRefresh = useCallback(() => {
-    if (activeTab !== 'Challenges') return;
-    setRefreshing(true);
-    loadChallenges().finally(() => setRefreshing(false));
-  }, [activeTab, loadChallenges]);
+    if (activeTab === 'Challenges') {
+      setRefreshing(true);
+      loadChallenges().finally(() => setRefreshing(false));
+    } else if (activeTab === 'Clubs') {
+      setRefreshing(true);
+      Promise.all([fetchClubs(), address ? fetchJoinedClubs(address) : null]).finally(() =>
+        setRefreshing(false)
+      );
+    }
+  }, [activeTab, loadChallenges, fetchClubs, fetchJoinedClubs, address]);
 
   const isClubs = activeTab === 'Clubs';
   const isEvents = activeTab === 'Events';
@@ -120,9 +153,29 @@ export default function CommunityScreen() {
     listRef.current?.scrollTo({ y: 0, animated: false });
   };
 
-  const handleJoinClub = (clubId: string) => {
+  const handleJoinClub = async (club: Club) => {
+    if (!wallet || !address || pendingClubId) return;
     haptics.impactMedium();
-    toggleJoinClub(clubId);
+
+    const isJoined = joinedClubIds.includes(club.id);
+    setPendingClubId(club.id);
+    try {
+      const result = await transact(
+        () =>
+          isJoined
+            ? services.group.leaveGroup(wallet, BigInt(club.id))
+            : services.group.joinGroup(wallet, BigInt(club.id)),
+        {
+          pending: isJoined ? 'Leaving club...' : 'Joining club...',
+          success: isJoined ? 'Left club' : 'Joined club',
+        }
+      );
+      if (result?.confirmed) {
+        applyClubMembership(club.id, !isJoined);
+      }
+    } finally {
+      setPendingClubId(null);
+    }
   };
 
   const handleJoinEvent = (eventId: string) => {
@@ -131,7 +184,8 @@ export default function CommunityScreen() {
   };
 
   const renderClub = (item: Club) => {
-    const isJoined = joinedClubs.includes(item.id);
+    const isJoined = joinedClubIds.includes(item.id);
+    const isPending = pendingClubId === item.id;
     return (
       <TouchableOpacity
         key={item.id}
@@ -168,18 +222,26 @@ export default function CommunityScreen() {
             ]}
             onPress={(e) => {
               e.stopPropagation();
-              handleJoinClub(item.id);
+              handleJoinClub(item);
             }}
             activeOpacity={0.7}
+            disabled={isPending || !wallet}
             accessibilityRole="button"
             accessibilityLabel={isJoined ? `Leave ${item.name}` : `Join ${item.name}`}
           >
-            <ThemedText
-              type="small"
-              style={{ color: isJoined ? theme.textSecondary : Brand.white, fontWeight: '600' }}
-            >
-              {isJoined ? 'Joined' : 'Join'}
-            </ThemedText>
+            {isPending ? (
+              <ActivityIndicator
+                size="small"
+                color={isJoined ? theme.textSecondary : Brand.white}
+              />
+            ) : (
+              <ThemedText
+                type="small"
+                style={{ color: isJoined ? theme.textSecondary : Brand.white, fontWeight: '600' }}
+              >
+                {isJoined ? 'Joined' : 'Join'}
+              </ThemedText>
+            )}
           </TouchableOpacity>
         </ThemedView>
       </TouchableOpacity>
@@ -335,23 +397,22 @@ export default function CommunityScreen() {
             style={[
               styles.dataBadge,
               {
-                backgroundColor:
-                  activeTab === 'Challenges' ? theme.brand.primaryTint : theme.backgroundElement,
+                backgroundColor: isEvents ? theme.backgroundElement : theme.brand.primaryTint,
               },
             ]}
           >
             <Ionicons
-              name={activeTab === 'Challenges' ? 'link' : 'flask-outline'}
+              name={isEvents ? 'flask-outline' : 'link'}
               size={12}
-              color={activeTab === 'Challenges' ? theme.brand.primary : theme.textSecondary}
+              color={isEvents ? theme.textSecondary : theme.brand.primary}
             />
             <ThemedText
               type="caption"
               style={{
-                color: activeTab === 'Challenges' ? theme.brand.primary : theme.textSecondary,
+                color: isEvents ? theme.textSecondary : theme.brand.primary,
               }}
             >
-              {activeTab === 'Challenges' ? 'On-chain' : 'Demo data'}
+              {isEvents ? 'Demo data' : 'On-chain'}
             </ThemedText>
           </ThemedView>
 
@@ -369,17 +430,60 @@ export default function CommunityScreen() {
           {isEvents && <FilterChips value={eventSportFilter} onChange={setEventSportFilter} />}
 
           {/* Cards */}
-          {isClubs &&
-            (filteredClubs.length === 0 ? (
-              <ThemedView style={styles.empty}>
-                <Ionicons name="people-outline" size={32} color={theme.textSecondary} />
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  No clubs found
-                </ThemedText>
-              </ThemedView>
-            ) : (
-              filteredClubs.map(renderClub)
-            ))}
+          {isClubs && (
+            <>
+              <AppButton
+                variant="secondary"
+                onPress={() => {
+                  haptics.tap();
+                  router.push('/create-club');
+                }}
+                style={styles.newChallengeBtn}
+              >
+                + Create Club
+              </AppButton>
+
+              {clubsLoading && clubs.length === 0 ? (
+                <ThemedView style={styles.challengeSkeletonList}>
+                  {[0, 1, 2].map((i) => (
+                    <ThemedView
+                      key={i}
+                      style={[styles.card, { backgroundColor: theme.backgroundElement }]}
+                    >
+                      <ThemedView style={styles.cardRow}>
+                        <Shimmer
+                          isLoading
+                          preset={theme.isDark ? 'dark' : 'light'}
+                          style={styles.iconCircle}
+                        />
+                        <ThemedView style={styles.cardInfo}>
+                          <Shimmer
+                            isLoading
+                            preset={theme.isDark ? 'dark' : 'light'}
+                            style={styles.skeletonLine}
+                          />
+                          <Shimmer
+                            isLoading
+                            preset={theme.isDark ? 'dark' : 'light'}
+                            style={styles.skeletonLineShort}
+                          />
+                        </ThemedView>
+                      </ThemedView>
+                    </ThemedView>
+                  ))}
+                </ThemedView>
+              ) : filteredClubs.length === 0 ? (
+                <ThemedView style={styles.empty}>
+                  <Ionicons name="people-outline" size={32} color={theme.textSecondary} />
+                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                    {clubs.length === 0 ? 'No clubs yet. Create the first one!' : 'No clubs found'}
+                  </ThemedText>
+                </ThemedView>
+              ) : (
+                filteredClubs.map(renderClub)
+              )}
+            </>
+          )}
 
           {isEvents &&
             (filteredEvents.length === 0 ? (

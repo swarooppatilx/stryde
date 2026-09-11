@@ -146,6 +146,10 @@ export function getContracts() {
       address: config.contracts.moveToEarnToken,
       abi: ABIS.moveToEarnToken,
     },
+    groupRegistry: {
+      address: config.contracts.groupRegistry,
+      abi: ABIS.groupRegistry,
+    },
   } as const;
 
   if (profileRegistryAddress === '0x0000000000000000000000000000000000000000') {

@@ -88,6 +88,7 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
       <Stack.Screen name="create-activity" />
       <Stack.Screen name="profile-edit" />
       <Stack.Screen name="club-detail" />
+      <Stack.Screen name="create-club" />
       <Stack.Screen name="event-detail" />
       <Stack.Screen name="leaderboard" />
       <Stack.Screen name="create-challenge" />

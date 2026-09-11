@@ -1,13 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { services } from '@repo/shared';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
+import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useTransactor } from '@/hooks/useTransactor';
+import { useViemWallet } from '@/hooks/useViemWallet';
 import { useCommunityStore } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
 import { haptics } from '@/utils/haptics';
@@ -41,11 +46,24 @@ export default function ClubDetailScreen() {
   const theme = useTheme();
 
   const getClubById = useCommunityStore((s) => s.getClubById);
-  const toggleJoinClub = useCommunityStore((s) => s.toggleJoinClub);
-  const joinedClubs = useCommunityStore((s) => s.joinedClubs);
+  const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
+  const applyClubMembership = useCommunityStore((s) => s.applyClubMembership);
+  const fetchClubs = useCommunityStore((s) => s.fetchClubs);
+  const fetchJoinedClubs = useCommunityStore((s) => s.fetchJoinedClubs);
+
+  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const { transact } = useTransactor();
+  const [isPending, setIsPending] = useState(false);
 
   const club = getClubById(id ?? '');
-  const isJoined = club ? joinedClubs.includes(club.id) : false;
+  const isJoined = club ? joinedClubIds.includes(club.id) : false;
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchClubs();
+      if (address) fetchJoinedClubs(address);
+    }, [fetchClubs, fetchJoinedClubs, address])
+  );
 
   if (!club) {
     return (
@@ -68,9 +86,28 @@ export default function ClubDetailScreen() {
     );
   }
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
+    if (!wallet || !address || isPending) return;
     haptics.impactMedium();
-    toggleJoinClub(club.id);
+
+    setIsPending(true);
+    try {
+      const result = await transact(
+        () =>
+          isJoined
+            ? services.group.leaveGroup(wallet, BigInt(club.id))
+            : services.group.joinGroup(wallet, BigInt(club.id)),
+        {
+          pending: isJoined ? 'Leaving club...' : 'Joining club...',
+          success: isJoined ? 'Left club' : 'Joined club',
+        }
+      );
+      if (result?.confirmed) {
+        applyClubMembership(club.id, !isJoined);
+      }
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (
@@ -149,15 +186,23 @@ export default function ClubDetailScreen() {
             ]}
             onPress={handleJoin}
             activeOpacity={0.7}
+            disabled={isPending || !wallet}
             accessibilityRole="button"
             accessibilityLabel={isJoined ? `Leave ${club.name}` : `Join ${club.name}`}
           >
-            <ThemedText
-              type="smallBold"
-              style={{ color: isJoined ? theme.textSecondary : Brand.white }}
-            >
-              {isJoined ? 'Joined — Tap to Leave' : 'Join Club'}
-            </ThemedText>
+            {isPending ? (
+              <ActivityIndicator
+                size="small"
+                color={isJoined ? theme.textSecondary : Brand.white}
+              />
+            ) : (
+              <ThemedText
+                type="smallBold"
+                style={{ color: isJoined ? theme.textSecondary : Brand.white }}
+              >
+                {isJoined ? 'Joined — Tap to Leave' : 'Join Club'}
+              </ThemedText>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>

@@ -1,16 +1,56 @@
+import { ACTIVITY_TYPE_BY_ID, ACTIVITY_TYPE_MAP, services } from '@repo/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { type ChallengeEvent, type Club, MOCK_CLUBS, MOCK_EVENTS } from '@/data/mock-clubs';
+import { type ChallengeEvent, MOCK_EVENTS } from '@/data/mock-clubs';
+import type { ActivityType } from '@/types';
 import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
+
+export interface Club {
+  id: string;
+  name: string;
+  location: string;
+  description: string;
+  sportType: ActivityType | 'multi';
+  memberCount: number;
+  owner: string;
+  createdAt: number;
+}
+
+function toClub(group: Awaited<ReturnType<typeof services.group.getAllGroups>>[number]): Club {
+  return {
+    id: group.id.toString(),
+    name: group.name,
+    location: group.location,
+    description: group.description,
+    sportType:
+      group.sportType === services.group.MULTI_SPORT_TYPE
+        ? 'multi'
+        : (ACTIVITY_TYPE_BY_ID[group.sportType] ?? 'run'),
+    memberCount: group.memberCount,
+    owner: group.owner,
+    createdAt: group.createdAt,
+  };
+}
 
 interface CommunityState {
   clubs: Club[];
+  clubsLoading: boolean;
+  /** Ids of clubs the currently-connected wallet belongs to, refreshed by
+   * fetchJoinedClubs(). Kept separate from `clubs` (which is the same list
+   * for every viewer) since membership is per-wallet. */
+  joinedClubIds: string[];
+
   events: ChallengeEvent[];
-  joinedClubs: string[];
   joinedEvents: string[];
 
-  toggleJoinClub: (clubId: string) => void;
+  fetchClubs: () => Promise<void>;
+  fetchJoinedClubs: (wallet: `0x${string}`) => Promise<void>;
+  /** Optimistic local update after a joinGroup/leaveGroup tx confirms, so the
+   * UI doesn't have to wait on a full fetchClubs() round-trip to reflect it. */
+  applyClubMembership: (clubId: string, joined: boolean) => void;
+  upsertClub: (club: Club) => void;
+
   toggleJoinEvent: (eventId: string) => void;
   isClubJoined: (clubId: string) => boolean;
   isEventJoined: (eventId: string) => boolean;
@@ -18,26 +58,69 @@ interface CommunityState {
   searchEvents: (query: string, sportFilter?: string) => ChallengeEvent[];
   getClubById: (id: string) => Club | undefined;
   getEventById: (id: string) => ChallengeEvent | undefined;
+  reset: () => void;
 }
+
+const INITIAL_STATE = {
+  clubs: [] as Club[],
+  clubsLoading: false,
+  joinedClubIds: [] as string[],
+  events: MOCK_EVENTS,
+  joinedEvents: [] as string[],
+};
 
 export const useCommunityStore = create<CommunityState>()(
   persist(
     (set, get) => ({
-      clubs: MOCK_CLUBS,
-      events: MOCK_EVENTS,
-      joinedClubs: [],
-      joinedEvents: [],
+      ...INITIAL_STATE,
 
-      toggleJoinClub: (clubId: string) =>
+      fetchClubs: async () => {
+        set({ clubsLoading: true });
+        try {
+          const groups = await services.group.getAllGroups();
+          set({ clubs: groups.map(toClub) });
+        } catch (e) {
+          console.warn('[Community] Failed to fetch clubs:', e);
+        } finally {
+          set({ clubsLoading: false });
+        }
+      },
+
+      fetchJoinedClubs: async (wallet: `0x${string}`) => {
+        try {
+          const groups = await services.group.getUserGroups(wallet);
+          set({ joinedClubIds: groups.map((g) => g.id.toString()) });
+        } catch (e) {
+          console.warn('[Community] Failed to fetch joined clubs:', e);
+        }
+      },
+
+      applyClubMembership: (clubId: string, joined: boolean) =>
         set((state) => {
-          const isJoined = state.joinedClubs.includes(clubId);
-          const updatedJoined = isJoined
-            ? state.joinedClubs.filter((id) => id !== clubId)
-            : [...state.joinedClubs, clubId];
-          const updatedClubs = state.clubs.map((c) =>
-            c.id === clubId ? { ...c, memberCount: c.memberCount + (isJoined ? -1 : 1) } : c
+          const isJoined = state.joinedClubIds.includes(clubId);
+          if (isJoined === joined) return state;
+
+          const joinedClubIds = joined
+            ? [...state.joinedClubIds, clubId]
+            : state.joinedClubIds.filter((id) => id !== clubId);
+
+          const clubs = state.clubs.map((c) =>
+            c.id === clubId
+              ? { ...c, memberCount: Math.max(0, c.memberCount + (joined ? 1 : -1)) }
+              : c
           );
-          return { joinedClubs: updatedJoined, clubs: updatedClubs };
+
+          return { joinedClubIds, clubs };
+        }),
+
+      upsertClub: (club: Club) =>
+        set((state) => {
+          const exists = state.clubs.some((c) => c.id === club.id);
+          return {
+            clubs: exists
+              ? state.clubs.map((c) => (c.id === club.id ? club : c))
+              : [club, ...state.clubs],
+          };
         }),
 
       toggleJoinEvent: (eventId: string) =>
@@ -54,7 +137,7 @@ export const useCommunityStore = create<CommunityState>()(
           return { joinedEvents: updatedJoined, events: updatedEvents };
         }),
 
-      isClubJoined: (clubId: string) => get().joinedClubs.includes(clubId),
+      isClubJoined: (clubId: string) => get().joinedClubIds.includes(clubId),
       isEventJoined: (eventId: string) => get().joinedEvents.includes(eventId),
 
       searchClubs: (query: string, sportFilter?: string) => {
@@ -80,19 +163,19 @@ export const useCommunityStore = create<CommunityState>()(
 
       getClubById: (id: string) => get().clubs.find((c) => c.id === id),
       getEventById: (id: string) => get().events.find((e) => e.id === id),
+
+      reset: () => set({ ...INITIAL_STATE }),
     }),
     {
       name: 'stryde-community',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
-      partialize: (state) => ({ joinedClubs: state.joinedClubs, joinedEvents: state.joinedEvents }),
+      partialize: (state) => ({ joinedEvents: state.joinedEvents }),
       migrate: (persistedState: unknown, version: number) => {
-        if (version < 2) {
+        if (version < 3) {
           const state = persistedState as Record<string, unknown>;
           return {
-            ...state,
-            joinedClubs: state.joinedClubs ?? [],
-            joinedEvents: state.joinedEvents ?? [],
+            joinedEvents: (state.joinedEvents as string[]) ?? [],
           };
         }
         return persistedState;
@@ -100,3 +183,10 @@ export const useCommunityStore = create<CommunityState>()(
     }
   )
 );
+
+/** sportType value to send to GroupRegistry.createGroup() for a single
+ * activity type. Multi-sport creation isn't exposed in the UI yet — see
+ * MULTI_SPORT_TYPE above for the sentinel a group would use if it were. */
+export function sportTypeToOnchain(sportType: ActivityType): number {
+  return ACTIVITY_TYPE_MAP[sportType];
+}
