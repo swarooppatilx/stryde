@@ -444,7 +444,7 @@ const UnfoldMenuTrigger: React.FC<IUnfoldMenuTrigger> &
     return (
       <Animated.View
         pointerEvents="none"
-        style={[styles.trigger, styles.bareTrigger, styles.floatTrigger, style, travelStyle]}
+        style={[styles.trigger, styles.floatTrigger, style, styles.bareTrigger, travelStyle]}
       >
         <UnfoldMenuMorphContext.Provider value={morph}>
           <UnfoldMenuTintContext.Provider value={palette.text}>
@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   measurer: {
     position: 'absolute',
@@ -783,6 +783,8 @@ const styles = StyleSheet.create({
   },
   handedOff: {
     opacity: 0,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   floatTrigger: {
     position: 'absolute',
@@ -792,6 +794,9 @@ const styles = StyleSheet.create({
   bareTrigger: {
     borderColor: 'transparent',
     backgroundColor: 'transparent',
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   trigger: {
     flexDirection: 'row',
@@ -802,7 +807,7 @@ const styles = StyleSheet.create({
     height: 44,
     minWidth: 144,
     borderRadius: DEFAULT_RADIUS,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   contentLayer: {
     position: 'absolute',

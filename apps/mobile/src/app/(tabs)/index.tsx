@@ -22,7 +22,7 @@ import { FeedCard } from '@/components/feed-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { UnfoldMenu } from '@/components/unfold-menu';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, Shadow, ShadowDark, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
@@ -265,12 +265,12 @@ export default function HomeScreen() {
           extraBottomInset={64}
           palette={{
             surface: theme.backgroundElement,
-            border: theme.border,
+            border: tint(theme.text, theme.isDark ? 0.28 : 0.14),
             text: theme.text,
             mutedText: theme.textSecondary,
           }}
         >
-          <UnfoldMenu.Trigger>
+          <UnfoldMenu.Trigger style={theme.isDark ? ShadowDark.lg : Shadow.lg}>
             <UnfoldMenu.Icon>
               {({ color, size }) => <Ionicons name="add" size={size} color={color} />}
             </UnfoldMenu.Icon>
