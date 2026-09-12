@@ -18,19 +18,24 @@ import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 
 const SLIDES = [
   {
-    image: require('@/assets/images/onboarding-tracking.png'),
+    image: require('@/assets/images/onboarding-0.jpg'),
     title: 'Track every mile',
-    body: 'Record runs, rides, hikes and walks with live GPS tracking, pace, and elevation.',
+    body: 'Record runs, rides, hikes and walks with GPS tracking, pace, and elevation in real time.',
   },
   {
-    image: require('@/assets/images/onboarding-tracking.png'),
-    title: 'Capture real-world territory',
-    body: 'Every route you complete claims the ground you covered. Explore to expand your map.',
+    image: require('@/assets/images/onboarding-1.jpg'),
+    title: 'Claim your territory',
+    body: 'Every route you finish maps the ground you covered. Build your world as you move.',
   },
   {
-    image: require('@/assets/images/onboarding-feed.png'),
-    title: 'Own your data. Forever.',
-    body: "Activities and territory are yours - verified and portable, not locked in someone else's app.",
+    image: require('@/assets/images/onboarding-2.jpg'),
+    title: 'Train with friends',
+    body: 'See what the people around you are up to. Share routes, compare stats, and keep each other honest.',
+  },
+  {
+    image: require('@/assets/images/onboarding-3.jpg'),
+    title: 'Your progress, always',
+    body: 'Everything you record stays with you. No lock-in, no paywall — just your data, wherever you go.',
   },
 ];
 
