@@ -24,7 +24,36 @@
         "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "package": "com.stryde.app",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "queries": [
+        { "package": "org.world.id.sandbox" },
+        { "package": "com.worldcoin" },
+        {
+          "intent": {
+            "action": "VIEW",
+            "data": {
+              "scheme": "https",
+              "host": "sandbox.world.org"
+            }
+          }
+        },
+        {
+          "intent": {
+            "action": "VIEW",
+            "data": {
+              "scheme": "worldappsandbox"
+            }
+          }
+        },
+        {
+          "intent": {
+            "action": "VIEW",
+            "data": {
+              "scheme": "worldidsandbox"
+            }
+          }
+        }
+      ]
     },
     "web": {
       "output": "static",

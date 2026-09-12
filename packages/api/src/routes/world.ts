@@ -73,7 +73,7 @@ async function mirrorVerificationOnchain(wallet: string, nullifier: string | nul
     const wallet_ = getRelayerWallet();
     const publicClient = getRelayerPublicClient();
     const chain = getRelayChainConfig().chain;
-    const account = wallet_.account!.address;
+    const account = wallet_.account!;
 
     const hash = await wallet_.writeContract({
       address: contractAddress,

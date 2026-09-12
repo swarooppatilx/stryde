@@ -112,17 +112,16 @@ export default function VerifyScreen() {
             <Card style={styles.warningCard}>
               <ThemedText type="sectionTitle">Setup required</ThemedText>
               <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Add your World Developer Portal credentials to .env, then run the local signing
-                server:
+                Add your World app credentials to the mobile .env file:
               </ThemedText>
               <ThemedText type="caption" style={styles.mono}>
-                npm run world:dev-server
+                EXPO_PUBLIC_WORLD_APP_ID, EXPO_PUBLIC_WORLD_RP_ID, EXPO_PUBLIC_WORLD_ENVIRONMENT
               </ThemedText>
               <ThemedText
                 type="caption"
                 style={{ color: theme.textSecondary, marginTop: Spacing.two }}
               >
-                Required: EXPO_PUBLIC_WORLD_APP_ID, EXPO_PUBLIC_WORLD_RP_ID, WORLD_RP_SIGNING_KEY
+                The API server handles World ID request signing; nothing to run locally.
               </ThemedText>
             </Card>
           )}

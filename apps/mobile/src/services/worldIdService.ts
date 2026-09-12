@@ -36,7 +36,7 @@ async function readApiError(response: Response, fallback: string): Promise<strin
 }
 
 async function createServerSession(signal: string): Promise<SessionCreateResponse> {
-  const response = await fetch(`${ENV.API_URL}/world/session`, {
+  const response = await fetch(`${ENV.API_URL}/api/world/session`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -57,7 +57,7 @@ async function createServerSession(signal: string): Promise<SessionCreateRespons
 }
 
 async function pollServerSession(sessionId: string): Promise<PollStatus> {
-  const response = await fetch(`${ENV.API_URL}/world/session/${sessionId}/poll`, {
+  const response = await fetch(`${ENV.API_URL}/api/world/session/${sessionId}/poll`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
