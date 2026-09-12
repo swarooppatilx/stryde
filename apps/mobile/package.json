@@ -5,6 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "eas-build-pre-install": "corepack enable",
+    "eas-build-post-install": "node ../../node_modules/@shopify/react-native-skia/scripts/install-libs.js",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",

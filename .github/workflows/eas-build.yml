@@ -1,0 +1,26 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: eas-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-apk:
+    if: startsWith(github.event.head_commit.message, 'feat:')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Build APK
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: yarn dlx eas-cli@latest build --platform android --profile preview --non-interactive

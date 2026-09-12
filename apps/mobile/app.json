@@ -45,7 +45,19 @@
       "expo-web-browser",
       "@react-native-community/datetimepicker",
       "expo-status-bar",
-      "expo-system-ui"
+      "expo-system-ui",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "buildArchs": ["arm64-v8a"],
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableBundleCompression": true,
+            "useLegacyPackaging": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -53,7 +65,11 @@
     },
     "extra": {
       "privyAppId": "cmtofx8t4009q0ckwolksvwhs",
-      "privyClientId": "client-WY6d7CpGJbwBg5411zi4AFmPHFgSCiPvbE8HYFWR5TuxC"
-    }
+      "privyClientId": "client-WY6d7CpGJbwBg5411zi4AFmPHFgSCiPvbE8HYFWR5TuxC",
+      "eas": {
+        "projectId": "e30a139d-042c-4d5f-b088-ebfa80d0fda2"
+      }
+    },
+    "owner": "piyush690"
   }
 }
