@@ -2,6 +2,7 @@ import type { Context, Next } from 'hono';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { installFileFetchShim } from './lib/fileFetchShim.js';
 import { activities } from './routes/activities.js';
 import { health } from './routes/health.js';
 import { ipfs } from './routes/ipfs.js';
@@ -9,7 +10,28 @@ import { notifications } from './routes/notifications.js';
 import { relay } from './routes/relay.js';
 import { world } from './routes/world.js';
 
+// @worldcoin/idkit-core loads its wasm via fetch(file://...) which Node's
+// undici rejects — patch fetch first so IDKit can initialise lazily on the
+// first /world/session call.
+installFileFetchShim();
+
 const app = new Hono().basePath('/api');
+
+// Global error boundary: never leak a raw Node/viem stack or text/plain body
+// to clients — every uncaught error becomes JSON with a stable shape. Routes
+// that can predict their failure modes (relay contract reverts, wallet
+// funding, misconfiguration) catch and map those directly; anything that
+// slips through lands here as a 500. Returns are logged server-side so the
+// real message stays observable without being exposed to callers.
+app.onError((err, c) => {
+  console.error('[error]', err);
+  const message = err instanceof Error ? err.message : 'Unknown error';
+  const misconfigured = /missing .*var|not configured|misconfigured/i.test(message);
+  return c.json(
+    { error: misconfigured ? 'Service misconfigured' : 'Internal server error' },
+    misconfigured ? 503 : 500
+  );
+});
 
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
   .split(',')

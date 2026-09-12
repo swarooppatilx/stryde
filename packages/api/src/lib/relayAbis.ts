@@ -56,6 +56,27 @@ export const seasonManagerAbi = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'getCurrentSeason',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'id', type: 'uint256' },
+          { name: 'startTime', type: 'uint256' },
+          { name: 'endTime', type: 'uint256' },
+          { name: 'isActive', type: 'bool' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  { type: 'error', name: 'SeasonAlreadyActive' },
+  { type: 'error', name: 'SeasonNotActive' },
+  { type: 'error', name: 'InvalidDuration' },
 ] as const;
 
 export const profileRegistryAbi = [

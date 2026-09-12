@@ -1,12 +1,22 @@
+import { getIpfsConfig } from './ipfs';
+
 export interface RelayResult {
   hash: `0x${string}`;
   confirmed: boolean;
 }
 
 async function relayPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`/api/relay/${path}`, {
+  const config = getIpfsConfig();
+  if (!config) {
+    throw new Error('Relay not configured — call setIpfsConfig() first');
+  }
+
+  const response = await fetch(`${config.apiUrl}/api/relay/${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}),
+    },
     body: JSON.stringify(body),
   });
 

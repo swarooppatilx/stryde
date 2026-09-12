@@ -5,7 +5,9 @@
   "packageManager": "yarn@4.18.0",
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env --import tsx src/dev.ts",
+    "dev": "node --env-file=.env --env-file-if-exists=.env.local --import tsx src/dev.ts",
+    "dev:prod": "node --env-file=.env.prod --env-file-if-exists=.env.local --import tsx src/dev.ts",
+    "dev:production": "node --env-file-if-exists=.env.production --env-file-if-exists=.env.local --import tsx src/dev.ts",
     "build": "tsc",
     "lint": "biome check .",
     "test": "vitest run",

@@ -64,8 +64,6 @@
       "reactCompiler": true
     },
     "extra": {
-      "privyAppId": "cmtofx8t4009q0ckwolksvwhs",
-      "privyClientId": "client-WY6d7CpGJbwBg5411zi4AFmPHFgSCiPvbE8HYFWR5TuxC",
       "eas": {
         "projectId": "e30a139d-042c-4d5f-b088-ebfa80d0fda2"
       }

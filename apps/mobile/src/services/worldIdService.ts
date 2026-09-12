@@ -38,7 +38,10 @@ async function readApiError(response: Response, fallback: string): Promise<strin
 async function createServerSession(signal: string): Promise<SessionCreateResponse> {
   const response = await fetch(`${ENV.API_URL}/world/session`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
+    },
     body: JSON.stringify({
       action: WORLD_VERIFY_ACTION,
       signal,
@@ -56,7 +59,10 @@ async function createServerSession(signal: string): Promise<SessionCreateRespons
 async function pollServerSession(sessionId: string): Promise<PollStatus> {
   const response = await fetch(`${ENV.API_URL}/world/session/${sessionId}/poll`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
+    },
   });
 
   if (!response.ok) {

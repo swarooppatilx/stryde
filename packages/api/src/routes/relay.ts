@@ -25,6 +25,43 @@ function getContract(name: string): { address: `0x${string}`; abi: Abi } {
   return { address, abi };
 }
 
+// Map the failure modes of the write side of a relayed call (which always
+// uses the shared relayer account) onto stable HTTP status codes instead of
+// leaking a raw viem stack / 500. Match on the message text viem builds from
+// decoded revert data and its own error codes — deliberately lenient so new
+// custom errors on the same contracts keep getting a sane response.
+function mapRelayError(c: Context, error: unknown) {
+  if (!(error instanceof Error)) {
+    console.error('[relay] Non-Error thrown:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+  const text = error.message;
+
+  if (/SeasonAlreadyActive|season is (already )?active/i.test(text)) {
+    return c.json({ error: 'A season is already active. End it before starting another.' }, 409);
+  }
+  if (/OwnableUnauthorizedAccount|caller is not the owner|onlyOwner|not the owner/i.test(text)) {
+    return c.json({ error: 'Relayer is not authorized to perform this action' }, 403);
+  }
+  if (/insufficient funds|InsufficientFunds/i.test(text)) {
+    return c.json({ error: 'Relayer wallet has insufficient funds for gas' }, 402);
+  }
+  if (/missing env var|not configured|misconfigured/i.test(text)) {
+    return c.json({ error: 'Service misconfigured' }, 503);
+  }
+  console.error('[relay] Unmapped error:', error);
+  return c.json({ error: 'Relay transaction failed' }, 400);
+}
+
+// Wraps the write+confirm block of a relayed call: anything that throws is
+// mapped via mapRelayError and the response short-circuits.
+function runRelayWrite(c: Context, fn: () => Promise<{ hash: `0x${string}`; confirmed: boolean }>) {
+  return Promise.resolve()
+    .then(() => fn())
+    .then((result) => c.json(result))
+    .catch((error: unknown) => mapRelayError(c, error));
+}
+
 relay.post('/mint-achievement', async (c) => {
   const auth = requireApiKey(c);
   if (auth) return auth;
@@ -44,27 +81,29 @@ relay.post('/mint-achievement', async (c) => {
   const publicClient = getRelayerPublicClient();
   const contract = getContract('achievementRegistry');
   const chain = getRelayChainConfig().chain;
-  const account = wallet.account!.address;
+  const account = wallet.account!;
 
-  const hash = await wallet.writeContract({
-    ...contract,
-    functionName: 'defineAchievement',
-    args: [achievementId, achievementName],
-    account,
-    chain,
+  return runRelayWrite(c, async () => {
+    const hash = await wallet.writeContract({
+      ...contract,
+      functionName: 'defineAchievement',
+      args: [achievementId, achievementName],
+      account,
+      chain,
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+
+    const mintHash = await wallet.writeContract({
+      ...contract,
+      functionName: 'mintAchievement',
+      args: [recipient, achievementId],
+      account,
+      chain,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: mintHash });
+
+    return { hash: mintHash, confirmed: receipt.status === 'success' };
   });
-  await publicClient.waitForTransactionReceipt({ hash });
-
-  const mintHash = await wallet.writeContract({
-    ...contract,
-    functionName: 'mintAchievement',
-    args: [recipient, achievementId],
-    account,
-    chain,
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: mintHash });
-
-  return c.json({ hash: mintHash, confirmed: receipt.status === 'success' });
 });
 
 relay.post('/mint-reward', async (c) => {
@@ -83,18 +122,20 @@ relay.post('/mint-reward', async (c) => {
   const publicClient = getRelayerPublicClient();
   const contract = getContract('moveToEarnToken');
   const chain = getRelayChainConfig().chain;
-  const account = wallet.account!.address;
+  const account = wallet.account!;
 
-  const hash = await wallet.writeContract({
-    ...contract,
-    functionName: 'mintForActivity',
-    args: [recipient, activityHash, BigInt(Math.round(distance))],
-    account,
-    chain,
+  return runRelayWrite(c, async () => {
+    const hash = await wallet.writeContract({
+      ...contract,
+      functionName: 'mintForActivity',
+      args: [recipient, activityHash, BigInt(Math.round(distance))],
+      account,
+      chain,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    return { hash, confirmed: receipt.status === 'success' };
   });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-  return c.json({ hash, confirmed: receipt.status === 'success' });
 });
 
 relay.post('/mint-territory-nft', async (c) => {
@@ -113,18 +154,20 @@ relay.post('/mint-territory-nft', async (c) => {
   const publicClient = getRelayerPublicClient();
   const contract = getContract('territoryNFT');
   const chain = getRelayChainConfig().chain;
-  const account = wallet.account!.address;
+  const account = wallet.account!;
 
-  const hash = await wallet.writeContract({
-    ...contract,
-    functionName: 'mintTerritory',
-    args: [recipient, polygonHash],
-    account,
-    chain,
+  return runRelayWrite(c, async () => {
+    const hash = await wallet.writeContract({
+      ...contract,
+      functionName: 'mintTerritory',
+      args: [recipient, polygonHash],
+      account,
+      chain,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    return { hash, confirmed: receipt.status === 'success' };
   });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-  return c.json({ hash, confirmed: receipt.status === 'success' });
 });
 
 relay.post('/start-season', async (c) => {
@@ -143,16 +186,18 @@ relay.post('/start-season', async (c) => {
   const publicClient = getRelayerPublicClient();
   const contract = getContract('seasonManager');
   const chain = getRelayChainConfig().chain;
-  const account = wallet.account!.address;
+  const account = wallet.account!;
 
-  const hash = await wallet.writeContract({
-    ...contract,
-    functionName: 'startSeason',
-    args: [BigInt(Math.round(durationSeconds))],
-    account,
-    chain,
+  return runRelayWrite(c, async () => {
+    const hash = await wallet.writeContract({
+      ...contract,
+      functionName: 'startSeason',
+      args: [BigInt(Math.round(durationSeconds))],
+      account,
+      chain,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    return { hash, confirmed: receipt.status === 'success' };
   });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-  return c.json({ hash, confirmed: receipt.status === 'success' });
 });
