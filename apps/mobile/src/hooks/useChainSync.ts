@@ -45,11 +45,49 @@ export function useChainSync() {
 
     async function sync() {
       try {
-        const [activities, territories, profile] = await Promise.all([
-          services.sync.syncActivitiesFromChain(walletAddress),
-          services.sync.syncTerritoriesFromChain(walletAddress),
-          services.sync.syncProfileFromChain(walletAddress),
-        ]);
+        // Prefer a single composed subgraph query (Profile + Activity +
+        // Territory + Season/Achievement in one round trip) over the three
+        // separate per-registry calls below. Falls back to those calls when
+        // no subgraph is configured for the active chain mode (e.g. local
+        // Anvil) or the composite query itself fails/returns nothing (e.g. a
+        // wallet with no indexed profile yet).
+        type NormalizedTerritory = {
+          id: string;
+          areaSqm: number;
+          strength: number;
+          capturedAt: number;
+          lastReinforced: number;
+        };
+
+        let activities: services.sync.SyncedActivity[];
+        let territories: NormalizedTerritory[];
+        let profile: services.sync.SyncedProfile;
+
+        const composite = await services.subgraph.getAthleteComposite(walletAddress).catch((e) => {
+          console.warn('[ChainSync] Composite subgraph query failed, falling back:', e);
+          return null;
+        });
+
+        if (composite) {
+          activities = composite.activities;
+          territories = composite.territories;
+          profile = { isRegistered: true, profileId: composite.profileId };
+        } else {
+          const [rawActivities, rawTerritories, rawProfile] = await Promise.all([
+            services.sync.syncActivitiesFromChain(walletAddress),
+            services.sync.syncTerritoriesFromChain(walletAddress),
+            services.sync.syncProfileFromChain(walletAddress),
+          ]);
+          activities = rawActivities;
+          territories = rawTerritories.map((t) => ({
+            id: t.id,
+            areaSqm: t.areaSqm,
+            strength: t.controlStrength,
+            capturedAt: t.capturedAt,
+            lastReinforced: t.lastReinforced,
+          }));
+          profile = rawProfile;
+        }
         if (cancelled) return;
 
         if (activities.length > 0) {
@@ -89,16 +127,7 @@ export function useChainSync() {
         }
 
         if (territories.length > 0) {
-          useTerritoryStore.getState().setTerritories(
-            walletAddress,
-            territories.map((t) => ({
-              id: t.id,
-              areaSqm: t.areaSqm,
-              strength: t.controlStrength,
-              capturedAt: t.capturedAt,
-              lastReinforced: t.lastReinforced,
-            }))
-          );
+          useTerritoryStore.getState().setTerritories(walletAddress, territories);
         }
 
         if (profile.isRegistered && profile.profileId) {

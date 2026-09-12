@@ -58,9 +58,30 @@ export const seasonManagerAbi = [
   },
 ] as const;
 
+export const profileRegistryAbi = [
+  {
+    type: 'function',
+    name: 'verify',
+    inputs: [
+      { name: 'wallet', type: 'address' },
+      { name: 'nullifierHash', type: 'bytes32' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'isVerified',
+    inputs: [{ name: 'wallet', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+  },
+] as const;
+
 export const RELAY_ABIS = {
   achievementRegistry: achievementRegistryAbi,
   moveToEarnToken: moveToEarnTokenAbi,
   territoryNFT: territoryNFTAbi,
   seasonManager: seasonManagerAbi,
+  profileRegistry: profileRegistryAbi,
 } as const;

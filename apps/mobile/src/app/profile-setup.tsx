@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/shallow';
 import { AppButton } from '@/components/button';
+import { Card } from '@/components/card';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -22,12 +23,13 @@ import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useViemWallet } from '@/hooks/useViemWallet';
+import { useWorldVerification } from '@/hooks/useWorldVerification';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Gender } from '@/types';
 import { getParsedError } from '@/utils/errors';
 
-const STEPS = ['name', 'birthday', 'gender'] as const;
+const STEPS = ['name', 'birthday', 'gender', 'verify'] as const;
 type Step = (typeof STEPS)[number];
 
 const GENDER_OPTIONS: { value: Gender; label: string; icon: string }[] = [
@@ -105,10 +107,13 @@ export default function ProfileSetupScreen() {
     }))
   );
 
+  const worldVerification = useWorldVerification();
+
   const canContinue = () => {
     if (step === 'name') return username.trim().length >= 2;
     if (step === 'birthday') return true;
     if (step === 'gender') return true;
+    if (step === 'verify') return true;
     return false;
   };
 
@@ -389,6 +394,43 @@ export default function ProfileSetupScreen() {
                 </View>
               </>
             )}
+
+            {step === 'verify' && (
+              <>
+                <Ionicons
+                  name={worldVerification.isVerified ? 'checkmark-circle' : 'shield-checkmark'}
+                  size={48}
+                  color={theme.brand.primary}
+                  style={{ marginBottom: Spacing.two }}
+                />
+                <ThemedText type="title" style={styles.title}>
+                  {worldVerification.isVerified ? "You're verified" : 'Verify with World ID'}
+                </ThemedText>
+                <ThemedText themeColor="textSecondary" style={styles.subtitle}>
+                  {worldVerification.isVerified
+                    ? 'Selfie Check confirmed. Your profile shows a verified badge.'
+                    : 'Optional: prove you’re a real person with World ID Selfie Check. Verified athletes get a badge and fairer leaderboards/territory claims.'}
+                </ThemedText>
+
+                {!worldVerification.isVerified && (
+                  <Card style={{ width: '100%', maxWidth: 400, gap: Spacing.two }}>
+                    <AppButton
+                      onPress={worldVerification.startVerification}
+                      loading={worldVerification.isBusy}
+                      disabled={!worldVerification.isConfigured || worldVerification.isBusy}
+                      icon={<Ionicons name="scan-outline" size={18} color={Brand.white} />}
+                    >
+                      Verify with World ID
+                    </AppButton>
+                    {worldVerification.error && (
+                      <ThemedText type="small" style={{ color: theme.brand.danger }}>
+                        {worldVerification.error.message}
+                      </ThemedText>
+                    )}
+                  </Card>
+                )}
+              </>
+            )}
           </View>
 
           <View style={styles.footer}>
@@ -399,12 +441,24 @@ export default function ProfileSetupScreen() {
             >
               {isSubmitting
                 ? 'Please wait...'
-                : step === 'gender'
+                : step === 'verify'
                   ? hasWallet
                     ? 'Continue'
                     : 'Get Started'
                   : 'Next'}
             </AppButton>
+            {step === 'verify' && !worldVerification.isVerified && (
+              <TouchableOpacity
+                onPress={handleNext}
+                hitSlop={8}
+                disabled={isSubmitting}
+                style={styles.skipLink}
+              >
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  Skip for now
+                </ThemedText>
+              </TouchableOpacity>
+            )}
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -473,6 +527,10 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
+  },
+  skipLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
   },
   button: {
     borderRadius: BorderRadius.full,

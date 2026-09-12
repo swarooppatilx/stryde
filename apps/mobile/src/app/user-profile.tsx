@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { services } from '@repo/shared';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -45,6 +46,38 @@ export default function UserProfileScreen() {
   );
 
   const ensName = useEnsName(user?.wallet);
+
+  // Composed subgraph data (territory area + achievements alongside this
+  // athlete's activities/distance above) — one query spanning Profile +
+  // Territory + Achievement registries, rather than separate per-registry
+  // calls. Best-effort: a viewed profile with nothing indexed yet (or no
+  // subgraph configured for the active chain mode) just hides these stats.
+  const [territoryArea, setTerritoryArea] = useState<number | null>(null);
+  const [achievementCount, setAchievementCount] = useState<number | null>(null);
+  // World ID Selfie Check verification, as seen by OTHER users viewing this
+  // profile — read from ProfileRegistry.isVerified via the subgraph, not
+  // from local AsyncStorage (which only reflects the verifying device's own
+  // view of itself; see worldVerificationStore.ts / FEEDBACK.md).
+  const [isVerified, setIsVerified] = useState(false);
+
+  useEffect(() => {
+    if (!user?.wallet) return;
+    let cancelled = false;
+    services.subgraph
+      .getAthleteComposite(user.wallet as `0x${string}`)
+      .then((composite) => {
+        if (cancelled || !composite) return;
+        setTerritoryArea(
+          composite.territories.filter((t) => t.isActive).reduce((sum, t) => sum + t.areaSqm, 0)
+        );
+        setAchievementCount(composite.achievements.length);
+        setIsVerified(composite.isVerified);
+      })
+      .catch((e) => console.warn('[UserProfile] Composite subgraph query failed:', e));
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.wallet]);
 
   if (!user) {
     return (
@@ -97,7 +130,17 @@ export default function UserProfileScreen() {
         )}
         renderOveralComponent={() => (
           <View style={styles.parallaxOverlay}>
-            <ThemedText style={[styles.name, { color: Brand.white }]}>{renderedName}</ThemedText>
+            <View style={styles.nameRow}>
+              <ThemedText style={[styles.name, { color: Brand.white }]}>{renderedName}</ThemedText>
+              {isVerified && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={Brand.white}
+                  accessibilityLabel="Verified with World ID"
+                />
+              )}
+            </View>
             <ThemedText type="small" style={{ color: 'rgba(255,255,255,0.85)' }}>
               @{user.username}
             </ThemedText>
@@ -173,6 +216,35 @@ export default function UserProfileScreen() {
                   Followers
                 </ThemedText>
               </ThemedView>
+              {territoryArea !== null && territoryArea > 0 && (
+                <>
+                  <ThemedView style={[styles.statDivider, { backgroundColor: theme.border }]} />
+                  <ThemedView style={styles.stat}>
+                    <ThemedText style={[styles.statVal, { color: theme.text }]}>
+                      {Math.round(territoryArea)} m²
+                    </ThemedText>
+                    <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                      Territory
+                    </ThemedText>
+                  </ThemedView>
+                </>
+              )}
+              {achievementCount !== null && achievementCount > 0 && (
+                <>
+                  <ThemedView style={[styles.statDivider, { backgroundColor: theme.border }]} />
+                  <ThemedView style={styles.stat}>
+                    <NumberFlow
+                      value={achievementCount}
+                      fontSize={16}
+                      fontWeight="700"
+                      color={theme.text}
+                    />
+                    <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                      Achievements
+                    </ThemedText>
+                  </ThemedView>
+                </>
+              )}
             </ThemedView>
 
             {/* Follow button */}
@@ -299,10 +371,15 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.half,
+    marginTop: Spacing.one,
+  },
   name: {
     fontSize: 22,
     fontWeight: '700',
-    marginTop: Spacing.one,
   },
   bio: {
     textAlign: 'center',

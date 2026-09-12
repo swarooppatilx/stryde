@@ -11,7 +11,7 @@ const CHAIN_ID = Number(process.env.RELAYER_CHAIN_ID);
 const RPC_URL = process.env.RELAYER_RPC_URL;
 
 const SEPOLIA_CONTRACTS: Record<string, `0x${string}`> = {
-  profileRegistry: '0xEb5d78a3d1d852a823AF8283d4f6869610b1269a',
+  profileRegistry: '0xd8f7559a9F8C3c60C06A3a3039Cf14FB69083F64',
   activityRegistry: '0x1A90B0B3D2EDe91eB8C036c2c9Fa82f1654c76Fe',
   territoryRegistry: '0x0437De17688BD16AcD2B793d1446d5E775a056C8',
   seasonManager: '0xE9aB491b2Ca50523EC681476c05db7A5D59Bfc8F',
