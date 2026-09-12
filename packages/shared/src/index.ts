@@ -10,4 +10,5 @@ export {
 } from './services/client';
 export * as services from './services/index';
 export { setIpfsConfig } from './services/ipfs';
+export type { SocialSyncResult, SyncedComment, SyncedKudos } from './services/social';
 export * from './types';

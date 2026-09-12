@@ -111,6 +111,15 @@ GROUP_ADDRESS=$(echo "$OUTPUT" | grep -oP 'GroupRegistry deployed at: \K0x[a-fA-
 CONTRACT_ADDRESSES+=("groupRegistry=$GROUP_ADDRESS")
 
 echo ""
+echo "--- SocialRegistry ---"
+OUTPUT=$(forge script script/DeploySocialRegistry.s.sol \
+  --rpc-url "$ANVIL_RPC" \
+  --broadcast 2>&1)
+echo "$OUTPUT"
+SOCIAL_ADDRESS=$(echo "$OUTPUT" | grep -oP 'SocialRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+CONTRACT_ADDRESSES+=("socialRegistry=$SOCIAL_ADDRESS")
+
+echo ""
 echo "=== Local Deployment Complete ==="
 echo ""
 echo "Contract Addresses:"

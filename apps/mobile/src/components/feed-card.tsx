@@ -350,7 +350,9 @@ export function FeedCard({
   const unitSystem = useUnitSystem();
   const getUserById = useSocialStore((s) => s.getUserById);
   const ensName = useEnsName(user.wallet);
-  const hasKudoed = activity.kudos.includes(getCurrentUserId());
+  const hasKudoed = activity.kudos.some(
+    (id) => id.toLowerCase() === getCurrentUserId().toLowerCase()
+  );
   const cardRef = useRef<View>(null);
   const shareCardRef = useRef<View>(null);
   const icon = (SPORT_ICONS[activity.activityType] || 'walk') as keyof typeof Ionicons.glyphMap;

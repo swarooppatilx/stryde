@@ -1,10 +1,10 @@
-import { services } from '@repo/shared';
-import * as Crypto from 'expo-crypto';
+import { type SyncedComment, services } from '@repo/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { getSportLabel } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
 import { ipfsToHttpUrl } from '@/services/ipfsService';
+import { getActiveWallet, queuedWrite } from '@/services/wallet';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Activity, User } from '@/types';
@@ -40,6 +40,7 @@ export interface SocialUser extends User {
 
 export interface SocialActivity extends Activity {
   name?: string;
+  activityId?: bigint;
   kudos: string[];
   comments: SocialComment[];
 }
@@ -87,8 +88,8 @@ interface SocialState {
   fetchUsers: () => Promise<void>;
   fetchActivities: () => Promise<void>;
   syncLocalActivities: () => void;
-  toggleKudos: (activityId: string) => void;
-  addComment: (activityId: string, text: string) => void;
+  toggleKudos: (activityId: string) => Promise<void>;
+  addComment: (activityId: string, text: string) => Promise<void>;
   toggleCommentLike: (activityId: string, commentId: string) => void;
   updateActivity: (activityId: string, updates: Partial<SocialActivity>) => void;
   toggleFollow: (userId: string) => void;
@@ -151,6 +152,46 @@ export const useSocialStore = create<SocialState>()(
               .map((a) => [a.activityHash, a])
           );
 
+          // Fetch social data (kudos + comments) from chain/subgraph
+          let socialData: {
+            kudos: { activityId: bigint; giver: string }[];
+            comments: SyncedComment[];
+          } = {
+            kudos: [],
+            comments: [],
+          };
+          try {
+            socialData = await services.social.syncSocialFromChain();
+          } catch (e) {
+            console.warn('[Social] Failed to sync social data:', e);
+          }
+
+          // Build kudos map: activityId -> giver[]
+          const kudosByActivityId = new Map<string, Set<string>>();
+          for (const k of socialData.kudos) {
+            const key = k.activityId.toString();
+            if (!kudosByActivityId.has(key)) kudosByActivityId.set(key, new Set());
+            kudosByActivityId.get(key)!.add(k.giver.toLowerCase());
+          }
+
+          // Build comments map: activityId -> SocialComment[]
+          const commentsByActivityId = new Map<string, SocialComment[]>();
+          for (const c of socialData.comments) {
+            const key = c.activityId.toString();
+            if (!commentsByActivityId.has(key)) commentsByActivityId.set(key, []);
+            commentsByActivityId.get(key)!.push({
+              id: c.id,
+              userId: c.author,
+              text: c.text ?? '',
+              createdAt: new Date(c.createdAt * 1000),
+              likedBy: [],
+            });
+          }
+
+          // Track current user's kudos for the Set
+          const currentUserId = getCurrentUserId().toLowerCase();
+          const userKudos = new Set<string>();
+
           set((state) => {
             const existingByHash = new Map(
               Object.values(state.activities).map((a) => [a.activityHash || a.id, a])
@@ -159,6 +200,37 @@ export const useSocialStore = create<SocialState>()(
             const socialActivities: SocialActivity[] = chainActivities.map((a) => {
               const local = localByHash.get(a.activityHash);
               const existing = existingByHash.get(a.activityHash);
+
+              // Map chain activityId (bigint) to kudos/comments
+              const activityIdStr = a.activityId.toString();
+              const chainKudos = kudosByActivityId.get(activityIdStr);
+              const chainComments = commentsByActivityId.get(activityIdStr);
+
+              const kudos: string[] = chainKudos ? Array.from(chainKudos) : [];
+              if (
+                !chainKudos &&
+                existing?.kudos.includes(currentUserId) &&
+                existing.kudos.length <= 1
+              ) {
+                kudos.push(currentUserId);
+              }
+
+              const comments: SocialComment[] = [];
+              const seenCommentIds = new Set<string>();
+              const pushUnique = (list: SocialComment[]) => {
+                for (const c of list) {
+                  if (!seenCommentIds.has(c.id)) {
+                    seenCommentIds.add(c.id);
+                    comments.push(c);
+                  }
+                }
+              };
+              if (chainComments) pushUnique(chainComments);
+              if (existing?.comments) pushUnique(existing.comments);
+
+              if (chainKudos?.has(currentUserId)) {
+                userKudos.add(a.activityHash);
+              }
 
               return {
                 id: a.activityHash,
@@ -180,8 +252,9 @@ export const useSocialStore = create<SocialState>()(
                 txHash: local?.txHash,
                 metadataCid: local?.metadataCid ?? a.metadataCid,
                 createdAt: local?.createdAt ?? new Date(a.timestamp * 1000),
-                kudos: existing?.kudos ?? [],
-                comments: existing?.comments ?? [],
+                activityId: a.activityId,
+                kudos,
+                comments,
               };
             });
 
@@ -192,6 +265,7 @@ export const useSocialStore = create<SocialState>()(
               localKeys.has(a.activityHash || a.id)
             );
             return {
+              currentUserKudos: userKudos,
               activities: mergeLocalActivities(
                 toActivityRecord([...localSocial, ...socialActivities]),
                 useActivityStore.getState().activities
@@ -203,51 +277,141 @@ export const useSocialStore = create<SocialState>()(
         }
       },
 
-      toggleKudos: (activityId: string) =>
-        set((state) => {
-          const currentUserId = getCurrentUserId();
-          const hasKudos = state.currentUserKudos.has(activityId);
-          const updatedKudos = new Set(state.currentUserKudos);
+      toggleKudos: async (activityId: string) => {
+        const state = get();
+        const currentUserId = getCurrentUserId();
+        const activity = state.activities[activityId];
+        const hasKudos = activity
+          ? activity.kudos.some((id) => id.toLowerCase() === currentUserId.toLowerCase())
+          : state.currentUserKudos.has(activityId);
+
+        // Optimistic update
+        const updatedKudos = new Set(state.currentUserKudos);
+        if (hasKudos) {
+          updatedKudos.delete(activityId);
+        } else {
+          updatedKudos.add(activityId);
+        }
+
+        const updatedActivity = activity
+          ? {
+              ...activity,
+              kudos: hasKudos
+                ? activity.kudos.filter((id) => id.toLowerCase() !== currentUserId.toLowerCase())
+                : [...activity.kudos, currentUserId.toLowerCase()],
+            }
+          : undefined;
+
+        set({
+          currentUserKudos: updatedKudos,
+          ...(updatedActivity
+            ? { activities: { ...state.activities, [activityId]: updatedActivity } }
+            : {}),
+        });
+
+        // Send on-chain tx
+        const wallet = getActiveWallet();
+        if (!wallet || !activity?.activityId) return;
+
+        try {
+          await queuedWrite(async (w) => {
+            await services.social.toggleKudos(w, activity.activityId!);
+          });
+        } catch (e) {
+          console.warn('[Social] Kudos tx failed, rolling back:', e);
+          // Rollback
+          const rollbackKudos = new Set(get().currentUserKudos);
           if (hasKudos) {
-            updatedKudos.delete(activityId);
+            rollbackKudos.add(activityId);
           } else {
-            updatedKudos.add(activityId);
+            rollbackKudos.delete(activityId);
           }
+          const rollbackActivity = get().activities[activityId];
+          if (rollbackActivity) {
+            set({
+              currentUserKudos: rollbackKudos,
+              activities: {
+                ...get().activities,
+                [activityId]: {
+                  ...rollbackActivity,
+                  kudos: hasKudos
+                    ? [...rollbackActivity.kudos, currentUserId]
+                    : rollbackActivity.kudos.filter((id) => id !== currentUserId),
+                },
+              },
+            });
+          }
+        }
+      },
 
-          const activity = state.activities[activityId];
-          if (!activity) return { currentUserKudos: updatedKudos };
+      addComment: async (activityId: string, text: string) => {
+        const state = get();
+        const currentUserId = getCurrentUserId();
+        const activity = state.activities[activityId];
+        if (!activity) return;
 
-          const updatedActivity = {
-            ...activity,
-            kudos: hasKudos
-              ? activity.kudos.filter((id) => id !== currentUserId)
-              : [...activity.kudos, currentUserId],
-          };
-          return {
-            currentUserKudos: updatedKudos,
-            activities: { ...state.activities, [activityId]: updatedActivity },
-          };
-        }),
+        // Build a stable comment ID
+        const commentIdBytes = services.social.computeCommentId(
+          activity.activityId ?? 0n,
+          currentUserId as `0x${string}`,
+          text,
+          BigInt(Math.floor(Date.now() / 1000))
+        );
 
-      addComment: (activityId: string, text: string) =>
-        set((state) => {
-          const comment: SocialComment = {
-            id: `comment-${Date.now()}-${Crypto.randomUUID().slice(0, 8)}`,
-            userId: getCurrentUserId(),
+        const comment: SocialComment = {
+          id: commentIdBytes,
+          userId: currentUserId,
+          text,
+          createdAt: new Date(),
+          likedBy: [],
+        };
+
+        // Optimistic update
+        set({
+          activities: {
+            ...state.activities,
+            [activityId]: { ...activity, comments: [...activity.comments, comment] },
+          },
+        });
+
+        // Upload to IPFS + on-chain
+        const wallet = getActiveWallet();
+        if (!wallet || !activity.activityId) return;
+
+        try {
+          const { cid } = await services.social.uploadCommentToIpfs({
+            activityHash: activity.activityHash ?? '',
+            commentId: commentIdBytes,
+            author: currentUserId,
             text,
-            createdAt: new Date(),
-            likedBy: [],
-          };
+            createdAt: new Date().toISOString(),
+          });
 
-          const activity = state.activities[activityId];
-          if (!activity) return state;
-          return {
-            activities: {
-              ...state.activities,
-              [activityId]: { ...activity, comments: [...activity.comments, comment] },
-            },
-          };
-        }),
+          await queuedWrite(async (w) => {
+            await services.social.addComment(
+              w,
+              activity.activityId!,
+              commentIdBytes as `0x${string}`,
+              cid
+            );
+          });
+        } catch (e) {
+          console.warn('[Social] Comment tx failed, rolling back:', e);
+          // Rollback: remove the optimistic comment
+          const rollbackActivity = get().activities[activityId];
+          if (rollbackActivity) {
+            set({
+              activities: {
+                ...get().activities,
+                [activityId]: {
+                  ...rollbackActivity,
+                  comments: rollbackActivity.comments.filter((c) => c.id !== commentIdBytes),
+                },
+              },
+            });
+          }
+        }
+      },
 
       toggleCommentLike: (activityId: string, commentId: string) =>
         set((state) => {
@@ -373,8 +537,6 @@ export const useSocialStore = create<SocialState>()(
         const allActivities = Object.values(activities);
         const followedLowercase = new Set([...following].map((f) => f.toLowerCase()));
 
-        // Shared-territory suggestion scoring is not possible with the current data model
-        // (territory ownership lives on-chain, not in the socialStore).
         return Object.values(users)
           .filter((u) => {
             const userKey = u.id.toLowerCase();
@@ -434,7 +596,7 @@ export const useSocialStore = create<SocialState>()(
     }),
     {
       name: 'stryde-social',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({
         users: state.users,
@@ -476,6 +638,20 @@ export const useSocialStore = create<SocialState>()(
             activities: Array.isArray(state.activities)
               ? toActivityRecord(state.activities as SocialActivity[])
               : ((state.activities as Record<string, SocialActivity>) ?? {}),
+            following: Array.isArray(state.following)
+              ? new Set(state.following.map((a: string) => a.toLowerCase()))
+              : (state.following ?? []),
+            currentUserKudos: Array.isArray(state.currentUserKudos)
+              ? new Set(state.currentUserKudos)
+              : (state.currentUserKudos ?? []),
+          };
+        }
+        if (version < 6) {
+          // v6: kudos/comments now synced from chain. Keep persisted data as offline cache;
+          // fresh from chain will merge on top during fetchActivities.
+          const state = persistedState as Record<string, unknown>;
+          return {
+            ...state,
             following: Array.isArray(state.following)
               ? new Set(state.following.map((a: string) => a.toLowerCase()))
               : (state.following ?? []),

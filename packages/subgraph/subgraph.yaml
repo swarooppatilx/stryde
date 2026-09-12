@@ -6,9 +6,9 @@ dataSources:
     name: ProfileRegistry
     network: sepolia
     source:
-      address: "0xd8f7559a9F8C3c60C06A3a3039Cf14FB69083F64"
+      address: "0x4Aa7127Aa6Cb07202e4040eA5Aa57434F8B67641"
       abi: ProfileRegistry
-      startBlock: 11689300
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -30,9 +30,9 @@ dataSources:
     name: ActivityRegistry
     network: sepolia
     source:
-      address: "0xf786Fd52cfCc4c319aC5B43E2F8e856f454Dd5f2"
+      address: "0x8aCAd61B9D875088C010db110d708F85E13e9859"
       abi: ActivityRegistry
-      startBlock: 11681042
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -52,9 +52,9 @@ dataSources:
     name: TerritoryRegistry
     network: sepolia
     source:
-      address: "0x52fB04Cf2AD5ed767fc66b0Fc70C70E185446B67"
+      address: "0xa5ba09D89C3C6e8F9e84ABD0b73D350220204B6C"
       abi: TerritoryRegistry
-      startBlock: 11681049
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -78,9 +78,9 @@ dataSources:
     name: SeasonManager
     network: sepolia
     source:
-      address: "0xe36E17c1C61CE0cE5eF1c5EAF5eb17c60f6ce5Ba"
+      address: "0xe1B61aEA4dcD64C2aA20768Dcf94E5a57f7daF65"
       abi: SeasonManager
-      startBlock: 11681057
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -104,9 +104,9 @@ dataSources:
     name: AchievementRegistry
     network: sepolia
     source:
-      address: "0x60EcD3Cc3D29aC475E1d84969B442C41B6d0C91C"
+      address: "0x95d86d385397Cc264f565555c1a1b416A9b784c6"
       abi: AchievementRegistry
-      startBlock: 11681064
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -127,9 +127,9 @@ dataSources:
     name: ChallengeRegistry
     network: sepolia
     source:
-      address: "0xA8B8133550F7e9CA15164a3c97a822bdead3e7EE"
+      address: "0x107CDb2828b7efB12Fa01ed4f185822441281787"
       abi: ChallengeRegistry
-      startBlock: 11681074
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -155,9 +155,9 @@ dataSources:
     name: GroupRegistry
     network: sepolia
     source:
-      address: "0xbfb25ef28281CcBa4709e726dab915724964B9Bc"
+      address: "0xcE8466Ea9BBC35cF3f4516ab2D0aAe3DB919B62d"
       abi: GroupRegistry
-      startBlock: 11689566
+      startBlock: 11694692
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -184,3 +184,28 @@ dataSources:
         - event: TreasuryWithdrawn(indexed uint256,indexed address,uint256,uint256)
           handler: handleTreasuryWithdrawn
       file: src/mappings/GroupRegistry.ts
+  - kind: ethereum/contract
+    name: SocialRegistry
+    network: sepolia
+    source:
+      address: "0xdd5052dD38c900Da0864FAc5c26b4f41322d9bBC"
+      abi: SocialRegistry
+      startBlock: 11694692
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - ActivityKudos
+        - ActivityComment
+      abis:
+        - name: SocialRegistry
+          file: ../contracts/out/SocialRegistry.sol/SocialRegistry.json
+      eventHandlers:
+        - event: KudosGiven(indexed uint256,indexed address,uint256)
+          handler: handleKudosGiven
+        - event: KudosRevoked(indexed uint256,indexed address,uint256)
+          handler: handleKudosRevoked
+        - event: CommentAdded(indexed uint256,indexed address,indexed bytes32,string,uint256)
+          handler: handleCommentAdded
+      file: src/mappings/SocialRegistry.ts

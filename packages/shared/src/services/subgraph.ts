@@ -623,3 +623,158 @@ export async function getUserGroupsFromSubgraph(
   const groupMembers = body.data?.groupMembers ?? [];
   return groupMembers.filter((m) => m.group.active).map((m) => mapGroupEntity(m.group));
 }
+
+interface KudosEntity {
+  id: string;
+  activity: { id: string; activityId: string };
+  giver: { id: string };
+  givenAt: string;
+  active: boolean;
+}
+
+const KUDOS_QUERY = `
+  query GetKudos($first: Int!, $skip: Int!) {
+    activityKudos_collection(
+      first: $first,
+      skip: $skip,
+      where: { active: true },
+      orderBy: givenAt,
+      orderDirection: desc
+    ) {
+      id
+      activity { id activityId }
+      giver { id }
+      givenAt
+      active
+    }
+  }
+`;
+
+interface CommentEntity {
+  id: string;
+  activity: { id: string; activityId: string };
+  author: { id: string };
+  cid: string;
+  createdAt: string;
+}
+
+const COMMENTS_QUERY = `
+  query GetComments($first: Int!, $skip: Int!) {
+    activityComments(
+      first: $first,
+      skip: $skip,
+      orderBy: createdAt,
+      orderDirection: desc
+    ) {
+      id
+      activity { id activityId }
+      author { id }
+      cid
+      createdAt
+    }
+  }
+`;
+
+export interface SubgraphKudos {
+  activityId: bigint;
+  giver: string;
+  timestamp: number;
+  active: boolean;
+}
+
+export interface SubgraphComment {
+  id: string;
+  activityId: bigint;
+  author: string;
+  cid: string;
+  createdAt: number;
+}
+
+/** Returns null when no subgraph is configured, so callers can fall back
+ * to the getLogs scan path. */
+export async function getKudosFromSubgraph(): Promise<SubgraphKudos[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const allKudos: KudosEntity[] = [];
+  let skip = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(subgraphUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: KUDOS_QUERY,
+        variables: { first: PAGE_SIZE, skip },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status}`);
+    }
+
+    const body = (await response.json()) as GraphQLResponse<{
+      activityKudos_collection: KudosEntity[];
+    }>;
+    if (body.errors?.length) {
+      throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+    }
+
+    const kudos = body.data?.activityKudos_collection ?? [];
+    allKudos.push(...kudos);
+    hasMore = kudos.length === PAGE_SIZE;
+    skip += PAGE_SIZE;
+  }
+
+  return allKudos.map((k) => ({
+    activityId: BigInt(k.activity.activityId),
+    giver: k.giver.id.toLowerCase(),
+    timestamp: Number(k.givenAt),
+    active: k.active,
+  }));
+}
+
+/** Returns null when no subgraph is configured, so callers can fall back
+ * to the getLogs scan path. */
+export async function getCommentsFromSubgraph(): Promise<SubgraphComment[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const allComments: CommentEntity[] = [];
+  let skip = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(subgraphUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: COMMENTS_QUERY,
+        variables: { first: PAGE_SIZE, skip },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status}`);
+    }
+
+    const body = (await response.json()) as GraphQLResponse<{ activityComments: CommentEntity[] }>;
+    if (body.errors?.length) {
+      throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+    }
+
+    const comments = body.data?.activityComments ?? [];
+    allComments.push(...comments);
+    hasMore = comments.length === PAGE_SIZE;
+    skip += PAGE_SIZE;
+  }
+
+  return allComments.map((c) => ({
+    id: c.id,
+    activityId: BigInt(c.activity.activityId),
+    author: c.author.id.toLowerCase(),
+    cid: c.cid,
+    createdAt: Number(c.createdAt),
+  }));
+}

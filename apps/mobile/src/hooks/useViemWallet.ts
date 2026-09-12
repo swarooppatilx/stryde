@@ -7,6 +7,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { baseSepolia, sepolia } from 'viem/chains';
 import { anvil } from '@/config/privyChains';
 import { ENV, getLocalRpcUrl, setCurrentUserId } from '@/constants/config';
+import { setActiveWallet } from '@/services/wallet';
 
 // Anvil's well-known default account #0 — not a real secret, but guarded to
 // local mode only so a misconfiguration can't reach it in a non-local build.
@@ -85,14 +86,14 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
     if (localInitRef.current) return;
     localInitRef.current = true;
     const anvilAccount = getAnvilAccount(mode);
-    setWallet(
-      createWalletClient({
-        chain: anvil,
-        transport: http(getLocalRpcUrl()),
-        account: anvilAccount,
-      })
-    );
+    const localWallet = createWalletClient({
+      chain: anvil,
+      transport: http(getLocalRpcUrl()),
+      account: anvilAccount,
+    });
+    setWallet(localWallet);
     setAddress(anvilAccount.address);
+    setActiveWallet(localWallet, anvilAccount.address);
     setCurrentUserId(anvilAccount.address);
     setIsLoading(false);
   }, [mode]);
@@ -128,6 +129,7 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
             if (!cancelled) {
               setWallet(smartClient as unknown as WalletClient);
               setAddress(smartClient.account.address);
+              setActiveWallet(smartClient as unknown as WalletClient, smartClient.account.address);
               setCurrentUserId(smartClient.account.address);
             }
             return;
@@ -156,6 +158,7 @@ export function useViemWallet(mode: ChainMode = 'ethereum-sepolia'): {
         if (!cancelled) {
           setWallet(viemWallet);
           setAddress(walletAddress);
+          setActiveWallet(viemWallet, walletAddress);
           setCurrentUserId(walletAddress);
         }
       } catch (error) {

@@ -60,4 +60,19 @@ describe('mergeLocalActivities', () => {
     expect(Object.keys(second)).toEqual(['local-1']);
     expect(second['local-1'].kudos).toEqual(['friend']);
   });
+
+  it('preserves chain activityId through merge', () => {
+    const remote: Record<string, SocialActivity> = {
+      'hash-1': {
+        ...local,
+        id: 'hash-1',
+        activityHash: 'hash-1',
+        activityId: 42n,
+        kudos: [],
+        comments: [],
+      },
+    };
+    const result = mergeLocalActivities(remote, [{ ...local, activityHash: 'hash-1' }]);
+    expect(result['hash-1'].activityId).toBe(42n);
+  });
 });

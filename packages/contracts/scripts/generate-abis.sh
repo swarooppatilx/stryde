@@ -17,6 +17,7 @@ CONTRACTS=(
   TerritoryNFT
   MoveToEarnToken
   GroupRegistry
+  SocialRegistry
 )
 
 for contract in "${CONTRACTS[@]}"; do

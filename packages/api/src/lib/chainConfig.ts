@@ -11,14 +11,14 @@ const CHAIN_ID = Number(process.env.RELAYER_CHAIN_ID);
 const RPC_URL = process.env.RELAYER_RPC_URL;
 
 const SEPOLIA_CONTRACTS: Record<string, `0x${string}`> = {
-  profileRegistry: '0xd8f7559a9F8C3c60C06A3a3039Cf14FB69083F64',
-  activityRegistry: '0x1A90B0B3D2EDe91eB8C036c2c9Fa82f1654c76Fe',
-  territoryRegistry: '0x0437De17688BD16AcD2B793d1446d5E775a056C8',
-  seasonManager: '0xE9aB491b2Ca50523EC681476c05db7A5D59Bfc8F',
-  achievementRegistry: '0xBD01B26FC06Bf96B58a9811d42c2f180Fe3b8Fc3',
-  challengeRegistry: '0x321aFdf640f95c3C9964299767594Cd69DFcB13a',
-  territoryNFT: '0xe5c66b5a52CAe8848C848CC548D3054622Ef8aed',
-  moveToEarnToken: '0xAb3e840c8C2e811D4D1AbFE98c992f652e722359',
+  profileRegistry: '0x4Aa7127Aa6Cb07202e4040eA5Aa57434F8B67641',
+  activityRegistry: '0x8aCAd61B9D875088C010db110d708F85E13e9859',
+  territoryRegistry: '0xa5ba09D89C3C6e8F9e84ABD0b73D350220204B6C',
+  seasonManager: '0xe1B61aEA4dcD64C2aA20768Dcf94E5a57f7daF65',
+  achievementRegistry: '0x95d86d385397Cc264f565555c1a1b416A9b784c6',
+  challengeRegistry: '0x107CDb2828b7efB12Fa01ed4f185822441281787',
+  territoryNFT: '0x1356C008ea21469275C7298F441F2354e7187C25',
+  moveToEarnToken: '0x3BF5cC3fDA8D89D9e0d35B5648Cf2781a94Ee9FA',
 };
 
 let _config: RelayChainConfig | null = null;

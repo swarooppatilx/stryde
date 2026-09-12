@@ -1,4 +1,4 @@
-type Profile @entity {
+type Profile @entity(immutable: false) {
   id: Bytes! # address
   username: String!
   profileId: BigInt!
@@ -14,9 +14,11 @@ type Profile @entity {
   challengesAsOpponent: [Challenge!]! @derivedFrom(field: "opponent")
   groupsOwned: [Group!]! @derivedFrom(field: "owner")
   groupMemberships: [GroupMember!]! @derivedFrom(field: "user")
+  kudosGiven: [ActivityKudos!]! @derivedFrom(field: "giver")
+  commentsAuthored: [ActivityComment!]! @derivedFrom(field: "author")
 }
 
-type Activity @entity {
+type Activity @entity(immutable: false) {
   id: Bytes! # activityId (utf8-encoded)
   activityId: BigInt!
   user: Profile!
@@ -28,9 +30,11 @@ type Activity @entity {
   blockNumber: BigInt!
   timestamp: BigInt!
   metadataCid: String
+  kudos: [ActivityKudos!]! @derivedFrom(field: "activity")
+  comments: [ActivityComment!]! @derivedFrom(field: "activity")
 }
 
-type Territory @entity {
+type Territory @entity(immutable: false) {
   id: Bytes! # territoryId
   owner: Profile!
   area: BigInt!
@@ -40,7 +44,7 @@ type Territory @entity {
   isActive: Boolean!
 }
 
-type Season @entity {
+type Season @entity(immutable: false) {
   id: String! # seasonId
   startTime: BigInt!
   endTime: BigInt!
@@ -50,7 +54,7 @@ type Season @entity {
   contributions: [Contribution!]! @derivedFrom(field: "season")
 }
 
-type Contribution @entity {
+type Contribution @entity(immutable: false) {
   id: Bytes! # txHash-logIndex
   season: Season!
   user: Profile!
@@ -58,19 +62,19 @@ type Contribution @entity {
   recordedAt: BigInt!
 }
 
-type SeasonParticipant @entity {
+type SeasonParticipant @entity(immutable: false) {
   id: String! # seasonId-participantAddress
   season: Season!
   user: Profile!
   totalContribution: BigInt!
 }
 
-type AchievementDefinition @entity {
+type AchievementDefinition @entity(immutable: false) {
   id: Bytes! # achievementId
   name: String!
 }
 
-type Achievement @entity {
+type Achievement @entity(immutable: false) {
   id: String! # tokenId
   recipient: Profile!
   achievementId: Bytes!
@@ -78,7 +82,7 @@ type Achievement @entity {
   mintedAt: BigInt!
 }
 
-type Challenge @entity {
+type Challenge @entity(immutable: false) {
   id: String! # challengeId
   challenger: Profile!
   opponent: Profile!
@@ -97,7 +101,7 @@ type Challenge @entity {
   withdrawnAt: BigInt # timestamp of the most recent withdrawal
 }
 
-type Group @entity {
+type Group @entity(immutable: false) {
   id: String! # groupId
   owner: Profile
   name: String!
@@ -111,10 +115,26 @@ type Group @entity {
   members: [GroupMember!]! @derivedFrom(field: "group")
 }
 
-type GroupMember @entity {
+type GroupMember @entity(immutable: false) {
   id: String! # groupId-memberAddress
   group: Group!
   user: Profile!
   joinedAt: BigInt!
   active: Boolean! # false once this member has left the group
+}
+
+type ActivityKudos @entity(immutable: false) {
+  id: Bytes! # activityId-giver
+  activity: Activity!
+  giver: Profile!
+  givenAt: BigInt!
+  active: Boolean! # false once revoked
+}
+
+type ActivityComment @entity(immutable: false) {
+  id: Bytes! # commentId
+  activity: Activity!
+  author: Profile!
+  cid: String!
+  createdAt: BigInt!
 }

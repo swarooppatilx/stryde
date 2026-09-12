@@ -15,6 +15,7 @@ export function mergeLocalActivities(
     merged[key] = {
       ...existing,
       ...local,
+      activityId: existing?.activityId ?? (local as Activity & { activityId?: bigint }).activityId,
       kudos: existing?.kudos ?? local.kudos ?? [],
       comments: existing?.comments ?? local.comments ?? [],
     };

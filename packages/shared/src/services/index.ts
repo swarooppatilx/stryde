@@ -8,6 +8,7 @@ export * as ipfs from './ipfs';
 export * as moveToEarnToken from './moveToEarnToken';
 export * as profile from './profile';
 export * as season from './season';
+export * as social from './social';
 export * as subgraph from './subgraph';
 export * as sync from './sync';
 export * as territory from './territory';
