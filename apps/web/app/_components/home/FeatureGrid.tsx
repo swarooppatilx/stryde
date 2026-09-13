@@ -12,10 +12,9 @@ type PhoneCard = {
 
 const cards: PhoneCard[] = [
   {
-    screenshot: '/home/card-progress.png',
-    alt: 'Weekly activity summary',
+    screenshot: '/home/screenshot-progress.jpeg',
+    alt: 'Profile showing weekly distance, time, and territory stats',
     background: '#000000',
-    contain: true,
     title: (
       <>
         View your progress
@@ -33,10 +32,9 @@ const cards: PhoneCard[] = [
     body: 'Capture territories on the map by running around them. Show them off to your friends.',
   },
   {
-    screenshot: '/home/card-share.png',
-    alt: 'Sharing a run with the community',
+    screenshot: '/home/screenshot-feed.jpeg',
+    alt: 'Activity feed showing a shared run',
     background: '#000000',
-    contain: true,
     title: (
       <>
         Share it with your
