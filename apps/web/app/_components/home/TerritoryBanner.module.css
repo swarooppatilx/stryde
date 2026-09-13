@@ -6,8 +6,6 @@
 .imageWrap {
   display: block;
   width: 100%;
-  max-width: 930px;
-  margin: 0 auto;
   border-radius: 4px;
   overflow: hidden;
 }
