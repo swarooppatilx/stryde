@@ -1,0 +1,375 @@
+syntax = "proto3";
+
+package stryde.v1;
+
+// Generated from packages/contracts/src/abis via scripts in this package.
+// Every message carries the log position plus the event's own fields,
+// named exactly as in the Solidity event. uint256 wei amounts are decimal
+// strings so nothing is truncated.
+
+message ProfileCreated {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 profile_id = 5;
+  bytes wallet = 6;
+  string username = 7;
+  uint64 joined_at = 8;
+}
+
+message AvatarUpdated {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes wallet = 5;
+  string cid = 6;
+}
+
+message ProfileVerified {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes wallet = 5;
+  bytes nullifier_hash = 6;
+  uint64 verified_at = 7;
+}
+
+message ActivityRecorded {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 activity_id = 5;
+  bytes owner = 6;
+  bytes activity_hash = 7;
+  uint32 activity_type = 8;
+  uint64 distance = 9;
+  uint64 duration = 10;
+  uint64 timestamp = 11;
+  uint64 territory_area = 12;
+}
+
+message ActivityMetadataUpdated {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 activity_id = 5;
+  bytes owner = 6;
+  string metadata_cid = 7;
+}
+
+message TerritoryClaimed {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes territory_id = 5;
+  bytes controller = 6;
+  uint64 area_sqm = 7;
+  bytes polygon_hash = 8;
+  int32 min_lng = 9;
+  int32 min_lat = 10;
+  int32 max_lng = 11;
+  int32 max_lat = 12;
+  uint64 captured_at = 13;
+  uint64 strength = 14;
+}
+
+message TerritoryReinforced {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes territory_id = 5;
+  bytes controller = 6;
+  uint64 reinforced_at = 7;
+  uint64 strength = 8;
+}
+
+message TerritoryDecayed {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes territory_id = 5;
+  uint64 decayed_at = 6;
+  uint64 remaining_strength = 7;
+}
+
+message TerritoryLost {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes territory_id = 5;
+  bytes old_controller = 6;
+  uint64 lost_at = 7;
+}
+
+message SeasonStarted {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 season_id = 5;
+  uint64 start_time = 6;
+  uint64 end_time = 7;
+}
+
+message SeasonEnded {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 season_id = 5;
+  uint64 end_time = 6;
+  uint64 participant_count = 7;
+}
+
+message ContributionRecorded {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 season_id = 5;
+  bytes participant = 6;
+  uint64 contribution = 7;
+  uint64 total = 8;
+}
+
+message AchievementMinted {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 token_id = 5;
+  bytes recipient = 6;
+  bytes achievement_id = 7;
+}
+
+message AchievementDefined {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  bytes achievement_id = 5;
+  string name = 6;
+}
+
+message ChallengeCreated {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 challenge_id = 5;
+  bytes challenger = 6;
+  bytes opponent = 7;
+  uint32 activity_type = 8;
+  uint64 target_metric = 9;
+  uint64 deadline = 10;
+  string stake = 11;
+}
+
+message ChallengeAccepted {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 challenge_id = 5;
+  bytes opponent = 6;
+}
+
+message ChallengeSettled {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 challenge_id = 5;
+  bytes winner = 6;
+  bytes loser = 7;
+  string payout = 8;
+}
+
+message ChallengeCancelled {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 challenge_id = 5;
+  bytes canceller = 6;
+}
+
+message ChallengeWithdrawn {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 challenge_id = 5;
+  bytes withdrawer = 6;
+  string amount = 7;
+}
+
+message GroupCreated {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 group_id = 5;
+  bytes owner = 6;
+  string name = 7;
+  string location = 8;
+  string description = 9;
+  uint32 sport_type = 10;
+  uint64 created_at = 11;
+}
+
+message GroupJoined {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 group_id = 5;
+  bytes member = 6;
+  uint64 member_count = 7;
+}
+
+message GroupLeft {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 group_id = 5;
+  bytes member = 6;
+  uint64 member_count = 7;
+}
+
+message GroupDissolved {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 group_id = 5;
+  bytes last_owner = 6;
+  uint64 dissolved_at = 7;
+}
+
+message KudosGiven {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 activity_id = 5;
+  bytes giver = 6;
+  uint64 timestamp = 7;
+}
+
+message KudosRevoked {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 activity_id = 5;
+  bytes giver = 6;
+  uint64 timestamp = 7;
+}
+
+message CommentAdded {
+  uint64 log_index = 1;
+  uint64 block_number = 2;
+  uint64 block_timestamp = 3;
+  bytes tx_hash = 4;
+  uint64 activity_id = 5;
+  bytes author = 6;
+  bytes comment_id = 7;
+  string comment_cid = 8;
+  uint64 timestamp = 9;
+}
+
+message Events {
+  repeated ProfileCreated profile_created = 1;
+  repeated AvatarUpdated avatar_updated = 2;
+  repeated ProfileVerified profile_verified = 3;
+  repeated ActivityRecorded activity_recorded = 4;
+  repeated ActivityMetadataUpdated activity_metadata_updated = 5;
+  repeated TerritoryClaimed territory_claimed = 6;
+  repeated TerritoryReinforced territory_reinforced = 7;
+  repeated TerritoryDecayed territory_decayed = 8;
+  repeated TerritoryLost territory_lost = 9;
+  repeated SeasonStarted season_started = 10;
+  repeated SeasonEnded season_ended = 11;
+  repeated ContributionRecorded contribution_recorded = 12;
+  repeated AchievementMinted achievement_minted = 13;
+  repeated AchievementDefined achievement_defined = 14;
+  repeated ChallengeCreated challenge_created = 15;
+  repeated ChallengeAccepted challenge_accepted = 16;
+  repeated ChallengeSettled challenge_settled = 17;
+  repeated ChallengeCancelled challenge_cancelled = 18;
+  repeated ChallengeWithdrawn challenge_withdrawn = 19;
+  repeated GroupCreated group_created = 20;
+  repeated GroupJoined group_joined = 21;
+  repeated GroupLeft group_left = 22;
+  repeated GroupDissolved group_dissolved = 23;
+  repeated KudosGiven kudos_given = 24;
+  repeated KudosRevoked kudos_revoked = 25;
+  repeated CommentAdded comment_added = 26;
+}
+// ──────────────────────────────────────────────────
+// Derived outputs
+// ──────────────────────────────────────────────────
+
+// One snapshot per territory event. Fields the event doesn't carry (e.g. the
+// area on a reinforce) are left at their defaults — join on territory_id with
+// the `claimed` snapshot for the full footprint.
+message TerritorySnapshot {
+  bytes territory_id = 1;
+  bytes controller = 2;
+  uint64 strength = 3;
+  uint64 area_sqm = 4;
+  int32 min_lng = 5;
+  int32 min_lat = 6;
+  int32 max_lng = 7;
+  int32 max_lat = 8;
+  uint64 block_number = 9;
+  uint64 block_timestamp = 10;
+  bool is_active = 11;
+  string change_type = 12; // claimed | reinforced | decayed | lost
+}
+
+message TerritorySnapshots {
+  repeated TerritorySnapshot snapshots = 1;
+}
+
+// A participant's season standing after a contribution in this block.
+// total_distance is SeasonManager's own running total for the season, so it
+// is correct across blocks; store_season_totals keeps the latest per user.
+message SeasonStandingUpdate {
+  uint64 season_id = 1;
+  bytes user = 2;
+  uint64 total_distance = 3;
+  uint64 contribution = 4;
+  uint64 block_number = 5;
+  uint64 block_timestamp = 6;
+}
+
+message SeasonStandingUpdates {
+  repeated SeasonStandingUpdate updates = 1;
+}
+
+// One per recorded activity: the UTC day it counts toward. Streaks are
+// accumulated from these facts downstream (the subgraph's UserStreak entity),
+// since a single-block map can't see a user's previous active day.
+message ActivityDay {
+  bytes user = 1;
+  uint64 day = 2;
+  uint64 activity_id = 3;
+  uint64 block_number = 4;
+  uint64 block_timestamp = 5;
+}
+
+message ActivityDays {
+  repeated ActivityDay days = 1;
+}

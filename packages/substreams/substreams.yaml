@@ -1,0 +1,74 @@
+specVersion: v0.1.0
+package:
+  name: stryde_substreams
+  version: v0.2.0
+
+network: sepolia
+
+protobuf:
+  files:
+    - stryde/v1/events.proto
+  importPaths:
+    - ./proto
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ./target/wasm32-unknown-unknown/release/stryde_substreams.wasm
+
+modules:
+  - name: map_events
+    kind: map
+    initialBlock: 11697363
+    inputs:
+      - source: sf.ethereum.type.v2.Block
+    output:
+      type: proto:stryde.v1.Events
+    doc: |
+      Decodes Stryde contract events from Ethereum logs using ABI-generated
+      bindings (real topic hashes), filtered by the 8 Sepolia contract
+      addresses, into typed protobuf messages.
+
+  - name: derive_territory_snapshots
+    kind: map
+    initialBlock: 11697363
+    inputs:
+      - map: map_events
+    output:
+      type: proto:stryde.v1.TerritorySnapshots
+    doc: |
+      One snapshot per claim / reinforce / decay / loss, tagged with its
+      change type, so territory strength can be charted over time.
+
+  - name: derive_season_standings
+    kind: map
+    initialBlock: 11697363
+    inputs:
+      - map: map_events
+    output:
+      type: proto:stryde.v1.SeasonStandingUpdates
+    doc: |
+      Season standings touched in each block, using SeasonManager's running
+      total per participant.
+
+  - name: store_season_totals
+    kind: store
+    initialBlock: 11697363
+    updatePolicy: set
+    valueType: int64
+    inputs:
+      - map: derive_season_standings
+    doc: |
+      Latest season total per participant (key season:<id>:user:<hex>),
+      the full standings table for any consumer.
+
+  - name: derive_activity_days
+    kind: map
+    initialBlock: 11697363
+    inputs:
+      - map: map_events
+    output:
+      type: proto:stryde.v1.ActivityDays
+    doc: |
+      Each recorded activity normalized to the UTC day it counts toward.
+      Streaks are accumulated from these downstream (subgraph UserStreak).
