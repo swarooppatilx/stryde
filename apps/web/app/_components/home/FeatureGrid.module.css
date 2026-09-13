@@ -10,6 +10,10 @@
   margin: 0 auto;
 }
 
+.grid + .grid {
+  margin-top: 40px;
+}
+
 .card {
   display: flex;
   flex-direction: column;
@@ -18,22 +22,43 @@
 
 .cardImageWrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 8px;
   overflow: hidden;
   box-sizing: border-box;
   aspect-ratio: 312 / 326;
 }
 
-.cardImageWrapPadded {
-  padding: 32px;
+.cardPhoneFrame {
+  position: relative;
+  height: 90%;
+  aspect-ratio: 279 / 549;
 }
 
-.cardImage {
+.cardPhoneFrameImage {
+  border-radius: 24px;
+}
+
+.cardPhoneScreenWrap {
+  position: absolute;
+  left: 8.6%;
+  top: 4.2%;
+  width: 83%;
+  height: 91.6%;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.cardPhoneScreen {
   object-fit: cover;
+  object-position: top;
 }
 
-.cardImageContain {
+.cardPhoneScreenContain {
   object-fit: contain;
+  background: #111111;
 }
 
 .cardTitle {
