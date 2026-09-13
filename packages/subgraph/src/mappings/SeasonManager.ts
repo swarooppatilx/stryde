@@ -4,8 +4,9 @@ import {
   SeasonEnded,
   SeasonStarted,
 } from '../../generated/SeasonManager/SeasonManager';
-import { Contribution, Season, SeasonParticipant } from '../../generated/schema';
+import { Contribution, LeaderboardSnapshot, Season, SeasonParticipant } from '../../generated/schema';
 import { getOrCreateProfile } from '../helpers';
+
 
 export function handleSeasonStarted(event: SeasonStarted): void {
   const season = new Season(event.params.seasonId.toString());
@@ -53,4 +54,19 @@ export function handleContributionRecorded(event: ContributionRecorded): void {
   contribution.distance = event.params.contribution;
   contribution.recordedAt = event.block.timestamp;
   contribution.save();
+
+  // Season standing, from SeasonManager's running per-season total — the
+  // same value Substreams' derive_season_standings emits.
+  const profile = getOrCreateProfile(event.params.participant);
+  const snapshotId = event.params.seasonId.toString() + '-' + profile.id.toHexString();
+  let snapshot = LeaderboardSnapshot.load(snapshotId);
+  if (!snapshot) {
+    snapshot = new LeaderboardSnapshot(snapshotId);
+    snapshot.season = event.params.seasonId.toString();
+    snapshot.user = profile.id;
+  }
+  snapshot.totalDistance = event.params.total;
+  snapshot.lastContribution = event.params.contribution;
+  snapshot.computedAt = event.block.timestamp;
+  snapshot.save();
 }

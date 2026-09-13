@@ -1,10 +1,11 @@
+import { BigInt } from '@graphprotocol/graph-ts';
 import {
   TerritoryClaimed,
   TerritoryDecayed,
   TerritoryLost,
   TerritoryReinforced,
 } from '../../generated/TerritoryRegistry/TerritoryRegistry';
-import { Territory } from '../../generated/schema';
+import { Territory, TerritoryStrengthHistory } from '../../generated/schema';
 import { getOrCreateProfile } from '../helpers';
 
 export function handleTerritoryClaimed(event: TerritoryClaimed): void {
@@ -20,6 +21,16 @@ export function handleTerritoryClaimed(event: TerritoryClaimed): void {
   territory.maxLng = event.params.maxLng;
   territory.maxLat = event.params.maxLat;
   territory.save();
+
+  // Substreams-derived: territory strength history
+  const historyId = event.transaction.hash.concatI32(event.logIndex.toI32());
+  const history = new TerritoryStrengthHistory(historyId);
+  history.territory = territory.id;
+  history.strength = event.params.strength;
+  history.changeType = 'claimed';
+  history.blockNumber = event.block.number;
+  history.timestamp = event.block.timestamp;
+  history.save();
 }
 
 export function handleTerritoryReinforced(event: TerritoryReinforced): void {
@@ -28,6 +39,16 @@ export function handleTerritoryReinforced(event: TerritoryReinforced): void {
     territory.strength = event.params.strength;
     territory.lastReinforced = event.params.reinforcedAt;
     territory.save();
+
+    // Substreams-derived: territory strength history
+    const historyId = event.transaction.hash.concatI32(event.logIndex.toI32());
+    const history = new TerritoryStrengthHistory(historyId);
+    history.territory = territory.id;
+    history.strength = event.params.strength;
+    history.changeType = 'reinforced';
+    history.blockNumber = event.block.number;
+    history.timestamp = event.block.timestamp;
+    history.save();
   }
 }
 
@@ -37,6 +58,16 @@ export function handleTerritoryDecayed(event: TerritoryDecayed): void {
     territory.strength = event.params.remainingStrength;
     territory.lastReinforced = event.params.decayedAt;
     territory.save();
+
+    // Substreams-derived: territory strength history
+    const historyId = event.transaction.hash.concatI32(event.logIndex.toI32());
+    const history = new TerritoryStrengthHistory(historyId);
+    history.territory = territory.id;
+    history.strength = event.params.remainingStrength;
+    history.changeType = 'decayed';
+    history.blockNumber = event.block.number;
+    history.timestamp = event.block.timestamp;
+    history.save();
   }
 }
 
@@ -45,5 +76,15 @@ export function handleTerritoryLost(event: TerritoryLost): void {
   if (territory) {
     territory.isActive = false;
     territory.save();
+
+    // Substreams-derived: territory strength history
+    const historyId = event.transaction.hash.concatI32(event.logIndex.toI32());
+    const history = new TerritoryStrengthHistory(historyId);
+    history.territory = territory.id;
+    history.strength = BigInt.zero();
+    history.changeType = 'lost';
+    history.blockNumber = event.block.number;
+    history.timestamp = event.block.timestamp;
+    history.save();
   }
 }

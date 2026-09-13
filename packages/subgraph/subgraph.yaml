@@ -39,6 +39,8 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - Activity
+        - UserStreak
+        - Profile
       abis:
         - name: ActivityRegistry
           file: ../contracts/out/ActivityRegistry.sol/ActivityRegistry.json
@@ -61,6 +63,8 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - Territory
+        - TerritoryStrengthHistory
+        - Profile
       abis:
         - name: TerritoryRegistry
           file: ../contracts/out/TerritoryRegistry.sol/TerritoryRegistry.json
@@ -89,6 +93,8 @@ dataSources:
         - Season
         - Contribution
         - SeasonParticipant
+        - LeaderboardSnapshot
+        - Profile
       abis:
         - name: SeasonManager
           file: ../contracts/out/SeasonManager.sol/SeasonManager.json

@@ -172,3 +172,38 @@ type EventParticipant @entity(immutable: false) {
   joinedAt: BigInt!
   active: Boolean! # false once this participant has left the event
 }
+
+# ──────────────────────────────────────────────────────────────
+# Substreams-derived entities — composed analytics
+# These entities mirror the Substreams pipeline's outputs
+# (derive_territory_snapshots, derive_season_standings,
+# derive_activity_days), derived here from the same raw events.
+# ──────────────────────────────────────────────────────────────
+
+type UserStreak @entity(immutable: false) {
+  id: Bytes! # user address
+  user: Profile!
+  currentStreak: BigInt!
+  longestStreak: BigInt!
+  lastActiveDay: BigInt!
+  totalActiveDays: BigInt!
+  updatedAt: BigInt!
+}
+
+type LeaderboardSnapshot @entity(immutable: false) {
+  id: String! # seasonId-user
+  season: Season!
+  user: Profile!
+  totalDistance: BigInt! # SeasonManager's running season total
+  lastContribution: BigInt!
+  computedAt: BigInt!
+}
+
+type TerritoryStrengthHistory @entity(immutable: false) {
+  id: Bytes! # txHash-logIndex
+  territory: Territory!
+  strength: BigInt!
+  changeType: String! # claimed | reinforced | decayed | lost
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
