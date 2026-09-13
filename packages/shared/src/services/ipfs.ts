@@ -38,6 +38,11 @@ export interface ActivityMetadata {
    * activity) has no map/route thumbnail to render at all. */
   polyline?: string;
   territory?: Ring | null;
+  /** The activity's route, as [lng, lat][] in the same ordering as the
+   * on-chain `polyline` arg to recordActivity(). Stored so the map tab can
+   * re-render a saved activity's route (and renders others' routes via the
+   * shared metadata readers in apps/mobile/src/services). */
+  coordinates?: Array<[number, number]>;
 }
 
 const UPLOAD_TIMEOUT_MS = 30_000;

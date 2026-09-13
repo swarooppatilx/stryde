@@ -18,7 +18,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useProfileStore } from '@/stores/profileStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { ACCURACY_MODE_CONFIG, ACCURACY_MODES, useSettingsStore } from '@/stores/settingsStore';
 import { formatDistance, formatDuration } from '@/utils/format';
 
 const WEEKLY_GOAL_STEPS = {
@@ -86,17 +86,21 @@ export default function SettingsScreen() {
     useGyroscopeAssist,
     sensorUpdateRate,
     autoPause,
+    accuracyMode,
     setGyroscopeAssist,
     setSensorUpdateRate,
     setAutoPause,
+    setAccuracyMode,
   } = useSettingsStore(
     useShallow((s) => ({
       useGyroscopeAssist: s.useGyroscopeAssist,
       sensorUpdateRate: s.sensorUpdateRate,
       autoPause: s.autoPause,
+      accuracyMode: s.accuracyMode,
       setGyroscopeAssist: s.setGyroscopeAssist,
       setSensorUpdateRate: s.setSensorUpdateRate,
       setAutoPause: s.setAutoPause,
+      setAccuracyMode: s.setAccuracyMode,
     }))
   );
   const { user } = usePrivy();
@@ -332,7 +336,50 @@ export default function SettingsScreen() {
             >
               Auto-pause
             </List.Item>
+            <List.Item
+              thumb={<ListIcon name="speedometer-outline" />}
+              extra={
+                <View style={styles.toggleRow}>
+                  {ACCURACY_MODES.map((mode) => {
+                    const active = accuracyMode === mode;
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`GPS accuracy: ${ACCURACY_MODE_CONFIG[mode].label}`}
+                        style={[
+                          styles.toggleOption,
+                          {
+                            backgroundColor: active ? theme.brand.primary : theme.backgroundElement,
+                          },
+                        ]}
+                        onPress={() => setAccuracyMode(mode)}
+                      >
+                        <ThemedText
+                          type="caption"
+                          style={{
+                            color: active ? Brand.white : theme.text,
+                            fontWeight: active ? '700' : '500',
+                          }}
+                        >
+                          {ACCURACY_MODE_CONFIG[mode].label}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              }
+            >
+              GPS Accuracy
+            </List.Item>
           </List>
+          <ThemedText
+            type="caption"
+            style={{ color: theme.textSecondary, marginTop: -Spacing.one }}
+          >
+            {ACCURACY_MODE_CONFIG[accuracyMode].caption}
+          </ThemedText>
           {useGyroscopeAssist ? (
             <List>
               <List.Item

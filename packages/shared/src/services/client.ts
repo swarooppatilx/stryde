@@ -154,6 +154,10 @@ export function getContracts() {
       address: config.contracts.socialRegistry,
       abi: ABIS.socialRegistry,
     },
+    eventRegistry: {
+      address: config.contracts.eventRegistry,
+      abi: ABIS.eventRegistry,
+    },
   } as const;
 
   if (profileRegistryAddress === '0x0000000000000000000000000000000000000000') {
