@@ -6,6 +6,10 @@
 
 ---
 
+**▶ Demo video:** [https://youtu.be/8aComo1j6jE](https://youtu.be/8aComo1j6jE)
+
+---
+
 ## Summary
 
 Stryde is a Web3 fitness dapp — track runs, claim territory on a map, earn soulbound NFTs, challenge friends. All data lives onchain across 7 Sepolia contracts, and we use The Graph to compose it into a single query layer.

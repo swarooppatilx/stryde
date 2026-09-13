@@ -6,6 +6,10 @@
 
 ---
 
+**▶ Demo video:** [https://youtu.be/8aComo1j6jE](https://youtu.be/8aComo1j6jE)
+
+---
+
 ## Summary
 
 Stryde integrated World ID **Selfie Check (Beta)** as a profile verification flow:

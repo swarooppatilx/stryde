@@ -6,6 +6,10 @@
 
 ---
 
+**▶ Demo video:** [https://youtu.be/8aComo1j6jE](https://youtu.be/8aComo1j6jE)
+
+---
+
 ## Summary
 
 Stryde integrates **ENSv2 on Sepolia** for human-readable username resolution across the app — profile display, leaderboard, search, and activity feed.

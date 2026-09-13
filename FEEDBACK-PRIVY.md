@@ -6,6 +6,10 @@
 
 ---
 
+**▶ Demo video:** [https://youtu.be/8aComo1j6jE](https://youtu.be/8aComo1j6jE)
+
+---
+
 ## Summary
 
 Stryde uses Privy for **passwordless email OTP login** + **embedded wallet** + **smart accounts** — creating a seamless onboarding flow where users go from "download app" to "activity recorded onchain" in under 60 seconds.

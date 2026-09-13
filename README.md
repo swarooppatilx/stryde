@@ -149,20 +149,30 @@ Scope any of the `turbo run` tasks to one workspace with `--filter`, e.g. `yarn 
 
 ## Deployed Contracts (Sepolia)
 
+Chain `11155111` — all contracts verified on [Etherscan](https://sepolia.etherscan.io/). Deployer/relayer (also signs rewards & badges): `0xF22ac1607a7f670f70712Af792B4A80774394907`. Indexing starts at block `11697363`. Season 1 opened with [transaction `0x02e933…44cd`](https://sepolia.etherscan.io/tx/0x02e9339482bcc607b670f2a7b5d5882ccb0e5a6eb7e4cc77ba383d9de49744cd).
+
 | Contract | Address |
-|----------|---------|
-| ProfileRegistry | `0x4Aa7127Aa6Cb07202e4040eA5Aa57434F8B67641` |
-| ActivityRegistry | `0x8aCAd61B9D875088C010db110d708F85E13e9859` |
-| TerritoryRegistry | `0xa5ba09D89C3C6e8F9e84ABD0b73D350220204B6C` |
-| SeasonManager | `0xe1B61aEA4dcD64C2aA20768Dcf94E5a57f7daF65` |
-| AchievementRegistry | `0x95d86d385397Cc264f565555c1a1b416A9b784c6` |
-| ChallengeRegistry | `0x107CDb2828b7efB12Fa01ed4f185822441281787` |
-| TerritoryNFT | `0x1356C008ea21469275C7298F441F2354e7187C25` |
-| MoveToEarnToken | `0x3BF5cC3fDA8D89D9e0d35B5648Cf2781a94Ee9FA` |
-| GroupRegistry | `0xbfb25ef28281CcBa4709e726dab915724964B9Bc` |
+|---|---|
+| ProfileRegistry | [`0x7F7C12C204229A76815470707De2384cd369bA23`](https://sepolia.etherscan.io/address/0x7F7C12C204229A76815470707De2384cd369bA23#code) |
+| ActivityRegistry | [`0x569dFFc017a0040E381AE859dCfd34Ff7fB94b1c`](https://sepolia.etherscan.io/address/0x569dFFc017a0040E381AE859dCfd34Ff7fB94b1c#code) |
+| TerritoryRegistry | [`0x47A345474256c297eB78e28F1Eb5026269b8220a`](https://sepolia.etherscan.io/address/0x47A345474256c297eB78e28F1Eb5026269b8220a#code) |
+| SeasonManager | [`0xE4a98F8eEe705a9114d8BED7a9064Cc00be14CcD`](https://sepolia.etherscan.io/address/0xE4a98F8eEe705a9114d8BED7a9064Cc00be14CcD#code) |
+| AchievementRegistry | [`0x545945D83ff0dee4dBE993884E6951eA994Bbe8E`](https://sepolia.etherscan.io/address/0x545945D83ff0dee4dBE993884E6951eA994Bbe8E#code) |
+| ChallengeRegistry | [`0x0a149740740927270326C7014e7c04Aa5A0A299D`](https://sepolia.etherscan.io/address/0x0a149740740927270326C7014e7c04Aa5A0A299D#code) |
+| TerritoryNFT | [`0xf1d2263C51c3FE311325Da69a48df1049A52EB07`](https://sepolia.etherscan.io/address/0xf1d2263C51c3FE311325Da69a48df1049A52EB07#code) |
+| MoveToEarnToken (STRD) | [`0xa154f1E0A9dAb00F107668B1dEe7DE9fA187Eae5`](https://sepolia.etherscan.io/address/0xa154f1E0A9dAb00F107668B1dEe7DE9fA187Eae5#code) |
+| GroupRegistry | [`0x314C216c504CEC6A2ccC0621Fc3E25Ff3487FFdD`](https://sepolia.etherscan.io/address/0x314C216c504CEC6A2ccC0621Fc3E25Ff3487FFdD#code) |
+| SocialRegistry | [`0x0E8b3Ca753D64809a2fE3982952bd86f9fF301AC`](https://sepolia.etherscan.io/address/0x0E8b3Ca753D64809a2fE3982952bd86f9fF301AC#code) |
+| EventRegistry | [`0x3B7dc2CFFf7b9c14817a550441A32AF8D2C04fc5`](https://sepolia.etherscan.io/address/0x3B7dc2CFFf7b9c14817a550441A32AF8D2C04fc5#code) |
+
+### The Graph
+
+Indexed contracts (9), all onchain data served through one composed query layer:
+
+- **Subgraph** — [v0.6.0](https://api.studio.thegraph.com/query/1760059/stryde/v0.6.0), deployed from [Subgraph Studio](https://thegraph.com/studio/subgraph/stryde) (deployment `QmNXiBgu4ATRRP361W2vbrx1VZj`).
+- **Substreams** — [`stryde_substreams` v0.2.0](https://substreams.dev/packages/stryde_substreams/v0.2.0), network `netw.eth.streamingfast.io:443`.
 
 ---
-
 
 ## ETHOnline 2026
 
