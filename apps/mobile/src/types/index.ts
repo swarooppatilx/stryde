@@ -25,6 +25,7 @@ export interface User {
   location?: string;
   followers?: number;
   following?: number;
+  isVerified?: boolean;
   createdAt: Date;
 }
 

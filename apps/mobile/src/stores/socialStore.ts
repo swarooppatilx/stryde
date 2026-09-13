@@ -132,6 +132,7 @@ export const useSocialStore = create<SocialState>()(
             wallet: u.wallet,
             ensName: undefined,
             avatar: u.avatarCid ? ipfsToHttpUrl(u.avatarCid) : undefined,
+            isVerified: u.isVerified,
             createdAt: new Date(),
             followers: 0,
             following: 0,

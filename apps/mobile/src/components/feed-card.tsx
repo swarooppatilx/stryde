@@ -23,7 +23,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
@@ -305,9 +305,19 @@ export function FeedCard({
           >
             <UserAvatar name={user.username} avatarUrl={user.avatar} />
             <ThemedView style={styles.headerText}>
-              <ThemedText type="smallBold" numberOfLines={1}>
-                {ensName || user.username}
-              </ThemedText>
+              <View style={styles.usernameRow}>
+                <ThemedText type="smallBold" numberOfLines={1}>
+                  {ensName || user.username}
+                </ThemedText>
+                {user.isVerified && (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={14}
+                    color={Brand.verified}
+                    accessibilityLabel="Verified account"
+                  />
+                )}
+              </View>
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                 {formatRelativeTime(activity.createdAt, true)} ·{' '}
                 {activity.activityType.charAt(0).toUpperCase() + activity.activityType.slice(1)}
@@ -505,6 +515,11 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   headerText: { flex: 1, gap: 2 },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   title: {
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.one,

@@ -45,6 +45,7 @@ export interface RegisteredUser {
   wallet: string;
   username: string;
   avatarCid?: string;
+  isVerified?: boolean;
 }
 
 const PROFILE_CREATED_EVENT = {
@@ -122,6 +123,7 @@ export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
         wallet: p.wallet,
         username: p.username,
         avatarCid: avatarsByWallet.get(p.wallet.toLowerCase()),
+        isVerified: p.isVerified,
       }));
     }
   } catch (error) {
@@ -145,7 +147,7 @@ export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
       getLatestAvatarByWallet(),
     ]);
 
-    return logs.map((log) => {
+    const users = logs.map((log) => {
       const parsed = decodeEventLog({
         abi: contracts.profileRegistry.abi,
         data: log.data,
@@ -162,6 +164,21 @@ export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
         username: args.username,
         avatarCid: avatarsByWallet.get(args.wallet.toLowerCase()),
       };
+    });
+
+    const verifiedResults = await Promise.allSettled(
+      users.map((u) =>
+        client.readContract({
+          ...contracts.profileRegistry,
+          functionName: 'isVerified',
+          args: [u.wallet as `0x${string}`],
+        })
+      )
+    );
+
+    return users.map((u, i) => {
+      const result = verifiedResults[i];
+      return { ...u, isVerified: result?.status === 'fulfilled' && result.value === true };
     });
   } catch (error) {
     console.warn('[profile] getRegisteredUsers: getLogs fallback failed', error);

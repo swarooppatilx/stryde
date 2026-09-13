@@ -152,6 +152,7 @@ interface ProfileAvatarEntity {
 interface ProfileEntity {
   id: string;
   username: string;
+  isVerified: boolean;
 }
 
 const PROFILE_AVATARS_QUERY = `{
@@ -165,6 +166,7 @@ const PROFILES_QUERY = `{
   profiles(first: 1000) {
     id
     username
+    isVerified
   }
 }`;
 
@@ -193,7 +195,7 @@ export async function getProfileAvatarsFromSubgraph(): Promise<Map<string, strin
  * active chain mode, so callers can fall back to the getLogs-based sync path
  * without treating "not deployed here" as an error. */
 export async function getProfilesFromSubgraph(): Promise<
-  { wallet: string; username: string }[] | null
+  { wallet: string; username: string; isVerified: boolean }[] | null
 > {
   const { subgraphUrl } = getActiveConfig();
   if (!subgraphUrl) return null;
@@ -203,6 +205,7 @@ export async function getProfilesFromSubgraph(): Promise<
   return data.profiles.map((p) => ({
     wallet: p.id,
     username: p.username,
+    isVerified: p.isVerified,
   }));
 }
 

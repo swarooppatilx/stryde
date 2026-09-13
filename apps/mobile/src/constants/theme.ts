@@ -35,6 +35,7 @@ export const Brand = {
   warning: '#D4900A',
   danger: '#E5484D',
   info: '#2B5AC1',
+  verified: '#1D9BF0',
   white: '#FFFFFF',
   black: '#0B0B0C',
 } as const;

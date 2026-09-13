@@ -98,7 +98,7 @@ export default function ProfileScreen() {
   const totalTerritoryArea = getTotalArea(getCurrentUserId());
   const userPolygons = getUserPolygons(getCurrentUserId());
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
-  const { isVerified, error } = useWorldVerification();
+  const { isVerified } = useWorldVerification();
 
   const [activeTab, setActiveTab] = useState<TabKey>('Progress');
   const [avatarUploadStatus, setAvatarUploadStatus] = useState<string | null>(null);
@@ -567,9 +567,49 @@ export default function ProfileScreen() {
                 inputStyle={[styles.usernameInputText, { color: Brand.white }]}
               />
             ) : (
-              <TouchableOpacity onPress={handleStartEditName} activeOpacity={0.7}>
+              <TouchableOpacity
+                onPress={handleStartEditName}
+                activeOpacity={0.7}
+                style={styles.nameRow}
+              >
                 <ThemedText style={[styles.username, { color: Brand.white }]}>
                   {displayName}
+                </ThemedText>
+                {isVerified && (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={Brand.verified}
+                    accessibilityLabel="Verified account"
+                  />
+                )}
+              </TouchableOpacity>
+            )}
+            {!isVerified ? (
+              <TouchableOpacity
+                onPress={() => router.push('/verify')}
+                activeOpacity={0.7}
+                style={styles.verifyPrompt}
+                accessibilityRole="button"
+                accessibilityLabel="Get verified with World ID"
+              >
+                <Ionicons name="shield-checkmark-outline" size={14} color={Brand.verified} />
+                <ThemedText type="small" style={styles.verifyPromptText}>
+                  Get verified
+                </ThemedText>
+                <Ionicons name="chevron-forward" size={12} color={Brand.verified} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => router.push('/verify')}
+                activeOpacity={0.7}
+                style={styles.verifiedBadge}
+                accessibilityRole="button"
+                accessibilityLabel="Verified account - tap to manage"
+              >
+                <Ionicons name="checkmark-circle" size={14} color={Brand.verified} />
+                <ThemedText type="small" style={styles.verifiedBadgeText}>
+                  Verified human
                 </ThemedText>
               </TouchableOpacity>
             )}
@@ -1234,56 +1274,6 @@ export default function ProfileScreen() {
                 </ThemedView>
               )}
 
-              {/* World ID Verification */}
-              <ThemedView style={styles.listSection}>
-                <ThemedText
-                  type="eyebrow"
-                  style={[styles.sectionLabel, { color: theme.textSecondary }]}
-                >
-                  Verification
-                </ThemedText>
-                <List>
-                  <List.Item
-                    thumb={
-                      <ListIcon
-                        name={
-                          isVerified
-                            ? 'checkmark-circle'
-                            : error
-                              ? 'alert-circle'
-                              : 'shield-checkmark'
-                        }
-                      />
-                    }
-                    extra={
-                      <ThemedView style={styles.recordExtra}>
-                        <ThemedText
-                          type="small"
-                          style={{
-                            color: error
-                              ? theme.brand.danger
-                              : isVerified
-                                ? theme.brand.success
-                                : theme.textSecondary,
-                          }}
-                        >
-                          {error ? 'Failed' : isVerified ? 'Verified' : 'Not verified'}
-                        </ThemedText>
-                      </ThemedView>
-                    }
-                    onPress={() => router.push('/verify')}
-                    accessibilityRole="button"
-                    accessibilityLabel="World ID verification"
-                  >
-                    {error
-                      ? 'World ID — tap to retry'
-                      : isVerified
-                        ? 'World ID Selfie Check — verified'
-                        : 'World ID Selfie Check'}
-                  </List.Item>
-                </List>
-              </ThemedView>
-
               {/* Logout */}
               <TouchableOpacity
                 style={styles.logoutBtn}
@@ -1399,6 +1389,32 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     marginTop: Spacing.one,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    marginTop: Spacing.one,
+  },
+  verifyPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    marginTop: Spacing.half,
+  },
+  verifyPromptText: {
+    color: Brand.verified,
+    fontWeight: '600',
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    marginTop: Spacing.half,
+  },
+  verifiedBadgeText: {
+    color: Brand.verified,
+    fontWeight: '600',
   },
   usernameInput: {
     marginTop: Spacing.one,

@@ -8,13 +8,9 @@ import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
-import { getWorldEnvironmentLabel } from '@/services/worldIdService';
-
-const VERIFY_BLUE = '#1D9BF0';
 
 export default function VerifyScreen() {
   const router = useRouter();
@@ -58,14 +54,14 @@ export default function VerifyScreen() {
         <ThemedView style={styles.topBar}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={[styles.iconBtn, { backgroundColor: theme.backgroundElement }]}
+            style={[styles.backBtn, { backgroundColor: theme.backgroundElement }]}
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
-            <Ionicons name="arrow-back" size={18} color={theme.text} />
+            <Ionicons name="chevron-back" size={20} color={theme.text} />
           </TouchableOpacity>
           <ThemedText type="headline">Verification</ThemedText>
-          <View style={styles.iconBtn} />
+          <View style={styles.backBtn} />
         </ThemedView>
 
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -74,13 +70,13 @@ export default function VerifyScreen() {
               <Ionicons
                 name={isVerified ? 'checkmark-circle' : 'shield-checkmark'}
                 size={40}
-                color={isVerified ? VERIFY_BLUE : theme.brand.primary}
+                color={isVerified ? Brand.verified : theme.brand.primary}
               />
             </ThemedView>
-            <ThemedText style={styles.heroTitle}>
+            <ThemedText type="subtitle" style={styles.heroTitle}>
               {isVerified ? 'You are verified' : 'Verify you are human'}
             </ThemedText>
-            <ThemedText type="small" style={[styles.heroSubtitle, { color: theme.textSecondary }]}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.heroSubtitle}>
               {isVerified
                 ? `Selfie Check confirmed on ${verifiedDate}. Your profile shows a verified badge.`
                 : 'Stryde uses World ID Selfie Check to reduce fake accounts and protect territory claims.'}
@@ -90,28 +86,40 @@ export default function VerifyScreen() {
           {!isVerified && (
             <Card style={styles.card}>
               <ThemedText type="sectionTitle">Why verify?</ThemedText>
-              <BenefitRow
-                icon="person-outline"
-                title="Real athlete badge"
-                body="Show a verified check on your profile, similar to social apps."
-              />
-              <BenefitRow
-                icon="map-outline"
-                title="Fair territory play"
-                body="Selfie Check adds friction against bots and duplicate accounts."
-              />
-              <BenefitRow
-                icon="lock-closed-outline"
-                title="Privacy preserving"
-                body="World ID proves you are a real person without sharing your identity."
-              />
+              <ThemedView style={styles.benefitRow}>
+                <Ionicons name="person-outline" size={18} color={theme.brand.primary} />
+                <ThemedView style={styles.benefitCopy}>
+                  <ThemedText type="smallBold">Real athlete badge</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    Show a verified check on your profile, similar to social apps.
+                  </ThemedText>
+                </ThemedView>
+              </ThemedView>
+              <ThemedView style={styles.benefitRow}>
+                <Ionicons name="map-outline" size={18} color={theme.brand.primary} />
+                <ThemedView style={styles.benefitCopy}>
+                  <ThemedText type="smallBold">Fair territory play</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    Selfie Check adds friction against bots and duplicate accounts.
+                  </ThemedText>
+                </ThemedView>
+              </ThemedView>
+              <ThemedView style={styles.benefitRow}>
+                <Ionicons name="lock-closed-outline" size={18} color={theme.brand.primary} />
+                <ThemedView style={styles.benefitCopy}>
+                  <ThemedText type="smallBold">Privacy preserving</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    World ID proves you are a real person without sharing your identity.
+                  </ThemedText>
+                </ThemedView>
+              </ThemedView>
             </Card>
           )}
 
           {!isConfigured && (
-            <Card style={styles.warningCard}>
+            <Card style={{ ...styles.card, borderWidth: 1, borderColor: theme.brand.warning }}>
               <ThemedText type="sectionTitle">Setup required</ThemedText>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              <ThemedText type="small" themeColor="textSecondary">
                 Add your World app credentials to the mobile .env file:
               </ThemedText>
               <ThemedText type="caption" style={styles.mono}>
@@ -119,7 +127,8 @@ export default function VerifyScreen() {
               </ThemedText>
               <ThemedText
                 type="caption"
-                style={{ color: theme.textSecondary, marginTop: Spacing.two }}
+                themeColor="textSecondary"
+                style={{ marginTop: Spacing.two }}
               >
                 The API server handles World ID request signing; nothing to run locally.
               </ThemedText>
@@ -140,7 +149,7 @@ export default function VerifyScreen() {
               <ThemedText type="sectionTitle" style={{ color: theme.brand.danger }}>
                 Verification failed
               </ThemedText>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              <ThemedText type="small" themeColor="textSecondary">
                 {error.message}
               </ThemedText>
             </Card>
@@ -149,28 +158,13 @@ export default function VerifyScreen() {
           {status === 'success' && (
             <Card style={styles.card}>
               <ThemedView style={styles.statusRow}>
-                <Ionicons name="checkmark-circle" size={18} color={VERIFY_BLUE} />
+                <Ionicons name="checkmark-circle" size={18} color={Brand.verified} />
                 <ThemedText type="small">
                   Verification complete. Returning to profile\u2026
                 </ThemedText>
               </ThemedView>
             </Card>
           )}
-
-          <Card style={styles.card}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
-              Integration
-            </ThemedText>
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              Environment: {getWorldEnvironmentLabel(ENV.WORLD_ENVIRONMENT)}
-            </ThemedText>
-            <ThemedText
-              type="caption"
-              style={{ color: theme.textSecondary, marginTop: Spacing.one }}
-            >
-              Status is stored locally on this device for the hackathon demo.
-            </ThemedText>
-          </Card>
 
           {!isVerified ? (
             <AppButton
@@ -200,30 +194,6 @@ export default function VerifyScreen() {
   );
 }
 
-function BenefitRow({
-  icon,
-  title,
-  body,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  body: string;
-}) {
-  const theme = useTheme();
-
-  return (
-    <ThemedView style={styles.benefitRow}>
-      <Ionicons name={icon} size={18} color={theme.brand.primary} />
-      <ThemedView style={styles.benefitCopy}>
-        <ThemedText type="smallBold">{title}</ThemedText>
-        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-          {body}
-        </ThemedText>
-      </ThemedView>
-    </ThemedView>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
@@ -234,9 +204,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
+  backBtn: {
+    width: 40,
+    height: 40,
     borderRadius: BorderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
@@ -259,8 +229,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   heroTitle: {
-    fontSize: 24,
-    fontWeight: '700',
     textAlign: 'center',
   },
   heroSubtitle: {
@@ -270,11 +238,6 @@ const styles = StyleSheet.create({
   },
   card: {
     gap: Spacing.three,
-  },
-  warningCard: {
-    gap: Spacing.three,
-    borderWidth: 1,
-    borderColor: Brand.warning,
   },
   statusRow: {
     flexDirection: 'row',

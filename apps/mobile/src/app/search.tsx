@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { UserAvatar } from '@/components/user-avatar';
 import { SPORT_ICONS } from '@/constants/activity';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSocialStore } from '@/stores/socialStore';
 import { formatDistance, getDisplayName } from '@/utils/format';
@@ -148,9 +148,19 @@ export default function SearchScreen() {
                   >
                     <UserAvatar name={displayName} size={40} />
                     <ThemedView style={styles.userInfo}>
-                      <ThemedText type="smallBold" numberOfLines={1}>
-                        {displayName}
-                      </ThemedText>
+                      <View style={styles.usernameRow}>
+                        <ThemedText type="smallBold" numberOfLines={1}>
+                          {displayName}
+                        </ThemedText>
+                        {user.isVerified && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={14}
+                            color={Brand.verified}
+                            accessibilityLabel="Verified account"
+                          />
+                        )}
+                      </View>
                       <ThemedText type="caption" style={{ color: theme.textSecondary }}>
                         @{user.username} · {user.followers} followers
                       </ThemedText>
@@ -244,6 +254,11 @@ const styles = StyleSheet.create({
   },
 
   userInfo: { flex: 1, gap: 2 },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   activityRow: {
     flexDirection: 'row',
     alignItems: 'center',
