@@ -1,0 +1,93 @@
+.footer {
+  background: var(--color-footer-bg);
+  color: #ffffff;
+  padding: 64px 40px 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 40px;
+  max-width: 1200px;
+}
+
+.brandColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brandName {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.tagline {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  margin: 0;
+}
+
+.githubPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #121212;
+  border: 1px solid #b7b7b7;
+  border-radius: 7px;
+  padding: 10px 16px;
+  width: fit-content;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.githubPill:hover {
+  border-color: var(--color-brand);
+  transform: translateY(-1px);
+}
+
+.githubPillLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.linkColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.linkColumnTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.linkItem {
+  font-size: 14px;
+  color: #c9c9c9;
+  transition: color 0.15s ease;
+}
+
+.linkItem:hover {
+  color: var(--color-brand);
+}
+
+.copyright {
+  text-align: center;
+  font-size: 13px;
+  color: #9f9f9f;
+  padding: 56px 0 28px;
+  border-top: 1px solid #2a2a2a;
+  margin-top: 48px;
+}

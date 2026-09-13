@@ -1,17 +1,17 @@
+import { FeatureGrid } from './_components/home/FeatureGrid';
+import { Hero } from './_components/home/Hero';
+import { SiteFooter } from './_components/home/SiteFooter';
+import { SiteHeader } from './_components/home/SiteHeader';
+import { TerritoryBanner } from './_components/home/TerritoryBanner';
+
 export default function Home() {
   return (
-    <main
-      style={{
-        maxWidth: 720,
-        margin: '4rem auto',
-        padding: '0 1.5rem',
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
-      <h1>Stryde</h1>
-      <p style={{ color: '#666', lineHeight: 1.6 }}>
-        Move-to-earn on-chain. Claim territory, verify with World ID, earn tokens.
-      </p>
+    <main>
+      <SiteHeader />
+      <Hero />
+      <TerritoryBanner />
+      <FeatureGrid />
+      <SiteFooter />
     </main>
   );
 }

@@ -1,0 +1,32 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  color: #9f9f9f;
+  font-weight: 600;
+  padding: 0 12px 12px;
+  border-bottom: 1px solid #ececec;
+}
+
+.table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #ececec;
+  font-size: 14px;
+}
+
+.rank {
+  font-weight: 700;
+  width: 40px;
+}
+
+.athlete {
+  font-weight: 600;
+}
+
+.stat {
+  color: var(--color-body-text);
+}

@@ -1,0 +1,18 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #000000;
+  border: 1px solid #ececec;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: #ffffff;
+}

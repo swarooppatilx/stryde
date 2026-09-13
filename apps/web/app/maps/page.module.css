@@ -1,0 +1,11 @@
+.pageWrap {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mapArea {
+  flex: 1;
+  position: relative;
+}

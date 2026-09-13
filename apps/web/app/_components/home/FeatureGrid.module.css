@@ -1,0 +1,76 @@
+.section {
+  padding: 64px 40px 80px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.grid + .grid {
+  margin-top: 40px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cardImageWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  aspect-ratio: 312 / 326;
+}
+
+.cardPhoneFrame {
+  position: relative;
+  height: 90%;
+  aspect-ratio: 279 / 549;
+}
+
+.cardPhoneFrameImage {
+  border-radius: 24px;
+}
+
+.cardPhoneScreenWrap {
+  position: absolute;
+  left: 8.6%;
+  top: 4.2%;
+  width: 83%;
+  height: 91.6%;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.cardPhoneScreen {
+  object-fit: cover;
+  object-position: top;
+}
+
+.cardPhoneScreenContain {
+  object-fit: contain;
+  background: #111111;
+}
+
+.cardTitle {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.cardBody {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-body-text);
+  margin: 0;
+}
