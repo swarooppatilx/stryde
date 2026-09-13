@@ -6,7 +6,6 @@ import styles from './SiteFooter.module.css';
 const GITHUB_URL = 'https://github.com/swarooppatilx/stryde';
 
 const usefulLinks = [
-  { label: 'Home', href: '/' },
   { label: 'Activities', href: '/activities' },
   { label: 'Challenges', href: '/challenges' },
   { label: 'Maps', href: '/maps' },
