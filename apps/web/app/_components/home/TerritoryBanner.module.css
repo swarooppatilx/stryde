@@ -1,0 +1,29 @@
+.banner {
+  background: linear-gradient(180deg, #e14502 0%, #862901 70%, #7b2601 100%);
+  padding: 60px 40px 80px;
+}
+
+.imageWrap {
+  display: block;
+  width: 100%;
+  max-width: 930px;
+  margin: 0 auto;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.heading {
+  text-align: right;
+  font-family: var(--font-display);
+  color: #ffffff;
+  font-size: clamp(2.5rem, 8.5vw, 8.625rem);
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  margin: 60px 0 0;
+}

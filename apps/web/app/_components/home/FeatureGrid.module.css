@@ -1,0 +1,51 @@
+.section {
+  padding: 64px 40px 80px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cardImageWrap {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  aspect-ratio: 312 / 326;
+}
+
+.cardImageWrapPadded {
+  padding: 32px;
+}
+
+.cardImage {
+  object-fit: cover;
+}
+
+.cardImageContain {
+  object-fit: contain;
+}
+
+.cardTitle {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.cardBody {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-body-text);
+  margin: 0;
+}
