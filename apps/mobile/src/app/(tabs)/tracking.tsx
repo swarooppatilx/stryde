@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -25,10 +26,16 @@ import { SPORT_TYPES } from '@/constants/activity';
 import { DEFAULT_CENTER, MAP_STYLES } from '@/constants/config';
 import { BorderRadius, Brand, Shadow, ShadowDark, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import {
+  clearBackgroundPoints,
+  peekBackgroundPoints,
+  startBackgroundLocation,
+  stopBackgroundLocation,
+} from '@/services/backgroundLocationService';
 import { motionSensorService } from '@/services/motionSensorService';
 import { territoryService } from '@/services/territoryService';
 import { trackingService } from '@/services/trackingService';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { ACCURACY_MODE_CONFIG, useSettingsStore } from '@/stores/settingsStore';
 import type { ActivityType, Location as LocationType, Ring } from '@/types';
 import { Alert } from '@/utils/alert';
 import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
@@ -73,11 +80,12 @@ export default function TrackingScreen() {
   const [routePointCount, setRoutePointCount] = useState(0);
   const [trackedPolygon, setTrackedPolygon] = useState<Ring | null>(null);
   const [startLocation, setStartLocation] = useState<[number, number] | null>(null);
-  const { useGyroscopeAssist, sensorUpdateRate, autoPause } = useSettingsStore(
+  const { useGyroscopeAssist, sensorUpdateRate, autoPause, accuracyMode } = useSettingsStore(
     useShallow((s) => ({
       useGyroscopeAssist: s.useGyroscopeAssist,
       sensorUpdateRate: s.sensorUpdateRate,
       autoPause: s.autoPause,
+      accuracyMode: s.accuracyMode,
     }))
   );
   const router = useRouter();
@@ -164,8 +172,25 @@ export default function TrackingScreen() {
   }, [isSessionActive, navigation, theme.background, theme.border]);
 
   useEffect(() => {
-    trackingService.restoreSession().then(() => {
+    trackingService.restoreSession().then(async () => {
       const wasTracking = trackingService.getIsTracking();
+      if (wasTracking) {
+        // Merge any fixes the background task buffered while we were away.
+        const buffered = await peekBackgroundPoints();
+        if (buffered.length > 0) {
+          for (const p of buffered) {
+            const loc: LocationType = {
+              latitude: p.latitude,
+              longitude: p.longitude,
+              timestamp: p.timestamp,
+              accuracy: p.accuracy,
+            };
+            trackingService.addLocation(loc);
+            pushRoutePoint(loc.longitude, loc.latitude);
+          }
+          await clearBackgroundPoints();
+        }
+      }
       setIsTracking(wasTracking);
       setIsPaused(trackingService.getIsAutoPaused());
       setDistance(trackingService.getDistance());
@@ -185,7 +210,39 @@ export default function TrackingScreen() {
         }
       }
     });
-  }, []);
+  }, [pushRoutePoint]);
+
+  // When the app returns to the foreground mid-session, pull in whatever the
+  // background task buffered while it was away.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (next) => {
+      if (next !== 'active') return;
+      if (!trackingService.getIsTracking()) return;
+      const buffered = await peekBackgroundPoints();
+      if (buffered.length === 0) return;
+      for (const p of buffered) {
+        const loc: LocationType = {
+          latitude: p.latitude,
+          longitude: p.longitude,
+          timestamp: p.timestamp,
+          accuracy: p.accuracy,
+        };
+        trackingService.addLocation(loc);
+        pushRoutePoint(loc.longitude, loc.latitude);
+      }
+      await clearBackgroundPoints();
+      setDistance(
+        useGyroscopeAssist
+          ? trackingService.getInterpolatedDistance()
+          : trackingService.getDistance()
+      );
+      setDuration(trackingService.getDuration());
+      const locs = trackingService.getLocations();
+      wasLoopClosedRef.current = territoryService.isClosedLoop(locs);
+      setTrackedPolygon(territoryService.getEnclosedPolygon(locs));
+    });
+    return () => sub.remove();
+  }, [pushRoutePoint, useGyroscopeAssist]);
 
   useEffect(() => {
     let locationSubscription: Location.LocationSubscription | null = null;
@@ -203,10 +260,16 @@ export default function TrackingScreen() {
           return;
         }
 
+        const accuracyByMode = {
+          best: Location.Accuracy.BestForNavigation,
+          balanced: Location.Accuracy.Balanced,
+          power: Location.Accuracy.Low,
+        } as const;
+
         locationSubscription = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 1000,
+            accuracy: accuracyByMode[accuracyMode],
+            timeInterval: ACCURACY_MODE_CONFIG[accuracyMode].timeInterval,
             distanceInterval: 1,
           },
           (newLocation) => {
@@ -245,7 +308,7 @@ export default function TrackingScreen() {
         locationSubscription.remove();
       }
     };
-  }, [isTracking, pushRoutePoint]);
+  }, [isTracking, pushRoutePoint, accuracyMode]);
 
   useEffect(() => {
     if (isTracking && useGyroscopeAssist) {
@@ -312,11 +375,13 @@ export default function TrackingScreen() {
     if (location) {
       setStartLocation([location.longitude, location.latitude]);
     }
+    startBackgroundLocation(accuracyMode, activeType?.label ?? activityType);
   };
 
   const handlePause = async () => {
     impactMedium();
     await trackingService.pauseTracking();
+    stopBackgroundLocation();
     setIsTracking(false);
     setIsPaused(true);
     motionSensorService.stop();
@@ -327,6 +392,7 @@ export default function TrackingScreen() {
     await trackingService.resumeTracking();
     setIsTracking(true);
     setIsPaused(false);
+    startBackgroundLocation(accuracyMode, activeType?.label ?? activityType);
   };
 
   const handleStop = () => {
@@ -338,7 +404,24 @@ export default function TrackingScreen() {
 
   const finishActivity = async () => {
     notificationSuccess();
+    stopBackgroundLocation();
     motionSensorService.stop();
+
+    // Fold in whatever the background task captured since the last live fix
+    // (app was backgrounded) so distance/route/territory stay complete.
+    const buffered = await peekBackgroundPoints();
+    if (buffered.length > 0) {
+      for (const p of buffered) {
+        trackingService.addLocation({
+          latitude: p.latitude,
+          longitude: p.longitude,
+          timestamp: p.timestamp,
+          accuracy: p.accuracy,
+        });
+      }
+      await clearBackgroundPoints();
+    }
+
     const locations = trackingService.getLocations();
     const finalDistance = useGyroscopeAssist
       ? trackingService.getInterpolatedDistance()

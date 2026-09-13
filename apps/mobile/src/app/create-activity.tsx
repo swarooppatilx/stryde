@@ -205,6 +205,14 @@ export default function CreateActivityScreen() {
                 // logout) can still render a map thumbnail for it.
                 polyline: polyline || undefined,
                 territory: territory ?? undefined,
+                coordinates: polyline
+                  ? (polyline
+                      .split(';')
+                      .map((p) => p.split(',').map(Number) as [number, number])
+                      .filter(
+                        ([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat)
+                      ) as Array<[number, number]>)
+                  : undefined,
               }
             );
             if (metadataResult?.confirmed) {

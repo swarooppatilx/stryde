@@ -1,13 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import { services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
+import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useTransactor } from '@/hooks/useTransactor';
+import { useViemWallet } from '@/hooks/useViemWallet';
 import { useCommunityStore } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
 import { haptics } from '@/utils/haptics';
@@ -66,11 +71,17 @@ export default function EventDetailScreen() {
   const theme = useTheme();
 
   const getEventById = useCommunityStore((s) => s.getEventById);
-  const toggleJoinEvent = useCommunityStore((s) => s.toggleJoinEvent);
+  const applyEventJoin = useCommunityStore((s) => s.applyEventJoin);
   const joinedEvents = useCommunityStore((s) => s.joinedEvents);
+  const isEventHost = useCommunityStore((s) => s.isEventHost);
+
+  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const { transact } = useTransactor();
+  const [joining, setJoining] = useState(false);
 
   const event = getEventById(id ?? '');
   const isJoined = event ? joinedEvents.includes(event.id) : false;
+  const isHost = isEventHost(id ?? '', address ?? undefined);
 
   if (!event) {
     return (
@@ -93,9 +104,32 @@ export default function EventDetailScreen() {
     );
   }
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
+    if (!wallet || !event || joining) return;
     haptics.impactMedium();
-    toggleJoinEvent(event.id);
+    if (!services.event.isEventRegistryDeployed()) {
+      // Demo events (EventRegistry not deployed yet): toggle locally, no tx.
+      applyEventJoin(event.id, !isJoined);
+      return;
+    }
+    setJoining(true);
+    try {
+      const result = await transact(
+        () =>
+          isJoined
+            ? services.event.leaveEvent(wallet, BigInt(event.id))
+            : services.event.joinEvent(wallet, BigInt(event.id)),
+        {
+          pending: isJoined ? 'Leaving event...' : 'Joining event...',
+          success: isJoined ? 'Left event' : 'Joined event',
+        }
+      );
+      if (result?.confirmed) {
+        applyEventJoin(event.id, !isJoined);
+      }
+    } finally {
+      setJoining(false);
+    }
   };
 
   return (
@@ -188,21 +222,41 @@ export default function EventDetailScreen() {
             style={[
               styles.joinBtn,
               {
-                backgroundColor: isJoined ? 'transparent' : theme.brand.primary,
-                borderColor: isJoined ? theme.border : theme.brand.primary,
+                backgroundColor: isHost || isJoined ? 'transparent' : theme.brand.primary,
+                borderColor: isHost ? theme.border : isJoined ? theme.border : theme.brand.primary,
               },
             ]}
             onPress={handleJoin}
             activeOpacity={0.7}
+            disabled={joining || isHost || !wallet || !address}
             accessibilityRole="button"
-            accessibilityLabel={isJoined ? `Leave ${event.title}` : `Join ${event.title}`}
+            accessibilityLabel={
+              isHost
+                ? `You host ${event.title}`
+                : isJoined
+                  ? `Leave ${event.title}`
+                  : `Join ${event.title}`
+            }
           >
-            <ThemedText
-              type="smallBold"
-              style={{ color: isJoined ? theme.textSecondary : Brand.white }}
-            >
-              {isJoined ? 'Joined — Tap to Leave' : 'Join Challenge'}
-            </ThemedText>
+            {joining ? (
+              <ActivityIndicator
+                size="small"
+                color={isJoined ? theme.textSecondary : Brand.white}
+              />
+            ) : (
+              <ThemedText
+                type="smallBold"
+                style={{
+                  color: isHost
+                    ? theme.textSecondary
+                    : isJoined
+                      ? theme.textSecondary
+                      : Brand.white,
+                }}
+              >
+                {isHost ? 'Hosting' : isJoined ? 'Joined — Tap to Leave' : 'Join Challenge'}
+              </ThemedText>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>

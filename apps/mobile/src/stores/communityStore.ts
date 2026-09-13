@@ -33,6 +33,28 @@ function toClub(group: Awaited<ReturnType<typeof services.group.getAllGroups>>[n
   };
 }
 
+/** Maps an on-chain StrydeEvent to the shared app-side ChallengeEvent shape
+ * (which the UI reads as startDate/endDate Dates). Fallbacks mirror the old
+ * mock rows so the list/detail screens render unchanged. */
+function toChallengeEvent(
+  event: Awaited<ReturnType<typeof services.event.getAllEvents>>[number]
+): ChallengeEvent {
+  return {
+    id: event.id.toString(),
+    title: event.title,
+    startDate: new Date(event.startTime * 1000),
+    endDate: new Date(event.endTime * 1000),
+    distanceGoal: event.distanceGoal,
+    participantCount: event.participantCount,
+    sportType:
+      event.sportType === services.event.MULTI_SPORT_TYPE
+        ? 'multi'
+        : (ACTIVITY_TYPE_BY_ID[event.sportType] ?? 'run'),
+    description: event.description,
+    host: event.host,
+  };
+}
+
 interface CommunityState {
   clubs: Club[];
   clubsLoading: boolean;
@@ -42,6 +64,7 @@ interface CommunityState {
   joinedClubIds: string[];
 
   events: ChallengeEvent[];
+  eventsLoading: boolean;
   joinedEvents: string[];
 
   fetchClubs: () => Promise<void>;
@@ -51,9 +74,15 @@ interface CommunityState {
   applyClubMembership: (clubId: string, joined: boolean) => void;
   upsertClub: (club: Club) => void;
 
-  toggleJoinEvent: (eventId: string) => void;
+  fetchEvents: () => Promise<void>;
+  fetchJoinedEvents: (wallet: `0x${string}`) => Promise<void>;
+  /** Optimistic local update after a joinEvent/leaveEvent tx confirms. */
+  applyEventJoin: (eventId: string, joined: boolean) => void;
+  upsertEvent: (event: ChallengeEvent) => void;
+
   isClubJoined: (clubId: string) => boolean;
   isEventJoined: (eventId: string) => boolean;
+  isEventHost: (eventId: string, wallet?: `0x${string}`) => boolean;
   searchClubs: (query: string, sportFilter?: string) => Club[];
   searchEvents: (query: string, sportFilter?: string) => ChallengeEvent[];
   getClubById: (id: string) => Club | undefined;
@@ -65,7 +94,8 @@ const INITIAL_STATE = {
   clubs: [] as Club[],
   clubsLoading: false,
   joinedClubIds: [] as string[],
-  events: MOCK_EVENTS,
+  events: [] as ChallengeEvent[],
+  eventsLoading: false,
   joinedEvents: [] as string[],
 };
 
@@ -123,22 +153,69 @@ export const useCommunityStore = create<CommunityState>()(
           };
         }),
 
-      toggleJoinEvent: (eventId: string) =>
+      fetchEvents: async () => {
+        set({ eventsLoading: true });
+        try {
+          if (!services.event.isEventRegistryDeployed()) {
+            set({ events: MOCK_EVENTS });
+            return;
+          }
+          const events = await services.event.getAllEvents();
+          set({ events: events.map(toChallengeEvent) });
+        } catch (e) {
+          console.warn('[Community] Failed to fetch events:', e);
+        } finally {
+          set({ eventsLoading: false });
+        }
+      },
+
+      fetchJoinedEvents: async (wallet: `0x${string}`) => {
+        // Demo events have no on-chain membership; joins stay local.
+        if (!services.event.isEventRegistryDeployed()) return;
+        try {
+          const userEvents = await services.event.getUserEvents(wallet);
+          set({ joinedEvents: userEvents.map((e) => e.id.toString()) });
+        } catch (e) {
+          console.warn('[Community] Failed to fetch joined events:', e);
+        }
+      },
+
+      applyEventJoin: (eventId: string, joined: boolean) =>
         set((state) => {
           const isJoined = state.joinedEvents.includes(eventId);
-          const updatedJoined = isJoined
-            ? state.joinedEvents.filter((id) => id !== eventId)
-            : [...state.joinedEvents, eventId];
-          const updatedEvents = state.events.map((e) =>
+          if (isJoined === joined) return state;
+
+          const joinedEvents = joined
+            ? [...state.joinedEvents, eventId]
+            : state.joinedEvents.filter((id) => id !== eventId);
+
+          const events = state.events.map((e) =>
             e.id === eventId
-              ? { ...e, participantCount: e.participantCount + (isJoined ? -1 : 1) }
+              ? { ...e, participantCount: Math.max(0, e.participantCount + (joined ? 1 : -1)) }
               : e
           );
-          return { joinedEvents: updatedJoined, events: updatedEvents };
+
+          return { joinedEvents, events };
+        }),
+
+      upsertEvent: (event: ChallengeEvent) =>
+        set((state) => {
+          const exists = state.events.some((e) => e.id === event.id);
+          return {
+            events: exists
+              ? state.events.map((e) => (e.id === event.id ? event : e))
+              : [event, ...state.events],
+          };
         }),
 
       isClubJoined: (clubId: string) => get().joinedClubIds.includes(clubId),
       isEventJoined: (eventId: string) => get().joinedEvents.includes(eventId),
+      isEventHost: (eventId: string, wallet?: `0x${string}`) => {
+        const event = get().events.find((e) => e.id === eventId);
+        return (
+          !!event && !!event.host && !!wallet && event.host.toLowerCase() === wallet.toLowerCase()
+        );
+      },
 
       searchClubs: (query: string, sportFilter?: string) => {
         const { clubs } = get();
@@ -168,11 +245,11 @@ export const useCommunityStore = create<CommunityState>()(
     }),
     {
       name: 'stryde-community',
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({ joinedEvents: state.joinedEvents }),
       migrate: (persistedState: unknown, version: number) => {
-        if (version < 3) {
+        if (version < 4) {
           const state = persistedState as Record<string, unknown>;
           return {
             joinedEvents: (state.joinedEvents as string[]) ?? [],

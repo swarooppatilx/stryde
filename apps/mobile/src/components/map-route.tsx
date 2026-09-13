@@ -7,9 +7,10 @@ import {
   Map as MapLibreMap,
   Marker,
   NativeUserLocation,
+  type PressEventWithFeatures,
 } from '@maplibre/maplibre-react-native';
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { type NativeSyntheticEvent, StyleSheet, View, type ViewStyle } from 'react-native';
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
@@ -19,6 +20,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { territoryService } from '@/services/territoryService';
 import type { Ring } from '@/types';
 import { formatArea } from '@/utils/format';
+import {
+  type LngLatPair,
+  routeFeatureCollection,
+  type TerritoryFeatureInput,
+  territoryFeatureCollection,
+} from '@/utils/mapData';
 
 export interface MapMarker {
   id: string;
@@ -38,6 +45,9 @@ export interface ActivityRoute {
 export interface MapRouteProps {
   coordinates?: [number, number][];
   territoryPolygons?: Ring[];
+  /** Same length/order as `territoryPolygons`; maps each local polygon to its
+   * on-chain territory id so a tap can resolve the owner. */
+  territoryIds?: string[];
   territoryColor?: string;
   territoryOpacity?: number;
   markers?: MapMarker[];
@@ -55,6 +65,19 @@ export interface MapRouteProps {
    * doesn't render underneath/behind it. Defaults to a sensible offset for
    * screens with no competing overlay near the top-right. */
   compassTopOffset?: number;
+  /** Other athletes' territory footprints (bounds-derived rectangles), each
+   * tagged with its territory id for tap-to-owner. */
+  othersTerritories?: TerritoryFeatureInput[];
+  othersTerritoryColor?: string;
+  othersTerritoryOpacity?: number;
+  /** Point cloud for the activity-density heatmap layer. */
+  heatmapPoints?: LngLatPair[];
+  heatmapVisible?: boolean;
+  /** Fires when a territory (own or another athlete's) is tapped, with its
+   * territory id. */
+  onTerritoryPress?: (territoryId: string) => void;
+  /** Keeps the parent's zoom state in sync (drives the 2D zoom buttons). */
+  onZoomChanged?: (zoom: number) => void;
 }
 
 class MapErrorBoundary extends React.Component<
@@ -257,6 +280,7 @@ function MapRouteFallback({
 const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   coordinates,
   territoryPolygons = [],
+  territoryIds = [],
   territoryColor = Brand.primary,
   territoryOpacity = 0.25,
   markers = [],
@@ -269,6 +293,13 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   cameraRef,
   activityRoutes = [],
   compassTopOffset = 150,
+  othersTerritories = [],
+  othersTerritoryColor = '#7c3aed',
+  othersTerritoryOpacity = 0.12,
+  heatmapPoints = [],
+  heatmapVisible = true,
+  onTerritoryPress,
+  onZoomChanged,
 }: MapRouteProps) {
   const routeGeoJSON = useMemo(() => {
     if (!coordinates || coordinates.length < 2) return null;
@@ -287,20 +318,51 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
     };
   }, [coordinates]);
 
-  const territoryGeoJSON = useMemo(() => {
-    if (territoryPolygons.length === 0) return null;
+  const territoryGeoJSON = useMemo(
+    () =>
+      territoryFeatureCollection(
+        territoryPolygons.map((ring, i) => ({
+          id: territoryIds[i] ?? `local-${i}`,
+          ring,
+        }))
+      ),
+    [territoryPolygons, territoryIds]
+  );
+
+  const othersTerritoryGeoJSON = useMemo(
+    () => territoryFeatureCollection(othersTerritories),
+    [othersTerritories]
+  );
+
+  const routesGeoJSON = useMemo(() => routeFeatureCollection(activityRoutes), [activityRoutes]);
+
+  const heatmapGeoJSON = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point> | null>(() => {
+    if (!heatmapVisible || heatmapPoints.length === 0) return null;
     return {
-      type: 'FeatureCollection' as const,
-      features: territoryPolygons.map((ring) => ({
-        type: 'Feature' as const,
-        geometry: {
-          type: 'Polygon' as const,
-          coordinates: [ring],
-        },
+      type: 'FeatureCollection',
+      features: heatmapPoints.map(([lng, lat]) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [lng, lat] },
         properties: {},
       })),
     };
-  }, [territoryPolygons]);
+  }, [heatmapVisible, heatmapPoints]);
+
+  const handleTerritoryPress = React.useCallback(
+    (event: NativeSyntheticEvent<PressEventWithFeatures>) => {
+      if (!onTerritoryPress) return;
+      // Native press events arrive with `features` at the event's top level in
+      // some platform builds and under `nativeEvent` in others — read both.
+      const native = event.nativeEvent;
+      const features =
+        native?.features ?? (event as unknown as { features?: GeoJSON.Feature[] }).features;
+      const territoryId = features?.[0]?.properties?.territoryId;
+      if (typeof territoryId === 'string' && !territoryId.startsWith('local-')) {
+        onTerritoryPress(territoryId);
+      }
+    },
+    [onTerritoryPress]
+  );
 
   const cameraCenter =
     coordinates && coordinates.length > 0
@@ -314,6 +376,9 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
       style={[styles.map, style]}
       mapStyle={resolvedMapStyle}
       compassPosition={{ top: compassTopOffset, right: Spacing.three }}
+      onRegionDidChange={
+        onZoomChanged ? (e) => onZoomChanged(e.nativeEvent?.zoom ?? initialZoom) : undefined
+      }
     >
       <Camera
         ref={cameraRef}
@@ -338,8 +403,67 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
         />
       )}
 
+      {heatmapGeoJSON && (
+        <GeoJSONSource id="activity-heatmap" data={heatmapGeoJSON}>
+          <Layer
+            id="activity-heat"
+            type="heatmap"
+            source="activity-heatmap"
+            paint={{
+              'heatmap-weight': 1,
+              'heatmap-intensity': 0.35,
+              'heatmap-color': [
+                'interpolate',
+                ['linear'],
+                ['heatmap-density'],
+                0,
+                'rgba(34,197,94,0)',
+                0.25,
+                'rgba(168,85,247,0.4)',
+                0.5,
+                'rgba(236,72,153,0.55)',
+                0.75,
+                'rgba(249,115,22,0.7)',
+                1,
+                'rgba(220,38,38,0.9)',
+              ],
+              'heatmap-radius': 20,
+              'heatmap-opacity': 0.55,
+            }}
+          />
+        </GeoJSONSource>
+      )}
+
+      {othersTerritoryGeoJSON && (
+        <GeoJSONSource
+          id="others-territory"
+          data={othersTerritoryGeoJSON}
+          onPress={handleTerritoryPress}
+        >
+          <Layer
+            id="others-territory-fill"
+            source="others-territory"
+            type="fill"
+            paint={{
+              'fill-color': othersTerritoryColor,
+              'fill-opacity': othersTerritoryOpacity,
+            }}
+          />
+          <Layer
+            id="others-territory-border"
+            source="others-territory"
+            type="line"
+            paint={{
+              'line-color': othersTerritoryColor,
+              'line-width': 1,
+              'line-opacity': 0.5,
+            }}
+          />
+        </GeoJSONSource>
+      )}
+
       {territoryGeoJSON && (
-        <GeoJSONSource id="territory" data={territoryGeoJSON}>
+        <GeoJSONSource id="territory" data={territoryGeoJSON} onPress={handleTerritoryPress}>
           <Layer
             id="territory-fill"
             source="territory"
@@ -394,53 +518,37 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
         </GeoJSONSource>
       )}
 
-      {activityRoutes.map((route) => (
-        <GeoJSONSource
-          key={route.id}
-          id={`activity-${route.id}`}
-          data={{
-            type: 'FeatureCollection' as const,
-            features: [
-              {
-                type: 'Feature' as const,
-                geometry: { type: 'LineString' as const, coordinates: route.coordinates },
-                properties: {},
-              },
-            ],
-          }}
-        >
-          {route.lineWidth && route.lineWidth > 2 && (
-            <Layer
-              id={`activity-glow-${route.id}`}
-              type="line"
-              source={`activity-${route.id}`}
-              layout={{
-                'line-cap': 'round',
-                'line-join': 'round',
-              }}
-              paint={{
-                'line-color': route.color,
-                'line-width': route.lineWidth + 4,
-                'line-opacity': 0.2,
-              }}
-            />
-          )}
+      {routesGeoJSON && (
+        <GeoJSONSource id="activity-routes" data={routesGeoJSON}>
           <Layer
-            id={`activity-line-${route.id}`}
+            id="activity-routes-glow"
             type="line"
-            source={`activity-${route.id}`}
+            source="activity-routes"
             layout={{
               'line-cap': 'round',
               'line-join': 'round',
             }}
             paint={{
-              'line-color': route.color,
-              'line-width': route.lineWidth ?? 2,
-              'line-opacity': route.lineWidth ? 1 : 0.6,
+              'line-color': ['get', 'color'],
+              'line-width': 6,
+              'line-opacity': 0.18,
+            }}
+          />
+          <Layer
+            id="activity-routes-line"
+            type="line"
+            source="activity-routes"
+            layout={{
+              'line-cap': 'round',
+              'line-join': 'round',
+            }}
+            paint={{
+              'line-color': ['get', 'color'],
+              'line-width': 2.5,
             }}
           />
         </GeoJSONSource>
-      ))}
+      )}
 
       {markers.map((marker) => (
         <Marker

@@ -1,6 +1,7 @@
 import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
 import { getActiveConfig } from './client';
+import type { OnchainEvent } from './event';
 import type { OnchainGroup } from './group';
 import type { SyncedActivity } from './sync';
 
@@ -233,6 +234,10 @@ interface AthleteCompositeEntity {
     isActive: boolean;
     capturedAt: string;
     lastReinforced: string;
+    minLng: number;
+    minLat: number;
+    maxLng: number;
+    maxLat: number;
   }[];
   contributions: {
     distance: string;
@@ -276,6 +281,10 @@ const ATHLETE_COMPOSITE_QUERY = `
         isActive
         capturedAt
         lastReinforced
+        minLng
+        minLat
+        maxLng
+        maxLat
       }
       contributions(first: 10) {
         distance
@@ -304,6 +313,9 @@ export interface AthleteCompositeTerritory {
   isActive: boolean;
   capturedAt: number;
   lastReinforced: number;
+  /** 1e6-fixed-point bounding box (0 missing on old index) — lets callers
+   * draw representative territory geometry without contract read-noise. */
+  bounds?: { minLng: number; minLat: number; maxLng: number; maxLat: number };
 }
 
 export interface AthleteComposite {
@@ -379,6 +391,12 @@ export async function getAthleteComposite(wallet: `0x${string}`): Promise<Athlet
       isActive: t.isActive,
       capturedAt: Number(t.capturedAt),
       lastReinforced: Number(t.lastReinforced),
+      bounds: {
+        minLng: t.minLng,
+        minLat: t.minLat,
+        maxLng: t.maxLng,
+        maxLat: t.maxLat,
+      },
     })),
     contributions: p.contributions.map((c) => ({
       distance: Number(c.distance),
@@ -490,6 +508,148 @@ export async function getLeaderboardFromSubgraph(
   });
 
   return entries.sort((a, b) => b.score - a.score);
+}
+
+/** Every recorded activity across all users, plus the wallet each belongs to,
+ * for the cross-user map route layer. Returns null (rather than throwing) when
+ * no subgraph is configured for the active chain mode. Routes need heights, so
+ * only records whose metadata (which embeds the polyline `coordinates`) has
+ * been pinned to IPFS are returned — the count is bounded to the most recent
+ * records to keep the IPFS metadata fetches on the client cheap. */
+export interface SubgraphActivityRoute {
+  wallet: string;
+  activityId: bigint;
+  activityType: ActivityType;
+  distance: number;
+  timestamp: number;
+  metadataCid: string;
+}
+
+const ACTIVITY_ROUTES_QUERY = `
+  query GetActivityRoutes($first: Int!) {
+    activities(
+      first: $first
+      where: { metadataCid_not: null }
+      orderBy: timestamp
+      orderDirection: desc
+    ) {
+      activityId
+      user { id }
+      activityType
+      distance
+      timestamp
+      metadataCid
+    }
+  }
+`;
+
+export async function getActivityRoutesFromSubgraph(
+  limit = 200
+): Promise<SubgraphActivityRoute[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const data = await querySubgraph<{
+    activities: {
+      activityId: string;
+      user: { id: string };
+      activityType: number;
+      distance: string;
+      timestamp: string;
+      metadataCid: string | null;
+    }[];
+  }>(subgraphUrl, ACTIVITY_ROUTES_QUERY, { first: limit });
+
+  return data.activities
+    .filter((a) => a.metadataCid)
+    .map((a) => ({
+      wallet: a.user.id.toLowerCase() as `0x${string}`,
+      activityId: BigInt(a.activityId),
+      activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
+      distance: Number(a.distance),
+      timestamp: Number(a.timestamp),
+      metadataCid: a.metadataCid as string,
+    }));
+}
+
+export interface SubgraphTerritory {
+  id: `0x${string}`;
+  owner: `0x${string}`;
+  areaSqm: number;
+  strength: number;
+  capturedAt: number;
+  lastReinforced: number;
+  isActive: boolean;
+  /** 1e6-fixed-point bounding box. */
+  bounds: {
+    minLng: number;
+    minLat: number;
+    maxLng: number;
+    maxLat: number;
+  };
+}
+
+const TERRITORIES_QUERY = `
+  query GetTerritories($first: Int!) {
+    territories(first: $first, where: { isActive: true }) {
+      id
+      owner { id }
+      area
+      strength
+      capturedAt
+      lastReinforced
+      isActive
+      minLng
+      minLat
+      maxLng
+      maxLat
+    }
+  }
+`;
+
+/** Every active territory across all users (owner + bounding box + stats), so
+ * the map can render others' territory footprints and resolve a tapped
+ * territory to its owner without a per-territory contract read. Own territory
+ * rings come from the local store; only "others" data is subgraph-gated. */
+export async function getTerritoriesFromSubgraph(
+  limit = 1000
+): Promise<SubgraphTerritory[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const data = await querySubgraph<{
+    territories: {
+      id: string;
+      owner: { id: string };
+      area: string;
+      strength: string;
+      capturedAt: string;
+      lastReinforced: string;
+      isActive: boolean;
+      minLng: number;
+      minLat: number;
+      maxLng: number;
+      maxLat: number;
+    }[];
+  }>(subgraphUrl, TERRITORIES_QUERY, { first: limit });
+
+  return data.territories
+    .filter((t) => t.isActive)
+    .map((t) => ({
+      id: t.id as `0x${string}`,
+      owner: t.owner.id as `0x${string}`,
+      areaSqm: Number(t.area),
+      strength: Number(t.strength),
+      capturedAt: Number(t.capturedAt),
+      lastReinforced: Number(t.lastReinforced),
+      isActive: t.isActive,
+      bounds: {
+        minLng: t.minLng,
+        minLat: t.minLat,
+        maxLng: t.maxLng,
+        maxLat: t.maxLat,
+      },
+    }));
 }
 
 interface GroupEntity {
@@ -780,4 +940,152 @@ export async function getCommentsFromSubgraph(): Promise<SubgraphComment[] | nul
     cid: c.cid,
     createdAt: Number(c.createdAt),
   }));
+}
+
+interface EventEntity {
+  id: string;
+  host: { id: string } | null;
+  title: string;
+  description: string;
+  sportType: number;
+  startTime: string;
+  endTime: string;
+  distanceGoal: string;
+  startLat: number;
+  startLng: number;
+  participantCount: string;
+  createdAt: string;
+  active: boolean;
+}
+
+function mapEventEntity(e: EventEntity): OnchainEvent {
+  return {
+    id: BigInt(e.id),
+    host: (e.host?.id ?? '0x0000000000000000000000000000000000000000') as `0x${string}`,
+    title: e.title,
+    description: e.description,
+    sportType: e.sportType,
+    startTime: Number(e.startTime),
+    endTime: Number(e.endTime),
+    distanceGoal: Number(e.distanceGoal),
+    startLat: e.startLat,
+    startLng: e.startLng,
+    participantCount: Number(e.participantCount),
+    createdAt: Number(e.createdAt),
+    active: e.active,
+  };
+}
+
+const EVENTS_QUERY = `
+  query GetEvents($first: Int!, $skip: Int!) {
+    events(first: $first, skip: $skip, where: { active: true }, orderBy: createdAt, orderDirection: desc) {
+      id
+      host { id }
+      title
+      description
+      sportType
+      startTime
+      endTime
+      distanceGoal
+      startLat
+      startLng
+      participantCount
+      createdAt
+      active
+    }
+  }
+`;
+
+/** Every active event, for the community/groups tab. Returns null (rather
+ * than throwing) when no subgraph is configured for the active chain mode or
+ * when events aren't indexed yet (EventRegistry not deployed), so callers can
+ * fall back to the on-chain getEventCount()+getEvent() scan. */
+export async function getEventsFromSubgraph(): Promise<OnchainEvent[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const allEvents: EventEntity[] = [];
+  let skip = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetch(subgraphUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: EVENTS_QUERY,
+        variables: { first: PAGE_SIZE, skip },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Subgraph request failed: ${response.status}`);
+    }
+
+    const body = (await response.json()) as GraphQLResponse<{ events: EventEntity[] }>;
+    if (body.errors?.length) {
+      throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+    }
+
+    const events = body.data?.events ?? [];
+    allEvents.push(...events);
+    hasMore = events.length === PAGE_SIZE;
+    skip += PAGE_SIZE;
+  }
+
+  return allEvents.map(mapEventEntity);
+}
+
+const USER_EVENTS_QUERY = `
+  query GetUserEvents($wallet: String!) {
+    eventParticipants(first: 1000, where: { user_: { id: $wallet }, active: true }) {
+      event {
+        id
+        host { id }
+        title
+        description
+        sportType
+        startTime
+        endTime
+        distanceGoal
+        startLat
+        startLng
+        participantCount
+        createdAt
+        active
+      }
+    }
+  }
+`;
+
+/** The events a single wallet currently participates in. Returns null (rather
+ * than throwing) when no subgraph is configured or events aren't indexed. */
+export async function getUserEventsFromSubgraph(
+  wallet: `0x${string}`
+): Promise<OnchainEvent[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const response = await fetch(subgraphUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: USER_EVENTS_QUERY,
+      variables: { wallet: wallet.toLowerCase() },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Subgraph request failed: ${response.status}`);
+  }
+
+  const body = (await response.json()) as GraphQLResponse<{
+    eventParticipants: { event: EventEntity }[];
+  }>;
+  if (body.errors?.length) {
+    throw new Error(`Subgraph query error: ${body.errors[0]?.message}`);
+  }
+
+  const eventParticipants = body.data?.eventParticipants ?? [];
+  return eventParticipants.filter((ep) => ep.event.active).map((ep) => mapEventEntity(ep.event));
 }

@@ -86,6 +86,22 @@
             "useLegacyPackaging": true
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Stryde to record your routes and claim territory.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Stryde to keep recording your route in the background.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow Stryde to count your steps while tracking activities."
+        }
       ]
     ],
     "experiments": {

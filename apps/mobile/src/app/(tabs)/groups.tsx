@@ -77,14 +77,18 @@ export default function CommunityScreen() {
 
   const searchClubs = useCommunityStore((s) => s.searchClubs);
   const searchEvents = useCommunityStore((s) => s.searchEvents);
-  const toggleJoinEvent = useCommunityStore((s) => s.toggleJoinEvent);
   const joinedEvents = useCommunityStore((s) => s.joinedEvents);
   const clubs = useCommunityStore((s) => s.clubs);
+  const events = useCommunityStore((s) => s.events);
   const clubsLoading = useCommunityStore((s) => s.clubsLoading);
+  const eventsLoading = useCommunityStore((s) => s.eventsLoading);
   const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
   const fetchClubs = useCommunityStore((s) => s.fetchClubs);
   const fetchJoinedClubs = useCommunityStore((s) => s.fetchJoinedClubs);
   const applyClubMembership = useCommunityStore((s) => s.applyClubMembership);
+  const fetchEvents = useCommunityStore((s) => s.fetchEvents);
+  const fetchJoinedEvents = useCommunityStore((s) => s.fetchJoinedEvents);
+  const applyEventJoin = useCommunityStore((s) => s.applyEventJoin);
 
   const filteredClubs = useMemo(
     () => searchClubs(clubQuery, sportFilter),
@@ -103,6 +107,7 @@ export default function CommunityScreen() {
   > | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingClubId, setPendingClubId] = useState<string | null>(null);
+  const [pendingEventId, setPendingEventId] = useState<string | null>(null);
 
   const loadChallenges = useCallback(async () => {
     if (!address) return;
@@ -136,6 +141,20 @@ export default function CommunityScreen() {
     }, [activeTab, address, fetchJoinedClubs])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'Events') return;
+      fetchEvents();
+    }, [activeTab, fetchEvents])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'Events' || !address) return;
+      fetchJoinedEvents(address);
+    }, [activeTab, address, fetchJoinedEvents])
+  );
+
   const onRefresh = useCallback(() => {
     if (activeTab === 'Challenges') {
       setRefreshing(true);
@@ -145,8 +164,21 @@ export default function CommunityScreen() {
       Promise.all([fetchClubs(), address ? fetchJoinedClubs(address) : null]).finally(() =>
         setRefreshing(false)
       );
+    } else {
+      setRefreshing(true);
+      Promise.all([fetchEvents(), address ? fetchJoinedEvents(address) : null]).finally(() =>
+        setRefreshing(false)
+      );
     }
-  }, [activeTab, loadChallenges, fetchClubs, fetchJoinedClubs, address]);
+  }, [
+    activeTab,
+    loadChallenges,
+    fetchClubs,
+    fetchJoinedClubs,
+    fetchEvents,
+    fetchJoinedEvents,
+    address,
+  ]);
 
   const isClubs = activeTab === 'Clubs';
   const isEvents = activeTab === 'Events';
@@ -184,9 +216,34 @@ export default function CommunityScreen() {
     }
   };
 
-  const handleJoinEvent = (eventId: string) => {
+  const handleJoinEvent = async (eventId: string) => {
+    if (!wallet || !address || pendingEventId) return;
     haptics.impactMedium();
-    toggleJoinEvent(eventId);
+    if (!services.event.isEventRegistryDeployed()) {
+      // Demo events (EventRegistry not deployed yet): toggle locally, no tx.
+      applyEventJoin(eventId, !joinedEvents.includes(eventId));
+      return;
+    }
+
+    const isJoined = joinedEvents.includes(eventId);
+    setPendingEventId(eventId);
+    try {
+      const result = await transact(
+        () =>
+          isJoined
+            ? services.event.leaveEvent(wallet, BigInt(eventId))
+            : services.event.joinEvent(wallet, BigInt(eventId)),
+        {
+          pending: isJoined ? 'Leaving event...' : 'Joining event...',
+          success: isJoined ? 'Left event' : 'Joined event',
+        }
+      );
+      if (result?.confirmed) {
+        applyEventJoin(eventId, !isJoined);
+      }
+    } finally {
+      setPendingEventId(null);
+    }
   };
 
   const renderClub = (item: Club) => {
@@ -256,6 +313,7 @@ export default function CommunityScreen() {
 
   const renderEvent = (item: ChallengeEvent) => {
     const isJoined = joinedEvents.includes(item.id);
+    const isPending = pendingEventId === item.id;
     return (
       <TouchableOpacity
         key={item.id}
@@ -296,15 +354,23 @@ export default function CommunityScreen() {
               handleJoinEvent(item.id);
             }}
             activeOpacity={0.7}
+            disabled={isPending || !wallet}
             accessibilityRole="button"
             accessibilityLabel={isJoined ? `Leave ${item.title}` : `Join ${item.title}`}
           >
-            <ThemedText
-              type="small"
-              style={{ color: isJoined ? theme.textSecondary : Brand.white, fontWeight: '600' }}
-            >
-              {isJoined ? 'Joined' : 'Join'}
-            </ThemedText>
+            {isPending ? (
+              <ActivityIndicator
+                size="small"
+                color={isJoined ? theme.textSecondary : Brand.white}
+              />
+            ) : (
+              <ThemedText
+                type="small"
+                style={{ color: isJoined ? theme.textSecondary : Brand.white, fontWeight: '600' }}
+              >
+                {isJoined ? 'Joined' : 'Join'}
+              </ThemedText>
+            )}
           </TouchableOpacity>
         </ThemedView>
       </TouchableOpacity>
@@ -388,6 +454,7 @@ export default function CommunityScreen() {
       );
     }
     if (isEvents) {
+      if (eventsLoading && events.length === 0) return renderSkeleton();
       return (
         <ThemedView style={styles.empty}>
           <Ionicons name="trophy-outline" size={32} color={theme.textSecondary} />
@@ -497,10 +564,12 @@ export default function CommunityScreen() {
           extraData={[
             activeTab,
             clubsLoading,
+            eventsLoading,
             challenges,
             joinedClubIds,
             joinedEvents,
             pendingClubId,
+            pendingEventId,
           ]}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}

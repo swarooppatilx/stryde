@@ -17,6 +17,7 @@ import { ENV } from '@/constants/config';
 import { useChainSync } from '@/hooks/useChainSync';
 import { usePrivyMetadataSync } from '@/hooks/usePrivyMetadataSync';
 import { useProtectedRoute } from '@/hooks/useProtectedRoute';
+import { startRelayQueue } from '@/services/relayQueue';
 import { useSocialStore } from '@/stores/socialStore';
 
 // Privy's default supportedChains list puts mainnet first, and "the [embedded]
@@ -34,6 +35,7 @@ setChainMode(ENV.CHAIN_MODE);
 // packages/shared has no env config of its own — inject the API base URL/key
 // it needs to upload activity/profile metadata to IPFS via our relay API.
 setIpfsConfig({ apiUrl: ENV.API_URL, apiKey: ENV.API_KEY });
+startRelayQueue();
 
 // Privy's own init fetch (getAppConfig) has no timeout in the SDK — if the
 // underlying React Native fetch() promise never settles (a known class of RN

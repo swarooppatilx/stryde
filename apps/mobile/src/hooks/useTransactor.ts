@@ -6,6 +6,8 @@ import { Toast } from '@/utils/toast';
 interface TxResult {
   confirmed: boolean;
   txHash?: `0x${string}`;
+  /** Relay-backed writes return this when offline and parked on the retry queue. */
+  queued?: boolean;
 }
 
 /**
@@ -25,6 +27,11 @@ export function useTransactor() {
       try {
         const result = await fn();
         if (activeKey.current !== null) Toast.remove(activeKey.current);
+
+        if (result.queued) {
+          Toast.success("Saved — will submit when you're back online", 3);
+          return result;
+        }
 
         if (!result.confirmed) {
           Toast.fail("Transaction didn't confirm on-chain", 2.5);
