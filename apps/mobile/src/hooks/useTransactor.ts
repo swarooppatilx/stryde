@@ -21,8 +21,12 @@ export function useTransactor() {
   const transact = useCallback(
     async <T extends TxResult>(
       fn: () => Promise<T>,
-      labels?: { pending?: string; success?: string }
+      labels?: { pending?: string; success?: string },
+      /** Optimistic UI: `apply` runs before the tx is sent so the screen
+       * updates instantly; `revert` undoes it if the tx fails or reverts. */
+      optimistic?: { apply: () => void; revert: () => void }
     ): Promise<T | null> => {
+      optimistic?.apply();
       activeKey.current = Toast.loading(labels?.pending ?? 'Submitting transaction...', 0);
       try {
         const result = await fn();
@@ -34,6 +38,7 @@ export function useTransactor() {
         }
 
         if (!result.confirmed) {
+          optimistic?.revert();
           Toast.fail("Transaction didn't confirm on-chain", 2.5);
           return result;
         }
@@ -44,6 +49,7 @@ export function useTransactor() {
         return result;
       } catch (error) {
         if (activeKey.current !== null) Toast.remove(activeKey.current);
+        optimistic?.revert();
         console.error('[useTransactor] Transaction failed:', error);
         Toast.fail(getParsedError(error), 3);
         return null;
