@@ -3,7 +3,6 @@ import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   type LayoutChangeEvent,
   ScrollView,
   StyleSheet,
@@ -24,13 +23,14 @@ import { NumberFlow } from '@/components/number-flow';
 import { ThemedText } from '@/components/themed-text';
 import { SPORT_TYPES } from '@/constants/activity';
 import { DEFAULT_CENTER, MAP_STYLES } from '@/constants/config';
-import { BorderRadius, Brand, Colors, ShadowDark, Spacing, tint } from '@/constants/theme';
+import { BorderRadius, Brand, Shadow, ShadowDark, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { motionSensorService } from '@/services/motionSensorService';
 import { territoryService } from '@/services/territoryService';
 import { trackingService } from '@/services/trackingService';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { ActivityType, Location as LocationType, Ring } from '@/types';
+import { Alert } from '@/utils/alert';
 import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
 import { haptics, impactHeavy, impactMedium, notificationSuccess } from '@/utils/haptics';
 
@@ -422,20 +422,26 @@ export default function TrackingScreen() {
 
   if (showTypePicker && !isTracking && duration === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.mapContainer}>
           <MapRoute
             initialCenter={mapCenter}
             initialZoom={15}
-            mapStyleUrl={MAP_STYLES.darkMatter}
+            mapStyleUrl={theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager}
             showUserLocation
           />
         </View>
 
         <SafeAreaView edges={['bottom']} style={styles.sheetSafeArea}>
-          <View style={[styles.bottomSheet, ShadowDark.lg]}>
-            <View style={styles.sheetHandle} />
-            <ThemedText type="small" style={styles.pickerLabel}>
+          <View
+            style={[
+              styles.bottomSheet,
+              { backgroundColor: theme.backgroundElement },
+              theme.isDark ? ShadowDark.lg : Shadow.lg,
+            ]}
+          >
+            <View style={[styles.sheetHandle, { backgroundColor: theme.backgroundSelected }]} />
+            <ThemedText type="small" style={[styles.pickerLabel, { color: theme.textSecondary }]}>
               Choose an activity
             </ThemedText>
 
@@ -463,20 +469,20 @@ export default function TrackingScreen() {
                       style={[
                         styles.sportIconCircle,
                         {
-                          backgroundColor: active ? Brand.primary : Colors.dark.backgroundSelected,
+                          backgroundColor: active ? Brand.primary : theme.backgroundSelected,
                         },
                       ]}
                     >
                       <Ionicons
                         name={item.icon}
                         size={22}
-                        color={active ? Brand.white : Colors.dark.textSecondary}
+                        color={active ? Brand.white : theme.textSecondary}
                       />
                     </View>
                     <ThemedText
                       type="small"
                       style={{
-                        color: active ? Brand.primary : Colors.dark.textSecondary,
+                        color: active ? Brand.primary : theme.textSecondary,
                         fontWeight: active ? '700' : '500',
                       }}
                     >
@@ -509,7 +515,7 @@ export default function TrackingScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.mapContainer}>
         <MapRoute
           coordinates={routeCoordinates.length > 1 ? routeCoordinates : undefined}
@@ -520,15 +526,21 @@ export default function TrackingScreen() {
           followUser={isTracking ? 'default' : undefined}
           initialCenter={mapCenter}
           initialZoom={15}
-          mapStyleUrl={MAP_STYLES.darkMatter}
+          mapStyleUrl={theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager}
         />
       </View>
 
       <SafeAreaView edges={['bottom']} style={styles.sheetSafeArea}>
-        <View style={[styles.bottomSheet, ShadowDark.lg]}>
+        <View
+          style={[
+            styles.bottomSheet,
+            { backgroundColor: theme.backgroundElement },
+            theme.isDark ? ShadowDark.lg : Shadow.lg,
+          ]}
+        >
           <GestureDetector gesture={sheetPanGesture}>
             <View>
-              <View style={styles.sheetHandle} />
+              <View style={[styles.sheetHandle, { backgroundColor: theme.backgroundSelected }]} />
 
               <View style={styles.sheetHeader}>
                 <View style={styles.sheetHeaderLeft}>
@@ -540,7 +552,7 @@ export default function TrackingScreen() {
                   >
                     <Ionicons name={activeType?.icon || 'walk'} size={16} color={Brand.primary} />
                   </View>
-                  <ThemedText type="default" style={styles.sheetTitle}>
+                  <ThemedText type="default" style={[styles.sheetTitle, { color: theme.text }]}>
                     {activeType?.label}
                   </ThemedText>
                   {isPaused && (
@@ -560,7 +572,7 @@ export default function TrackingScreen() {
                   <Ionicons
                     name={expanded ? 'contract' : 'expand'}
                     size={18}
-                    color={Colors.dark.textSecondary}
+                    color={theme.textSecondary}
                   />
                 </TouchableOpacity>
               </View>
@@ -570,61 +582,70 @@ export default function TrackingScreen() {
           <View style={styles.sheetContent}>
             <View style={styles.statsRow}>
               <View style={styles.stat}>
-                <ThemedText type="default" style={styles.statValue}>
+                <ThemedText type="default" style={[styles.statValue, { color: theme.text }]}>
                   {formatDurationLong(duration)}
                 </ThemedText>
-                <ThemedText type="small" style={styles.statLabel}>
+                <ThemedText type="small" style={[styles.statLabel, { color: theme.textSecondary }]}>
                   Time
                 </ThemedText>
               </View>
               <View style={styles.stat}>
-                <ThemedText type="default" style={styles.statValue}>
+                <ThemedText type="default" style={[styles.statValue, { color: theme.text }]}>
                   {formatPace(distance, duration)}
                 </ThemedText>
-                <ThemedText type="small" style={styles.statLabel}>
+                <ThemedText type="small" style={[styles.statLabel, { color: theme.textSecondary }]}>
                   Pace /km
                 </ThemedText>
               </View>
               <View style={styles.stat}>
-                <ThemedText type="default" style={styles.statValue}>
+                <ThemedText type="default" style={[styles.statValue, { color: theme.text }]}>
                   {formatDistance(distance)}
                 </ThemedText>
-                <ThemedText type="small" style={styles.statLabel}>
+                <ThemedText type="small" style={[styles.statLabel, { color: theme.textSecondary }]}>
                   Distance
                 </ThemedText>
               </View>
             </View>
 
             <Animated.View style={[styles.statsRowSecondary, secondaryStatsStyle]}>
-              <View style={styles.statsRowSecondaryInner} onLayout={onSecondaryStatsLayout}>
+              <View
+                style={[styles.statsRowSecondaryInner, { borderTopColor: theme.border }]}
+                onLayout={onSecondaryStatsLayout}
+              >
                 <View style={styles.stat}>
                   <Ionicons
                     name="shield-checkmark"
                     size={16}
-                    color={trackedPolygon ? Brand.success : Colors.dark.textSecondary}
+                    color={trackedPolygon ? Brand.success : theme.textSecondary}
                   />
                   <ThemedText
                     type="default"
                     style={[
                       styles.statValueSmall,
-                      { color: trackedPolygon ? Brand.success : Colors.dark.text },
+                      { color: trackedPolygon ? Brand.success : theme.text },
                     ]}
                   >
                     {trackedPolygon ? formatArea(territoryArea) : '—'}
                   </ThemedText>
-                  <ThemedText type="small" style={styles.statLabel}>
+                  <ThemedText
+                    type="small"
+                    style={[styles.statLabel, { color: theme.textSecondary }]}
+                  >
                     Territory
                   </ThemedText>
                 </View>
                 <View style={styles.stat}>
-                  <Ionicons name="location" size={16} color={Colors.dark.textSecondary} />
+                  <Ionicons name="location" size={16} color={theme.textSecondary} />
                   <NumberFlow
                     value={routePointCount}
                     fontSize={15}
                     fontWeight="700"
-                    color={Colors.dark.text}
+                    color={theme.text}
                   />
-                  <ThemedText type="small" style={styles.statLabel}>
+                  <ThemedText
+                    type="small"
+                    style={[styles.statLabel, { color: theme.textSecondary }]}
+                  >
                     GPS points
                   </ThemedText>
                 </View>
@@ -635,13 +656,13 @@ export default function TrackingScreen() {
               {isTracking ? (
                 <View style={styles.controlRow}>
                   <TouchableOpacity
-                    style={[styles.controlButton, { backgroundColor: Colors.dark.background }]}
+                    style={[styles.controlButton, { backgroundColor: theme.background }]}
                     onPress={handlePause}
                     activeOpacity={0.8}
                     accessibilityRole="button"
                     accessibilityLabel="Pause activity"
                   >
-                    <Ionicons name="pause" size={26} color={Colors.dark.text} />
+                    <Ionicons name="pause" size={26} color={theme.text} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.controlButton, styles.stopButton]}
@@ -656,13 +677,13 @@ export default function TrackingScreen() {
               ) : (
                 <View style={styles.controlRow}>
                   <TouchableOpacity
-                    style={[styles.controlButton, { backgroundColor: Colors.dark.background }]}
+                    style={[styles.controlButton, { backgroundColor: theme.background }]}
                     onPress={handleResume}
                     activeOpacity={0.8}
                     accessibilityRole="button"
                     accessibilityLabel="Resume activity"
                   >
-                    <Ionicons name="play" size={26} color={Colors.dark.text} />
+                    <Ionicons name="play" size={26} color={theme.text} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.controlButton, styles.stopButton]}
@@ -686,7 +707,6 @@ export default function TrackingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.dark.background,
   },
   mapContainer: {
     flex: 1,
@@ -695,7 +715,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   pickerLabel: {
-    color: Colors.dark.textSecondary,
     textAlign: 'center',
     marginBottom: Spacing.three,
   },
@@ -733,7 +752,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   bottomSheet: {
-    backgroundColor: Colors.dark.backgroundElement,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
     paddingBottom: Spacing.four,
@@ -741,7 +759,6 @@ const styles = StyleSheet.create({
   sheetHandle: {
     width: 36,
     height: 4,
-    backgroundColor: Colors.dark.backgroundSelected,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: Spacing.two,
@@ -764,7 +781,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   sheetTitle: {
-    color: Colors.dark.text,
     fontWeight: '700',
     fontSize: 17,
   },
@@ -804,26 +820,21 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
     paddingBottom: Spacing.two,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.dark.border,
   },
   stat: {
     alignItems: 'center',
     gap: Spacing.half,
   },
   statValue: {
-    color: Colors.dark.text,
     fontWeight: '700',
     fontSize: 30,
     fontVariant: ['tabular-nums'],
   },
   statValueSmall: {
-    color: Colors.dark.text,
     fontWeight: '700',
     fontSize: 15,
   },
-  statLabel: {
-    color: Colors.dark.textSecondary,
-  },
+  statLabel: {},
   controls: {
     alignItems: 'center',
     paddingTop: Spacing.two,

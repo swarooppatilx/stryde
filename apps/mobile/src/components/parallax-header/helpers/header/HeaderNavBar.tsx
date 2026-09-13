@@ -1,6 +1,7 @@
 import { BlurView } from 'expo-blur';
 import React, { isValidElement } from 'react';
-import { Dimensions, SafeAreaView, StyleSheet, View } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HeaderNavBarProps } from '../../types';
 
 const WIDTH = Dimensions.get('window').width;
@@ -56,14 +57,25 @@ export const HeaderNavBar: React.FC<HeaderNavBarProps> = ({
     );
   };
 
+  // expo-blur's actual blur effect is inconsistently supported on Android
+  // (depends on OS version/GPU) — when it doesn't render, a fully
+  // transparent background leaves scrolled-past content visible right
+  // through the "collapsed" header instead of hiding it. A semi-opaque
+  // fallback tied to the same tint keeps the header legible either way:
+  // barely noticeable extra tint where blur does render, and the only
+  // thing standing between content and the header where it doesn't.
+  const isDarkTint = tint.toLowerCase().includes('dark');
+  const fallbackBackgroundColor = isDarkTint ? 'rgba(18,18,18,0.85)' : 'rgba(255,255,255,0.85)';
+
   return (
     <BlurView
       style={[
         styles.container,
         {
           height: headerHeight,
-          backgroundColor: 'transparent',
+          backgroundColor: fallbackBackgroundColor,
         },
+        props,
       ]}
       intensity={intensity}
       tint={tint}

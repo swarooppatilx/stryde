@@ -1,4 +1,3 @@
-import { Toast } from '@ant-design/react-native';
 import { services, setLocalRpcUrl } from '@repo/shared';
 import { useEffect, useRef, useState } from 'react';
 import { ENV, getLocalRpcUrl } from '@/constants/config';
@@ -6,6 +5,7 @@ import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
 import { ensureLocalWalletFunded } from '@/utils/anvilFaucet';
+import { Toast } from '@/utils/toast';
 import { useViemWallet } from './useViemWallet';
 
 export function useChainSync() {
@@ -73,11 +73,25 @@ export function useChainSync() {
           territories = composite.territories;
           profile = { isRegistered: true, profileId: composite.profileId };
         } else {
-          const [rawActivities, rawTerritories, rawProfile] = await Promise.all([
+          // allSettled: one registry read failing (e.g. territories) must not
+          // throw away the activities/profile that did sync fine.
+          const [activitiesResult, territoriesResult, profileResult] = await Promise.allSettled([
             services.sync.syncActivitiesFromChain(walletAddress),
             services.sync.syncTerritoriesFromChain(walletAddress),
             services.sync.syncProfileFromChain(walletAddress),
           ]);
+          for (const r of [activitiesResult, territoriesResult, profileResult]) {
+            if (r.status === 'rejected')
+              console.warn('[ChainSync] Partial sync failure:', r.reason);
+          }
+          const rawActivities =
+            activitiesResult.status === 'fulfilled' ? activitiesResult.value : [];
+          const rawTerritories =
+            territoriesResult.status === 'fulfilled' ? territoriesResult.value : [];
+          const rawProfile =
+            profileResult.status === 'fulfilled'
+              ? profileResult.value
+              : { isRegistered: false, profileId: null };
           activities = rawActivities;
           territories = rawTerritories.map((t) => ({
             id: t.id,
@@ -102,17 +116,19 @@ export function useChainSync() {
             return {
               id: local?.id ?? a.activityHash,
               userId: a.owner,
-              name: local?.name || '',
+              name: local?.name || a.metadataName || '',
+              description: local?.description || a.metadataDescription,
               activityType: local?.activityType || a.activityType,
               distance: local?.distance ?? a.distance,
               duration: local?.duration ?? a.duration,
-              polyline: local?.polyline || '',
-              territory: local?.territory || null,
+              polyline: local?.polyline || a.metadataPolyline || '',
+              territory: local?.territory || a.metadataTerritory || null,
               territoryArea: local?.territoryArea ?? a.territoryArea,
               createdAt: local?.createdAt || new Date(a.timestamp * 1000),
               txHash: local?.txHash,
-              image: local?.image,
-              images: local?.images,
+              metadataCid: local?.metadataCid ?? a.metadataCid,
+              image: local?.image ?? a.metadataPhotos?.[0],
+              images: local?.images ?? a.metadataPhotos,
               activityHash: a.activityHash,
               elevationGain: local?.elevationGain,
             };

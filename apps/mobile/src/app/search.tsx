@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SearchBar } from '@/components/search-bar';
@@ -21,6 +21,17 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const searchUsers = useSocialStore((s) => s.searchUsers);
   const searchActivities = useSocialStore((s) => s.searchActivities);
+  const fetchUsers = useSocialStore((s) => s.fetchUsers);
+  const fetchActivities = useSocialStore((s) => s.fetchActivities);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchUsers(), fetchActivities()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchUsers, fetchActivities]);
 
   const trimmedQuery = query.trim();
 
@@ -85,7 +96,18 @@ export default function SearchScreen() {
           />
         </ThemedView>
 
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.brand.primary}
+              colors={[theme.brand.primary]}
+            />
+          }
+        >
           {!hasQuery && (
             <ThemedView style={styles.hint}>
               <Ionicons name="search" size={40} color={theme.textSecondary} />

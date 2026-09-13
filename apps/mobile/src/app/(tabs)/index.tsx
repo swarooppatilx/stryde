@@ -1,20 +1,24 @@
-import { Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   FlatList,
   Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { AppButton } from '@/components/button';
 import { CommentsSheet } from '@/components/comments-sheet';
 import { EmptyInboxState } from '@/components/empty-inbox-v1';
@@ -27,8 +31,10 @@ import { useTheme } from '@/hooks/use-theme';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
 import { type SocialActivity, type SocialUser, useSocialStore } from '@/stores/socialStore';
+import { Alert } from '@/utils/alert';
 import { getWeeklyStats } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { Toast } from '@/utils/toast';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -60,9 +66,32 @@ export default function HomeScreen() {
   const [commentActivityId, setCommentActivityId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // The FAB floats over feed cards, so it hides while scrolling down (reading)
+  // and comes back on scroll up — otherwise it permanently covers whichever
+  // card's Kudos/Comment/Share row sits at the bottom of the viewport.
+  const fabHidden = useSharedValue(0);
+  const lastScrollY = useRef(0);
+  const onFeedScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      const delta = y - lastScrollY.current;
+      lastScrollY.current = y;
+      if (y <= 0) fabHidden.value = withTiming(0, { duration: 180 });
+      else if (delta > 6) fabHidden.value = withTiming(1, { duration: 180 });
+      else if (delta < -6) fabHidden.value = withTiming(0, { duration: 180 });
+    },
+    [fabHidden]
+  );
+  const fabAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - fabHidden.value,
+    transform: [{ translateY: fabHidden.value * 120 }],
+  }));
+
   // Local saves should appear immediately, including posts not yet recorded onchain.
   // biome-ignore lint/correctness/useExhaustiveDependencies: activities triggers synchronization from the local store
-  useEffect(() => syncLocalActivities(), [activities, syncLocalActivities]);
+  useEffect(() => {
+    syncLocalActivities();
+  }, [activities, syncLocalActivities]);
 
   const greeting = useMemo(() => getGreeting(), []);
 
@@ -215,8 +244,7 @@ export default function HomeScreen() {
       <EmptyInboxState
         title="No posts yet"
         description="Your activities and posts from the community will appear here."
-        actionLabel="Find friends"
-        onActionPress={() => router.push('/find-friends')}
+        hideAction
         animated={false}
         colors={{
           screen: 'transparent',
@@ -228,7 +256,7 @@ export default function HomeScreen() {
         style={styles.emptyCard}
       />
     ),
-    [router, theme]
+    [theme]
   );
 
   return (
@@ -243,6 +271,8 @@ export default function HomeScreen() {
           ItemSeparatorComponent={FeedSeparator}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
+          onScroll={onFeedScroll}
+          scrollEventThrottle={32}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -258,7 +288,7 @@ export default function HomeScreen() {
       </SafeAreaView>
 
       {/* ── FAB ── */}
-      <ThemedView style={styles.fab}>
+      <Animated.View style={[styles.fab, fabAnimatedStyle]}>
         <UnfoldMenu
           theme={theme.isDark ? 'dark' : 'light'}
           onSelect={handleFabAction}
@@ -315,7 +345,7 @@ export default function HomeScreen() {
             </UnfoldMenu.Grid>
           </UnfoldMenu.Content>
         </UnfoldMenu>
-      </ThemedView>
+      </Animated.View>
 
       {/* Comments sheet */}
       <CommentsSheet
@@ -335,7 +365,9 @@ function formatDistanceLocal(meters: number): string {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
-  scroll: { padding: Spacing.four },
+  // Bottom padding reserves room for the absolutely-positioned FAB so it
+  // floats over empty space instead of sitting on top of the last card.
+  scroll: { padding: Spacing.four, paddingBottom: Spacing.four + 72 },
   listHeader: { gap: Spacing.three, marginBottom: Spacing.two },
 
   /* Top Bar */

@@ -1,4 +1,4 @@
-import { Input, List, SwipeAction, Toast } from '@ant-design/react-native';
+import { Input, List, SwipeAction } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePrivy } from '@privy-io/expo';
 import { services } from '@repo/shared';
@@ -7,10 +7,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther, formatUnits } from 'viem';
-
 import { AchievementBadge } from '@/components/achievement-badge';
 import { Card } from '@/components/card';
 import { ListIcon } from '@/components/list-icon';
@@ -38,6 +44,7 @@ import { useProfileStore } from '@/stores/profileStore';
 import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
 import { computeAchievements } from '@/utils/achievements';
+import { Alert } from '@/utils/alert';
 import {
   formatArea,
   formatDistance,
@@ -47,6 +54,7 @@ import {
   getWeeklyStats,
 } from '@/utils/format';
 import { computePersonalRecords, computeStreak } from '@/utils/profile';
+import { Toast } from '@/utils/toast';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const TABS = ['Progress', 'Activities', 'More'] as const;
@@ -106,34 +114,51 @@ export default function ProfileScreen() {
   // auth wallet — in local dev mode these differ (see AGENTS.md).
   const walletAddress = address;
   const ensName = useEnsName(walletAddress);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadBalances = useCallback(
+    (address: `0x${string}`, signal: { cancelled: boolean }) =>
+      Promise.all([
+        services.client
+          .getBalance(address)
+          .then((wei) => {
+            if (!signal.cancelled) setBalanceWei(wei);
+          })
+          .catch(() => {
+            if (!signal.cancelled) setBalanceWei(null);
+          }),
+        services.moveToEarnToken
+          .getTokenBalance(address)
+          .then((wei) => {
+            if (!signal.cancelled) setStrdBalanceWei(wei);
+          })
+          .catch(() => {
+            if (!signal.cancelled) setStrdBalanceWei(null);
+          }),
+      ]),
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
       if (!walletAddress) return;
-      let cancelled = false;
-      Promise.all([
-        services.client
-          .getBalance(walletAddress)
-          .then((wei) => {
-            if (!cancelled) setBalanceWei(wei);
-          })
-          .catch(() => {
-            if (!cancelled) setBalanceWei(null);
-          }),
-        services.moveToEarnToken
-          .getTokenBalance(walletAddress)
-          .then((wei) => {
-            if (!cancelled) setStrdBalanceWei(wei);
-          })
-          .catch(() => {
-            if (!cancelled) setStrdBalanceWei(null);
-          }),
-      ]);
+      const signal = { cancelled: false };
+      loadBalances(walletAddress, signal);
       return () => {
-        cancelled = true;
+        signal.cancelled = true;
       };
-    }, [walletAddress])
+    }, [walletAddress, loadBalances])
   );
+
+  const onRefresh = useCallback(async () => {
+    if (!walletAddress) return;
+    setRefreshing(true);
+    try {
+      await loadBalances(walletAddress, { cancelled: false });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [walletAddress, loadBalances]);
 
   const totalDistance = useMemo(
     () => activities.reduce((sum, a) => sum + a.distance, 0),
@@ -434,6 +459,14 @@ export default function ProfileScreen() {
       <AnimatedScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.brand.primary}
+            colors={[theme.brand.primary]}
+          />
+        }
         headerMaxHeight={260}
         topBarHeight={90}
         renderHeaderComponent={() => (
@@ -1076,7 +1109,11 @@ export default function ProfileScreen() {
                         <ThemedText type="small" style={styles.sportDistance}>
                           {formatDistance(totalDistance, unitSystem)}
                         </ThemedText>
-                        <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                        <ThemedText
+                          type="small"
+                          numberOfLines={1}
+                          style={{ color: theme.textSecondary }}
+                        >
                           This year
                         </ThemedText>
                       </ThemedView>
@@ -1091,7 +1128,11 @@ export default function ProfileScreen() {
                         <ThemedText type="small" style={styles.sportDistance}>
                           {formatDuration(totalDuration)}
                         </ThemedText>
-                        <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                        <ThemedText
+                          type="small"
+                          numberOfLines={1}
+                          style={{ color: theme.textSecondary }}
+                        >
                           This year
                         </ThemedText>
                       </ThemedView>

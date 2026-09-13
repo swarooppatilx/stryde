@@ -4,7 +4,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatUnits } from 'viem';
-
 import { AppButton } from '@/components/button';
 import { PhotoPicker } from '@/components/photo-picker';
 import { PrivacyPicker } from '@/components/privacy-picker';
@@ -33,6 +31,7 @@ import { useActivityStore } from '@/stores/activityStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
 import { useWorldVerificationStore } from '@/stores/worldVerificationStore';
 import type { Activity, ActivityFeel, ActivityPrivacy, ActivityType } from '@/types';
+import { Alert } from '@/utils/alert';
 import { formatArea, formatDistance, formatDuration, getActivityName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
@@ -200,6 +199,12 @@ export default function CreateActivityScreen() {
                 name: activity.name,
                 description: activity.description,
                 photos: uploadedPhotos.length > 0 ? uploadedPhotos : undefined,
+                // The chain only ever stores a hash/distance/duration/area —
+                // this is the only durable place the actual route/territory
+                // shape lives, so any other viewer (or this device after a
+                // logout) can still render a map thumbnail for it.
+                polyline: polyline || undefined,
+                territory: territory ?? undefined,
               }
             );
             if (metadataResult?.confirmed) {
@@ -303,7 +308,7 @@ export default function CreateActivityScreen() {
   const handleBack = () => {
     if (title.trim() || description.trim() || photos.length > 0) {
       // eslint-disable-next-line no-alert
-      require('react-native').Alert.alert('Discard Activity?', 'Your changes will be lost.', [
+      Alert.alert('Discard Activity?', 'Your changes will be lost.', [
         { text: 'Keep Editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => router.back() },
       ]);

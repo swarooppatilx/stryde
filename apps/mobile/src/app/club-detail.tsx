@@ -2,7 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther, parseEther } from 'viem';
 
@@ -97,6 +104,20 @@ export default function ClubDetailScreen() {
       refreshTreasury();
     }, [fetchClubs, fetchJoinedClubs, address, refreshTreasury])
   );
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchClubs(),
+        address ? fetchJoinedClubs(address) : Promise.resolve(),
+        refreshTreasury(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchClubs, fetchJoinedClubs, address, refreshTreasury]);
 
   if (!club) {
     return (
@@ -209,7 +230,18 @@ export default function ClubDetailScreen() {
           <View style={{ width: 24 }} />
         </ThemedView>
 
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.brand.primary}
+              colors={[theme.brand.primary]}
+            />
+          }
+        >
           {/* Club Icon + Name */}
           <ThemedView style={styles.hero}>
             <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>

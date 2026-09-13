@@ -1,14 +1,14 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, type View } from 'react-native';
+import type Svg from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
-
 import { type ElevationData, getElevationForRoute } from '@/services/elevationService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useSocialStore } from '@/stores/socialStore';
 import type { Activity } from '@/types';
+import { Alert } from '@/utils/alert';
 import { parsePolyline } from '@/utils/format';
-import { shareRouteImage } from '@/utils/share';
+import { copyRouteImage, saveRouteImage, shareRouteImage } from '@/utils/share';
 
 export function useActivity() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,7 +25,7 @@ export function useActivity() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [elevationData, setElevationData] = useState<ElevationData | null>(null);
-  const viewRef = useRef<View>(null);
+  const svgRef = useRef<Svg>(null);
 
   const activity: Activity | undefined = id
     ? (getActivityById(id) ?? socialActivities[id.toLowerCase()])
@@ -91,8 +91,16 @@ export function useActivity() {
 
   const share = useCallback(async () => {
     if (!activity) return;
-    await shareRouteImage(viewRef, activity.id);
+    await shareRouteImage(svgRef, activity.id);
   }, [activity]);
+
+  const copy = useCallback(async () => {
+    await copyRouteImage(svgRef);
+  }, []);
+
+  const download = useCallback(async () => {
+    await saveRouteImage(svgRef);
+  }, []);
 
   const goBack = useCallback(() => router.replace('/(tabs)'), [router]);
 
@@ -103,11 +111,13 @@ export function useActivity() {
     editedName,
     setEditedName,
     elevationData,
-    viewRef,
+    svgRef,
     handleDelete: deleteActivityFlow,
     handleStartEditName: startEditName,
     handleSaveName: saveName,
     handleShare: share,
+    handleCopy: copy,
+    handleDownload: download,
     goBack,
   };
 }

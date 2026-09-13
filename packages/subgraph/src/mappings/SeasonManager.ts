@@ -5,6 +5,7 @@ import {
   SeasonStarted,
 } from '../../generated/SeasonManager/SeasonManager';
 import { Contribution, Season, SeasonParticipant } from '../../generated/schema';
+import { getOrCreateProfile } from '../helpers';
 
 export function handleSeasonStarted(event: SeasonStarted): void {
   const season = new Season(event.params.seasonId.toString());
@@ -37,7 +38,7 @@ export function handleContributionRecorded(event: ContributionRecorded): void {
   if (!seasonParticipant) {
     seasonParticipant = new SeasonParticipant(participantId);
     seasonParticipant.season = event.params.seasonId.toString();
-    seasonParticipant.user = event.params.participant;
+    seasonParticipant.user = getOrCreateProfile(event.params.participant).id;
 
     season.participantCount = season.participantCount.plus(BigInt.fromI32(1));
   }
@@ -48,7 +49,7 @@ export function handleContributionRecorded(event: ContributionRecorded): void {
 
   const contribution = new Contribution(event.transaction.hash.concatI32(event.logIndex.toI32()));
   contribution.season = event.params.seasonId.toString();
-  contribution.user = event.params.participant;
+  contribution.user = getOrCreateProfile(event.params.participant).id;
   contribution.distance = event.params.contribution;
   contribution.recordedAt = event.block.timestamp;
   contribution.save();

@@ -5,10 +5,11 @@ import {
   TerritoryReinforced,
 } from '../../generated/TerritoryRegistry/TerritoryRegistry';
 import { Territory } from '../../generated/schema';
+import { getOrCreateProfile } from '../helpers';
 
 export function handleTerritoryClaimed(event: TerritoryClaimed): void {
   const territory = new Territory(event.params.territoryId);
-  territory.owner = event.params.controller;
+  territory.owner = getOrCreateProfile(event.params.controller).id;
   territory.area = event.params.areaSqm;
   territory.strength = event.params.strength;
   territory.capturedAt = event.params.capturedAt;

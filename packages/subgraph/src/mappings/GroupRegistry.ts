@@ -9,6 +9,7 @@ import {
   TreasuryWithdrawn,
 } from '../../generated/GroupRegistry/GroupRegistry';
 import { Group, GroupMember } from '../../generated/schema';
+import { getOrCreateProfile } from '../helpers';
 
 function memberId(groupId: string, member: string): string {
   return groupId.concat('-').concat(member);
@@ -31,7 +32,7 @@ export function handleGroupCreated(event: GroupCreated): void {
 
   const member = new GroupMember(memberId(groupId, event.params.owner.toHexString()));
   member.group = groupId;
-  member.user = event.params.owner;
+  member.user = getOrCreateProfile(event.params.owner).id;
   member.joinedAt = event.params.createdAt;
   member.active = true;
   member.save();
@@ -50,7 +51,7 @@ export function handleGroupJoined(event: GroupJoined): void {
   if (!member) {
     member = new GroupMember(id);
     member.group = groupId;
-    member.user = event.params.member;
+    member.user = getOrCreateProfile(event.params.member).id;
   }
   member.joinedAt = event.block.timestamp;
   member.active = true;

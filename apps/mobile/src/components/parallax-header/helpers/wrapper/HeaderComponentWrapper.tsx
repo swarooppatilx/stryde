@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import type React from 'react';
-import { SafeAreaView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
 import type { HeaderComponentWrapperProps } from '../../types';
 
 export const HeaderComponentWrapper: React.FC<HeaderComponentWrapperProps> = ({
@@ -15,7 +15,11 @@ export const HeaderComponentWrapper: React.FC<HeaderComponentWrapperProps> = ({
       {children}
       {useGradient && (
         <LinearGradient
-          colors={gradientColors as any}
+          colors={
+            gradientColors && gradientColors.length >= 2
+              ? [gradientColors[0], gradientColors[1], ...gradientColors.slice(2)]
+              : ['transparent', 'transparent']
+          }
           style={{
             position: 'absolute',
             top: 0,

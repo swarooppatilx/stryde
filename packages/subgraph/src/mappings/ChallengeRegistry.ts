@@ -6,11 +6,12 @@ import {
   ChallengeWithdrawn,
 } from '../../generated/ChallengeRegistry/ChallengeRegistry';
 import { Challenge } from '../../generated/schema';
+import { getOrCreateProfile } from '../helpers';
 
 export function handleChallengeCreated(event: ChallengeCreated): void {
   const challenge = new Challenge(event.params.challengeId.toString());
-  challenge.challenger = event.params.challenger;
-  challenge.opponent = event.params.opponent;
+  challenge.challenger = getOrCreateProfile(event.params.challenger).id;
+  challenge.opponent = getOrCreateProfile(event.params.opponent).id;
   challenge.activityType = event.params.activityType;
   challenge.targetMetric = event.params.targetMetric;
   challenge.deadline = event.params.deadline;

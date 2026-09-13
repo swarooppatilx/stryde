@@ -49,6 +49,12 @@ export interface MapRouteProps {
   mapStyleUrl?: string;
   cameraRef?: React.RefObject<CameraRef | null>;
   activityRoutes?: ActivityRoute[];
+  /** Top offset (px) for MapLibre's native compass widget. Callers that
+   * render their own floating control buttons over the map (e.g. the Map
+   * tab) should pass the actual bottom edge of that stack so the compass
+   * doesn't render underneath/behind it. Defaults to a sensible offset for
+   * screens with no competing overlay near the top-right. */
+  compassTopOffset?: number;
 }
 
 class MapErrorBoundary extends React.Component<
@@ -262,6 +268,7 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   mapStyleUrl,
   cameraRef,
   activityRoutes = [],
+  compassTopOffset = 150,
 }: MapRouteProps) {
   const routeGeoJSON = useMemo(() => {
     if (!coordinates || coordinates.length < 2) return null;
@@ -306,7 +313,7 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
     <MapLibreMap
       style={[styles.map, style]}
       mapStyle={resolvedMapStyle}
-      compassPosition={{ top: 150, right: Spacing.three }}
+      compassPosition={{ top: compassTopOffset, right: Spacing.three }}
     >
       <Camera
         ref={cameraRef}

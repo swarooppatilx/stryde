@@ -17,13 +17,14 @@ import { OtpInput } from '@/components/otp-input';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 const RESEND_SECONDS = 30;
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
@@ -57,6 +58,7 @@ export default function LoginScreen() {
         router.replace('/');
       } catch (_err) {
         setError('Invalid code. Please try again.');
+        setCode('');
         setOtpResetKey((k) => k + 1);
       } finally {
         submittingRef.current = false;
@@ -83,6 +85,7 @@ export default function LoginScreen() {
 
   const handleResend = async () => {
     if (secondsLeft > 0) return;
+    setCode('');
     setOtpResetKey((k) => k + 1);
     setError(null);
     setSecondsLeft(RESEND_SECONDS);
@@ -106,6 +109,7 @@ export default function LoginScreen() {
               style={[styles.backButton, { backgroundColor: theme.backgroundElement }]}
               onPress={() => {
                 setCodeSent(false);
+                setCode('');
                 setOtpResetKey((k) => k + 1);
                 setError(null);
               }}
@@ -128,23 +132,13 @@ export default function LoginScreen() {
               <View style={styles.otpBox}>
                 <OtpInput
                   key={otpResetKey}
-                  otpCount={6}
-                  enableAutoFocus
-                  editable={!isSubmitting}
-                  error={!!error}
-                  onInputFinished={handleLogin}
-                  animationVariant="fadeSlideUp"
-                  inputWidth={44}
-                  inputHeight={52}
-                  inputBorderRadius={BorderRadius.md}
-                  focusedColor={theme.text}
-                  textStyle={{ color: theme.text }}
-                  focusedBackgroundColor={theme.backgroundElement}
-                  unfocusedBackgroundColor={theme.backgroundElement}
-                  focusedBorderColor={theme.brand.primary}
-                  unfocusedBorderColor={theme.border}
-                  errorBackgroundColor={theme.backgroundElement}
-                  errorBorderColor={Brand.danger}
+                  length={6}
+                  value={code}
+                  onChange={(value) => {
+                    setCode(value);
+                    if (value.length === 6) handleLogin(value);
+                  }}
+                  autoFocus
                 />
               </View>
 

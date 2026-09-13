@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -15,14 +15,15 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-
+import type Svg from 'react-native-svg';
 import { AvatarStack } from '@/components/avatar-stack';
 import { RouteThumbnail } from '@/components/route-thumbnail';
+import { ShareRouteImage } from '@/components/share-route-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Spacing, tint } from '@/constants/theme';
+import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useEnsName } from '@/hooks/useEnsName';
@@ -34,6 +35,7 @@ import {
   formatRelativeTime,
   getDisplayName,
   getInitials,
+  parsePolyline,
 } from '@/utils/format';
 import { haptics, impactLight } from '@/utils/haptics';
 import { shareRouteImage } from '@/utils/share';
@@ -248,95 +250,6 @@ function MediaSection({
   );
 }
 
-// Off-screen, transparent-background rendering of the card's shareable
-// content (avatar, name, stats, media) — excludes interactive chrome like
-// the kudos/comment/share action bar and comment preview. Captured via
-// `shareCardRef` so the resulting PNG has an alpha channel instead of the
-// visible card's opaque theme background, which is required for a clean
-// Instagram Stories overlay.
-function ShareableCardContent({
-  activity,
-  user,
-  theme,
-  icon,
-  ensName,
-}: {
-  activity: SocialActivity;
-  user: SocialUser;
-  theme: ReturnType<typeof useTheme>;
-  icon: keyof typeof Ionicons.glyphMap;
-  ensName?: string | null;
-}) {
-  return (
-    <ThemedView style={[styles.card, { backgroundColor: 'transparent' }]}>
-      {/* Header: user info */}
-      <View style={styles.header}>
-        <UserAvatar name={user.username} avatarUrl={user.avatar} />
-        <View style={styles.headerText}>
-          <ThemedText type="smallBold" numberOfLines={1}>
-            {ensName || user.username}
-          </ThemedText>
-          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            {formatRelativeTime(activity.createdAt)} ·{' '}
-            {activity.activityType.charAt(0).toUpperCase() + activity.activityType.slice(1)}
-            {user.location ? ` · ${user.location}` : ''}
-          </ThemedText>
-        </View>
-      </View>
-
-      {/* Activity title */}
-      <ThemedText type="sectionTitle" numberOfLines={1} style={styles.title}>
-        {activity.name}
-      </ThemedText>
-
-      {/* Stats row - hide for image-only posts */}
-      {(activity.distance > 0 || activity.duration > 0) && (
-        <ThemedView style={styles.statsRow}>
-          {activity.distance > 0 && (
-            <ThemedView style={styles.stat}>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                Distance
-              </ThemedText>
-              <ThemedText type="smallBold">{formatDistance(activity.distance)}</ThemedText>
-            </ThemedView>
-          )}
-          {activity.duration > 0 && (
-            <ThemedView style={styles.stat}>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                Time
-              </ThemedText>
-              <ThemedText type="smallBold">{formatDuration(activity.duration)}</ThemedText>
-            </ThemedView>
-          )}
-          {activity.elevationGain != null && activity.elevationGain > 0 && (
-            <ThemedView style={styles.stat}>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                Elevation
-              </ThemedText>
-              <ThemedText type="smallBold">{formatElevation(activity.elevationGain)}</ThemedText>
-            </ThemedView>
-          )}
-        </ThemedView>
-      )}
-
-      {/* Media: image, route, or carousel */}
-      <MediaSection activity={activity} icon={icon} theme={theme} onPress={() => {}} />
-
-      {/* Territory badge */}
-      {activity.territoryArea > 0 && (
-        <ThemedView
-          style={[styles.territoryBadge, { backgroundColor: tint(theme.brand.success, 0.1) }]}
-        >
-          <Ionicons name="shield-checkmark" size={14} color={theme.brand.success} />
-          <ThemedText type="caption" style={{ color: theme.brand.success }}>
-            Territory captured
-          </ThemedText>
-        </ThemedView>
-      )}
-    </ThemedView>
-  );
-}
-
 export function FeedCard({
   activity,
   user,
@@ -354,8 +267,9 @@ export function FeedCard({
     (id) => id.toLowerCase() === getCurrentUserId().toLowerCase()
   );
   const cardRef = useRef<View>(null);
-  const shareCardRef = useRef<View>(null);
+  const svgRef = useRef<Svg>(null);
   const icon = (SPORT_ICONS[activity.activityType] || 'walk') as keyof typeof Ionicons.glyphMap;
+  const routeCoordinates = useMemo(() => parsePolyline(activity.polyline), [activity.polyline]);
 
   // Kudos animation
   const kudosScale = useSharedValue(1);
@@ -372,9 +286,9 @@ export function FeedCard({
     onKudos();
   };
 
-  const handleShare = () => {
+  const handleSharePress = () => {
     haptics.tap();
-    shareRouteImage(shareCardRef, activity.id);
+    shareRouteImage(svgRef, activity.id);
   };
 
   return (
@@ -452,18 +366,6 @@ export function FeedCard({
             onMapPress={onMapPress}
           />
 
-          {/* Territory badge */}
-          {activity.territoryArea > 0 && (
-            <ThemedView
-              style={[styles.territoryBadge, { backgroundColor: tint(theme.brand.success, 0.1) }]}
-            >
-              <Ionicons name="shield-checkmark" size={14} color={theme.brand.success} />
-              <ThemedText type="caption" style={{ color: theme.brand.success }}>
-                Territory captured
-              </ThemedText>
-            </ThemedView>
-          )}
-
           {/* Kudos + comments count row */}
           <ThemedView style={styles.socialProof}>
             {activity.kudos.length > 0 && (
@@ -531,7 +433,7 @@ export function FeedCard({
 
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={handleShare}
+              onPress={handleSharePress}
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Share activity"
@@ -565,17 +467,17 @@ export function FeedCard({
         </ThemedView>
       </View>
 
-      {/* Off-screen transparent copy captured for sharing — see ShareableCardContent above */}
+      {/* Off-screen 9:16 stat card, rendered for sharing — see handleSharePress */}
       <View style={styles.shareCardContainer} pointerEvents="none">
-        <View ref={shareCardRef} collapsable={false}>
-          <ShareableCardContent
-            activity={activity}
-            user={user}
-            theme={theme}
-            icon={icon}
-            ensName={ensName}
-          />
-        </View>
+        <ShareRouteImage
+          ref={svgRef}
+          coordinates={routeCoordinates}
+          territory={activity.territory}
+          territoryArea={activity.territoryArea}
+          distance={activity.distance}
+          duration={activity.duration}
+          height={1920}
+        />
       </View>
     </View>
   );
@@ -647,19 +549,6 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  territoryBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.one + Spacing.half,
-    marginHorizontal: Spacing.three,
-    marginTop: Spacing.two,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: BorderRadius.full,
-  },
   socialProof: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -698,6 +587,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10000,
     left: 0,
+    width: 1080,
+    height: 1920,
   },
   commentPreview: {
     paddingHorizontal: Spacing.three,

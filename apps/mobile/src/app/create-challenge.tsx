@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther, parseEther } from 'viem';
-
 import { AppButton } from '@/components/button';
 import { SearchBar } from '@/components/search-bar';
 import { SportTypePicker } from '@/components/sport-type-picker';
@@ -28,6 +26,7 @@ import { useEnsName } from '@/hooks/useEnsName';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import type { ActivityType } from '@/types';
+import { Alert } from '@/utils/alert';
 import { getInitials } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 

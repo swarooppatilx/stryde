@@ -1,15 +1,18 @@
 import { PrivyProvider } from '@privy-io/expo';
 import { SmartWalletsProvider } from '@privy-io/expo/smart-wallets';
 import { setChainMode, setIpfsConfig } from '@repo/shared';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { Chain } from 'viem';
 import { baseSepolia, sepolia } from 'viem/chains';
+import { AlertHost } from '@/components/alert-host';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AppErrorBoundary, AppErrorFallback } from '@/components/error-boundary';
 import { ThemeProvider } from '@/components/theme-provider';
+import { ToastHost } from '@/components/toast-host';
 import { ENV } from '@/constants/config';
 import { useChainSync } from '@/hooks/useChainSync';
 import { usePrivyMetadataSync } from '@/hooks/usePrivyMetadataSync';
@@ -46,6 +49,13 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
   const fetchUsers = useSocialStore((s) => s.fetchUsers);
   const fetchActivities = useSocialStore((s) => s.fetchActivities);
   const [slowInit, setSlowInit] = useState(false);
+  // @ant-design/react-native's List.Item arrow glyph (and other icon-font
+  // usages) render as tofu boxes unless these are registered — the package
+  // ships the fonts but never wires them into expo-font itself.
+  const [iconFontsLoaded] = useFonts({
+    antoutline: require('@ant-design/icons-react-native/fonts/antoutline.ttf'),
+    antfill: require('@ant-design/icons-react-native/fonts/antfill.ttf'),
+  });
 
   useEffect(() => {
     if (ready) return;
@@ -71,7 +81,7 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
     );
   }
 
-  if (!ready || syncing) {
+  if (!ready || syncing || !iconFontsLoaded) {
     // Render nothing until the auth guard has decided the first route so the
     // main UI never flashes before the login/onboarding redirect.
     return <AnimatedSplashOverlay />;
@@ -128,6 +138,8 @@ export default function RootLayout() {
           <ThemeProvider>
             <AppErrorBoundary>
               <RootLayoutNav onSlowInitRetry={retryPrivyInit} />
+              <ToastHost />
+              <AlertHost />
             </AppErrorBoundary>
           </ThemeProvider>
         </SmartWalletsProvider>

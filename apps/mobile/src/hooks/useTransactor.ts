@@ -1,7 +1,7 @@
-import { Toast } from '@ant-design/react-native';
 import { useCallback, useRef } from 'react';
 import { ENV } from '@/constants/config';
 import { getParsedError } from '@/utils/errors';
+import { Toast } from '@/utils/toast';
 
 interface TxResult {
   confirmed: boolean;

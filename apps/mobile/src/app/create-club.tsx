@@ -3,7 +3,6 @@ import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -12,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { AppButton } from '@/components/button';
 import { SportTypePicker } from '@/components/sport-type-picker';
 import { TextField } from '@/components/text-field';
@@ -25,6 +23,7 @@ import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { sportTypeToOnchain, useCommunityStore } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
+import { Alert } from '@/utils/alert';
 import { haptics } from '@/utils/haptics';
 
 export default function CreateClubScreen() {

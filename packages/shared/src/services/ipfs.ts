@@ -1,3 +1,5 @@
+import type { Ring } from '../types';
+
 export interface IpfsConfig {
   /** Base URL of this app's own relay API (see packages/api/src/routes/ipfs.ts),
    * e.g. `https://api.example.com` or `http://localhost:3000`. */
@@ -28,6 +30,14 @@ export interface ActivityMetadata {
   name?: string;
   description?: string;
   photos?: string[];
+  /** Encoded route, and the closed territory ring if this activity captured
+   * one — the only durable place either lives. ActivityRegistry itself only
+   * stores a hash/distance/duration/area, and a bare polygon/route never fit
+   * on-chain economically, so without this a viewer who isn't the device
+   * that recorded the run (any other user, or a purely chain-seeded
+   * activity) has no map/route thumbnail to render at all. */
+  polyline?: string;
+  territory?: Ring | null;
 }
 
 const UPLOAD_TIMEOUT_MS = 30_000;

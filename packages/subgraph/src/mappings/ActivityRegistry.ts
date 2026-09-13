@@ -1,11 +1,12 @@
 import { Bytes } from '@graphprotocol/graph-ts';
 import { ActivityMetadataUpdated, ActivityRecorded } from '../../generated/ActivityRegistry/ActivityRegistry';
 import { Activity } from '../../generated/schema';
+import { getOrCreateProfile } from '../helpers';
 
 export function handleActivityRecorded(event: ActivityRecorded): void {
   const activity = new Activity(Bytes.fromUTF8(event.params.activityId.toString()));
   activity.activityId = event.params.activityId;
-  activity.user = event.params.owner;
+  activity.user = getOrCreateProfile(event.params.owner).id;
   activity.activityHash = event.params.activityHash;
   activity.activityType = event.params.activityType;
   activity.distance = event.params.distance;

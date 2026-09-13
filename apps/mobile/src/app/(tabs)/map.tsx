@@ -30,6 +30,12 @@ export default function MapScreen() {
   } = useMap();
   const insets = useSafeAreaInsets();
 
+  // Bottom edge of the 3-button control stack below (each controlBtn is 44px
+  // tall with Spacing.two gaps between), plus breathing room, so MapLibre's
+  // native compass widget never renders underneath it.
+  const controlStackHeight = 44 * 3 + Spacing.two * 2;
+  const compassTopOffset = insets.top + 16 + controlStackHeight + Spacing.three;
+
   const routes = useMemo(
     () =>
       activityRoutes.map((r) => ({
@@ -53,6 +59,7 @@ export default function MapScreen() {
             initialZoom={15}
             mapStyleUrl={theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager}
             activityRoutes={routes}
+            compassTopOffset={compassTopOffset}
           />
 
           {/* Map Controls */}

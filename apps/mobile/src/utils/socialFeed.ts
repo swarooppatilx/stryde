@@ -16,6 +16,12 @@ export function mergeLocalActivities(
       ...existing,
       ...local,
       activityId: existing?.activityId ?? (local as Activity & { activityId?: bigint }).activityId,
+      // A local copy synced from chain can have blank route/name fields while
+      // the chain-side record carries them from IPFS metadata — don't let the
+      // blanks win.
+      name: local.name || existing?.name,
+      polyline: local.polyline || existing?.polyline || '',
+      territory: local.territory || existing?.territory || null,
       kudos: existing?.kudos ?? local.kudos ?? [],
       comments: existing?.comments ?? local.comments ?? [],
     };

@@ -57,7 +57,7 @@ describe('computeStreak', () => {
   });
 
   it('deduplicates same-day activities', () => {
-    const today = new Date();
+    const today = daysAgo(0);
     const activities = [
       makeActivity({ id: '1', createdAt: today }),
       makeActivity({ id: '2', createdAt: new Date(today.getTime() + 3600_000) }),

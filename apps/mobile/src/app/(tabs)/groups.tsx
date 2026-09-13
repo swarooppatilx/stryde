@@ -14,7 +14,6 @@ import { formatEther } from 'viem';
 
 import { AppButton } from '@/components/button';
 import { FilterChips, type SportFilter } from '@/components/filter-chips';
-import { Shimmer } from '@/components/Shimmer/Shimmer';
 import { SearchBar } from '@/components/search-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -371,26 +370,8 @@ export default function CommunityScreen() {
   };
 
   const renderSkeleton = () => (
-    <ThemedView style={styles.challengeSkeletonList}>
-      {[0, 1, 2].map((i) => (
-        <ThemedView key={i} style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedView style={styles.cardRow}>
-            <Shimmer isLoading preset={theme.isDark ? 'dark' : 'light'} style={styles.iconCircle} />
-            <ThemedView style={styles.cardInfo}>
-              <Shimmer
-                isLoading
-                preset={theme.isDark ? 'dark' : 'light'}
-                style={styles.skeletonLine}
-              />
-              <Shimmer
-                isLoading
-                preset={theme.isDark ? 'dark' : 'light'}
-                style={styles.skeletonLineShort}
-              />
-            </ThemedView>
-          </ThemedView>
-        </ThemedView>
-      ))}
+    <ThemedView style={styles.loadingContainer}>
+      <ActivityIndicator size="small" color={theme.brand.primary} />
     </ThemedView>
   );
 
@@ -461,36 +442,13 @@ export default function CommunityScreen() {
         ))}
       </ThemedView>
 
-      {/* Demo vs on-chain data indicator */}
-      <ThemedView
-        style={[
-          styles.dataBadge,
-          {
-            backgroundColor: isEvents ? theme.backgroundElement : theme.brand.primaryTint,
-          },
-        ]}
-      >
-        <Ionicons
-          name={isEvents ? 'flask-outline' : 'link'}
-          size={12}
-          color={isEvents ? theme.textSecondary : theme.brand.primary}
-        />
-        <ThemedText
-          type="caption"
-          style={{
-            color: isEvents ? theme.textSecondary : theme.brand.primary,
-          }}
-        >
-          {isEvents ? 'Demo data' : 'On-chain'}
-        </ThemedText>
-      </ThemedView>
-
       {/* Search Bar */}
       {(isClubs || isEvents) && (
         <SearchBar
           value={query}
           onChangeText={setQuery}
           placeholder={isClubs ? 'Search clubs...' : 'Search events...'}
+          style={styles.searchBar}
         />
       )}
 
@@ -582,15 +540,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  dataBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 4,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.full,
-    marginTop: Spacing.two,
+  searchBar: {
+    marginTop: Spacing.three,
   },
   card: {
     borderRadius: BorderRadius.lg,
@@ -612,18 +563,9 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  challengeSkeletonList: {
-    gap: Spacing.three,
-  },
-  skeletonLine: {
-    width: '70%',
-    height: 14,
-    borderRadius: BorderRadius.sm,
-  },
-  skeletonLineShort: {
-    width: '40%',
-    height: 12,
-    borderRadius: BorderRadius.sm,
+  loadingContainer: {
+    paddingVertical: Spacing.six,
+    alignItems: 'center',
   },
   joinBtn: {
     paddingHorizontal: Spacing.three,

@@ -1,10 +1,8 @@
-import { Toast } from '@ant-design/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getActiveConfig, services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Linking,
   RefreshControl,
   ScrollView,
@@ -26,9 +24,11 @@ import { useEnsName } from '@/hooks/useEnsName';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useSocialStore } from '@/stores/socialStore';
+import { Alert } from '@/utils/alert';
 import { getParsedError } from '@/utils/errors';
 import { formatDistance, getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { Toast } from '@/utils/toast';
 
 type OnchainChallenge = Awaited<ReturnType<typeof services.challenge.getChallenge>>;
 

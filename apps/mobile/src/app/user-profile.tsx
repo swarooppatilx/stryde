@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, RefreshControl, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NumberFlow } from '@/components/number-flow';
@@ -60,13 +60,11 @@ export default function UserProfileScreen() {
   // view of itself; see worldVerificationStore.ts / FEEDBACK.md).
   const [isVerified, setIsVerified] = useState(false);
 
-  useEffect(() => {
-    if (!user?.wallet) return;
-    let cancelled = false;
-    services.subgraph
-      .getAthleteComposite(user.wallet as `0x${string}`)
+  const loadComposite = useCallback((wallet: string, signal: { cancelled: boolean }) => {
+    return services.subgraph
+      .getAthleteComposite(wallet as `0x${string}`)
       .then((composite) => {
-        if (cancelled || !composite) return;
+        if (signal.cancelled || !composite) return;
         setTerritoryArea(
           composite.territories.filter((t) => t.isActive).reduce((sum, t) => sum + t.areaSqm, 0)
         );
@@ -74,10 +72,27 @@ export default function UserProfileScreen() {
         setIsVerified(composite.isVerified);
       })
       .catch((e) => console.warn('[UserProfile] Composite subgraph query failed:', e));
+  }, []);
+
+  useEffect(() => {
+    if (!user?.wallet) return;
+    const signal = { cancelled: false };
+    loadComposite(user.wallet, signal);
     return () => {
-      cancelled = true;
+      signal.cancelled = true;
     };
-  }, [user?.wallet]);
+  }, [user?.wallet, loadComposite]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    if (!user?.wallet) return;
+    setRefreshing(true);
+    try {
+      await loadComposite(user.wallet, { cancelled: false });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [user?.wallet, loadComposite]);
 
   if (!user) {
     return (
@@ -107,6 +122,14 @@ export default function UserProfileScreen() {
       <AnimatedScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.brand.primary}
+            colors={[theme.brand.primary]}
+          />
+        }
         headerMaxHeight={240}
         topBarHeight={90}
         renderHeaderComponent={() => (

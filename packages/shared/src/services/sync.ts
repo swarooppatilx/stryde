@@ -25,6 +25,8 @@ export interface SyncedActivity {
   metadataName?: string;
   metadataDescription?: string;
   metadataPhotos?: string[];
+  metadataPolyline?: string;
+  metadataTerritory?: ActivityMetadata['territory'];
 }
 
 export interface SyncedTerritory {
@@ -148,6 +150,8 @@ async function hydrateActivityMetadata(activities: SyncedActivity[]): Promise<Sy
       metadataName: metadata.name,
       metadataDescription: metadata.description,
       metadataPhotos: metadata.photos,
+      metadataPolyline: metadata.polyline,
+      metadataTerritory: metadata.territory,
     };
   });
 }
@@ -278,14 +282,23 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
     return [];
   }
 
-  const results = await client.multicall({
-    allowFailure: true,
-    contracts: territoryIds.map((id) => ({
-      ...contracts.territoryRegistry,
-      functionName: 'getTerritory',
-      args: [id],
-    })),
-  });
+  // Multicall3 when the chain has it (Sepolia); plain parallel reads when it
+  // doesn't (local Anvil deploys no Multicall3, so viem's multicall throws and
+  // took the whole chain sync down with it).
+  const calls = territoryIds.map((id) => ({
+    ...contracts.territoryRegistry,
+    functionName: 'getTerritory' as const,
+    args: [id] as const,
+  }));
+  const results: Array<
+    { status: 'success'; result: unknown } | { status: 'failure'; error: unknown }
+  > = client.chain?.contracts?.multicall3
+    ? await client.multicall({ allowFailure: true, contracts: calls })
+    : (await Promise.allSettled(calls.map((c) => client.readContract(c)))).map((r) =>
+        r.status === 'fulfilled'
+          ? { status: 'success' as const, result: r.value }
+          : { status: 'failure' as const, error: r.reason }
+      );
 
   const rawTerritories = results.map((callResult, i): SyncedTerritory | null => {
     if (callResult.status === 'failure') {

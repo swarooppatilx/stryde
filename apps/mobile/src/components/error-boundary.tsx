@@ -27,8 +27,12 @@ export class AppErrorBoundary extends Component<Props, State> {
     return { hasError: true };
   }
 
-  componentDidCatch(error: unknown) {
-    console.error('[AppErrorBoundary] Unhandled error:', error);
+  componentDidCatch(error: unknown, info: { componentStack?: string }) {
+    console.error(
+      '[AppErrorBoundary] Unhandled error:',
+      error instanceof Error ? error.stack : error,
+      info.componentStack
+    );
   }
 
   reset = () => {
