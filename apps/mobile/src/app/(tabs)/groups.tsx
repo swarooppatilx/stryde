@@ -276,7 +276,7 @@ export default function CommunityScreen() {
               {item.location}
             </ThemedText>
             <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {formatMemberCount(item.memberCount)} members
+              {formatMemberCount(item.memberCount)} {item.memberCount === 1 ? 'member' : 'members'}
             </ThemedText>
           </ThemedView>
           <TouchableOpacity

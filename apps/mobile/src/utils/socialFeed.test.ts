@@ -67,12 +67,17 @@ describe('mergeLocalActivities', () => {
         ...local,
         id: 'hash-1',
         activityHash: 'hash-1',
-        activityId: 42n,
+        activityId: '42',
         kudos: [],
         comments: [],
       },
     };
     const result = mergeLocalActivities(remote, [{ ...local, activityHash: 'hash-1' }]);
-    expect(result['hash-1'].activityId).toBe(42n);
+    expect(result['hash-1'].activityId).toBe('42');
+  });
+
+  it('uses the local on-chain id when the chain copy has none yet', () => {
+    const result = mergeLocalActivities({}, [{ ...local, onchainActivityId: '7' }]);
+    expect(result['local-1'].activityId).toBe('7');
   });
 });

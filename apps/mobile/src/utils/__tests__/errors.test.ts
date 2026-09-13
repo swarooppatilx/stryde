@@ -14,17 +14,17 @@ describe('getParsedError', () => {
   });
 
   it('returns friendly message for InsufficientFundsError', () => {
-    const err = new InsufficientFundsError({ value: 1n, unit: 'ether', formattingValue: 1n });
+    const err = new InsufficientFundsError({});
     expect(getParsedError(err)).toBe('Insufficient funds for this transaction');
   });
 
   it('returns friendly message for NonceTooLowError', () => {
-    const err = new NonceTooLowError({ nonce: 0, nextNonce: 1 });
+    const err = new NonceTooLowError({ nonce: 0 });
     expect(getParsedError(err)).toBe('Transaction nonce too low — please try again');
   });
 
   it('returns friendly message for FeeCapTooLowError', () => {
-    const err = new FeeCapTooLowError({ chainId: 1, maxFeePerGas: 1n });
+    const err = new FeeCapTooLowError({ maxFeePerGas: 1n });
     expect(getParsedError(err)).toBe('Gas fee too low — please try again');
   });
 

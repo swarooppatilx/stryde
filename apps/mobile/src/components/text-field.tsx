@@ -1,6 +1,6 @@
 import { Input } from '@ant-design/react-native';
 import { forwardRef } from 'react';
-import { StyleSheet, type TextInput, type TextInputProps, View } from 'react-native';
+import { StyleSheet, TextInput, type TextInputProps, View } from 'react-native';
 
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -27,17 +27,17 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
         </ThemedText>
       ) : null}
       {multiline ? (
-        <Input.TextArea
+        <TextInput
           ref={ref}
           multiline
-          inputStyle={[styles.input, styles.multilineInput, { borderColor }]}
+          style={[styles.input, styles.multilineInput, { borderColor, color: theme.text }]}
           placeholderTextColor={theme.textSecondary}
           {...rest}
         />
       ) : (
         <Input
           ref={ref}
-          inputStyle={[styles.input, { borderColor }]}
+          inputStyle={[styles.input, { borderColor, color: theme.text }]}
           status={error ? 'error' : undefined}
           placeholderTextColor={theme.textSecondary}
           {...rest}

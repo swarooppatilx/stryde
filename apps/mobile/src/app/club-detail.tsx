@@ -310,7 +310,7 @@ export default function ClubDetailScreen() {
             <ThemedView style={styles.treasuryRow}>
               <View style={styles.treasuryInput}>
                 <TextField
-                  placeholder="Amount (ETH)"
+                  placeholder="0.0 ETH"
                   value={depositAmount}
                   onChangeText={setDepositAmount}
                   keyboardType="decimal-pad"
@@ -318,6 +318,8 @@ export default function ClubDetailScreen() {
               </View>
               <AppButton
                 variant="secondary"
+                fullWidth={false}
+                style={styles.treasuryBtn}
                 onPress={handleDeposit}
                 disabled={!wallet || isTreasuryPending || parseAmountToWei(depositAmount) === null}
                 loading={isTreasuryPending}
@@ -330,7 +332,7 @@ export default function ClubDetailScreen() {
               <ThemedView style={[styles.treasuryRow, { marginTop: Spacing.two }]}>
                 <View style={styles.treasuryInput}>
                   <TextField
-                    placeholder="Amount (ETH)"
+                    placeholder="0.0 ETH"
                     value={withdrawAmount}
                     onChangeText={setWithdrawAmount}
                     keyboardType="decimal-pad"
@@ -338,6 +340,8 @@ export default function ClubDetailScreen() {
                 </View>
                 <AppButton
                   variant="secondary"
+                  fullWidth={false}
+                  style={styles.treasuryBtn}
                   onPress={handleWithdraw}
                   disabled={
                     !wallet || isTreasuryPending || parseAmountToWei(withdrawAmount) === null
@@ -454,6 +458,9 @@ const styles = StyleSheet.create({
   },
   treasuryInput: {
     flex: 1,
+  },
+  treasuryBtn: {
+    width: 130,
   },
   joinBtn: {
     alignItems: 'center',

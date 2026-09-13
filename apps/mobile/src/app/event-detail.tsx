@@ -206,7 +206,7 @@ export default function EventDetailScreen() {
           {/* Description */}
           <ThemedView style={styles.section}>
             <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
-              About this challenge
+              About this event
             </ThemedText>
             <ThemedText type="small" style={{ color: theme.text }}>
               {event.description}

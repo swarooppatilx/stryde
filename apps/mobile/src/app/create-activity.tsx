@@ -76,8 +76,16 @@ export default function CreateActivityScreen() {
   const [feel, setFeel] = useState<ActivityFeel | undefined>();
   const [showSportPicker, setShowSportPicker] = useState(false);
 
-  const distance = params.distance ? Number.parseFloat(params.distance) : 0;
-  const duration = params.duration ? Number.parseFloat(params.duration) : 0;
+  const [manualDistance, setManualDistance] = useState('');
+  const [manualMinutes, setManualMinutes] = useState('');
+  const distanceUnitMeters = unitSystem === 'imperial' ? 1609.344 : 1000;
+  const distance = isFromTracking
+    ? Number.parseFloat(params.distance || '0')
+    : Math.round(Number.parseFloat(manualDistance || '0') * distanceUnitMeters);
+  const duration = isFromTracking
+    ? Number.parseFloat(params.duration || '0')
+    : Math.round(Number.parseFloat(manualMinutes || '0') * 60_000);
+  const canSave = !isSaving && (isFromTracking || (distance > 0 && duration > 0));
   const polyline = params.polyline || '';
   const territoryArea = params.territoryArea ? Number.parseFloat(params.territoryArea) : 0;
 
@@ -341,7 +349,7 @@ export default function CreateActivityScreen() {
           <ThemedText type="sectionTitle">Save Activity</ThemedText>
           <TouchableOpacity
             onPress={handleSave}
-            disabled={isSaving}
+            disabled={!canSave}
             style={styles.headerBtn}
             accessibilityRole="button"
             accessibilityLabel="Save"
@@ -427,6 +435,33 @@ export default function CreateActivityScreen() {
               />
             )}
           </ThemedView>
+
+          {!isFromTracking && (
+            <View style={styles.manualRow}>
+              <ThemedView style={[styles.field, styles.manualField]}>
+                <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+                  Distance ({unitSystem === 'imperial' ? 'mi' : 'km'})
+                </ThemedText>
+                <TextField
+                  value={manualDistance}
+                  onChangeText={(t) => setManualDistance(t.replace(/[^0-9.]/g, ''))}
+                  placeholder="e.g. 5"
+                  keyboardType="decimal-pad"
+                />
+              </ThemedView>
+              <ThemedView style={[styles.field, styles.manualField]}>
+                <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+                  Duration (min)
+                </ThemedText>
+                <TextField
+                  value={manualMinutes}
+                  onChangeText={(t) => setManualMinutes(t.replace(/[^0-9.]/g, ''))}
+                  placeholder="e.g. 30"
+                  keyboardType="decimal-pad"
+                />
+              </ThemedView>
+            </View>
+          )}
 
           {/* Stats Summary (if from tracking) */}
           {isFromTracking && (
@@ -519,7 +554,7 @@ export default function CreateActivityScreen() {
           </ThemedView>
 
           {/* Save CTA */}
-          <AppButton onPress={handleSave} disabled={isSaving} style={styles.saveBtn}>
+          <AppButton onPress={handleSave} disabled={!canSave} style={styles.saveBtn}>
             {isSaving ? 'Saving...' : 'Save Activity'}
           </AppButton>
 
@@ -531,6 +566,13 @@ export default function CreateActivityScreen() {
 }
 
 const styles = StyleSheet.create({
+  manualRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+  },
+  manualField: {
+    flex: 1,
+  },
   container: { flex: 1 },
   safeArea: { flex: 0 },
   flex: { flex: 1 },

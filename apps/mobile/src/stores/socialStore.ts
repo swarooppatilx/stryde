@@ -32,6 +32,19 @@ function toActivityRecord(activities: SocialActivity[]): Record<string, SocialAc
   return record;
 }
 
+/** Feed items can carry either the chain key (lowercase activity hash) or a
+ * local record's id, so resolve whichever form to the key the record is
+ * actually stored under. */
+export function activityKey(activities: Record<string, SocialActivity>, id: string): string {
+  if (activities[id]) return id;
+  const lower = id.toLowerCase();
+  if (activities[lower]) return lower;
+  const match = Object.entries(activities).find(
+    ([, a]) => a.id === id || a.activityHash?.toLowerCase() === lower
+  );
+  return match ? match[0] : id;
+}
+
 function resolveOnchainActivityId(activity: SocialActivity): bigint | undefined {
   if (activity.activityId != null) return BigInt(activity.activityId);
   // A just-recorded activity isn't in the chain-synced feed yet; its id was
@@ -51,7 +64,8 @@ export interface SocialUser extends User {
 
 export interface SocialActivity extends Activity {
   name?: string;
-  activityId?: bigint;
+  /** On-chain id as a decimal string — persisted to JSON, which can't hold a bigint. */
+  activityId?: string;
   kudos: string[];
   comments: SocialComment[];
 }
@@ -264,7 +278,7 @@ export const useSocialStore = create<SocialState>()(
                 txHash: local?.txHash,
                 metadataCid: local?.metadataCid ?? a.metadataCid,
                 createdAt: local?.createdAt ?? new Date(a.timestamp * 1000),
-                activityId: a.activityId,
+                activityId: a.activityId.toString(),
                 kudos,
                 comments,
               };
@@ -291,18 +305,19 @@ export const useSocialStore = create<SocialState>()(
 
       toggleKudos: async (activityId: string) => {
         const state = get();
+        const key = activityKey(state.activities, activityId);
         const currentUserId = getCurrentUserId();
-        const activity = state.activities[activityId];
+        const activity = state.activities[key];
         const hasKudos = activity
           ? activity.kudos.some((id) => id.toLowerCase() === currentUserId.toLowerCase())
-          : state.currentUserKudos.has(activityId);
+          : state.currentUserKudos.has(key);
 
         // Optimistic update
         const updatedKudos = new Set(state.currentUserKudos);
         if (hasKudos) {
-          updatedKudos.delete(activityId);
+          updatedKudos.delete(key);
         } else {
-          updatedKudos.add(activityId);
+          updatedKudos.add(key);
         }
 
         const updatedActivity = activity
@@ -317,7 +332,7 @@ export const useSocialStore = create<SocialState>()(
         set({
           currentUserKudos: updatedKudos,
           ...(updatedActivity
-            ? { activities: { ...state.activities, [activityId]: updatedActivity } }
+            ? { activities: { ...state.activities, [key]: updatedActivity } }
             : {}),
         });
 
@@ -337,17 +352,17 @@ export const useSocialStore = create<SocialState>()(
           // Rollback
           const rollbackKudos = new Set(get().currentUserKudos);
           if (hasKudos) {
-            rollbackKudos.add(activityId);
+            rollbackKudos.add(key);
           } else {
-            rollbackKudos.delete(activityId);
+            rollbackKudos.delete(key);
           }
-          const rollbackActivity = get().activities[activityId];
+          const rollbackActivity = get().activities[key];
           if (rollbackActivity) {
             set({
               currentUserKudos: rollbackKudos,
               activities: {
                 ...get().activities,
-                [activityId]: {
+                [key]: {
                   ...rollbackActivity,
                   kudos: hasKudos
                     ? [...rollbackActivity.kudos, currentUserId]
@@ -361,8 +376,9 @@ export const useSocialStore = create<SocialState>()(
 
       addComment: async (activityId: string, text: string) => {
         const state = get();
+        const key = activityKey(state.activities, activityId);
         const currentUserId = getCurrentUserId();
-        const activity = state.activities[activityId];
+        const activity = state.activities[key];
         if (!activity) return;
 
         // Build a stable comment ID
@@ -385,7 +401,7 @@ export const useSocialStore = create<SocialState>()(
         set({
           activities: {
             ...state.activities,
-            [activityId]: { ...activity, comments: [...activity.comments, comment] },
+            [key]: { ...activity, comments: [...activity.comments, comment] },
           },
         });
 
@@ -411,12 +427,12 @@ export const useSocialStore = create<SocialState>()(
           console.warn('[Social] Comment tx failed, rolling back:', e);
           Toast.fail("Couldn't post comment", 2);
           // Rollback: remove the optimistic comment
-          const rollbackActivity = get().activities[activityId];
+          const rollbackActivity = get().activities[key];
           if (rollbackActivity) {
             set({
               activities: {
                 ...get().activities,
-                [activityId]: {
+                [key]: {
                   ...rollbackActivity,
                   comments: rollbackActivity.comments.filter((c) => c.id !== commentIdBytes),
                 },
@@ -428,7 +444,8 @@ export const useSocialStore = create<SocialState>()(
 
       toggleCommentLike: (activityId: string, commentId: string) =>
         set((state) => {
-          const activity = state.activities[activityId];
+          const key = activityKey(state.activities, activityId);
+          const activity = state.activities[key];
           if (!activity) return state;
           const currentUserId = getCurrentUserId();
           const updatedActivity = {
@@ -444,15 +461,16 @@ export const useSocialStore = create<SocialState>()(
               };
             }),
           };
-          return { activities: { ...state.activities, [activityId]: updatedActivity } };
+          return { activities: { ...state.activities, [key]: updatedActivity } };
         }),
 
       updateActivity: (activityId: string, updates: Partial<SocialActivity>) =>
         set((state) => {
-          const activity = state.activities[activityId];
+          const key = activityKey(state.activities, activityId);
+          const activity = state.activities[key];
           if (!activity) return state;
           return {
-            activities: { ...state.activities, [activityId]: { ...activity, ...updates } },
+            activities: { ...state.activities, [key]: { ...activity, ...updates } },
           };
         }),
 

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -17,7 +16,7 @@ import { Tray } from '@/components/tray';
 import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useSocialStore } from '@/stores/socialStore';
+import { activityKey, useSocialStore } from '@/stores/socialStore';
 import { formatRelativeTime, getDisplayName, getInitials } from '@/utils/format';
 import { haptics, impactLight } from '@/utils/haptics';
 
@@ -39,7 +38,7 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
 
   // Subscribe to store by activity ID — always fresh, never stale
   const activity = useSocialStore((s) =>
-    activityId ? (s.activities[activityId.toLowerCase()] ?? null) : null
+    activityId ? (s.activities[activityKey(s.activities, activityId)] ?? null) : null
   );
   const addComment = useSocialStore((s) => s.addComment);
   const toggleCommentLike = useSocialStore((s) => s.toggleCommentLike);
@@ -88,7 +87,9 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
       }}
     >
       <Tray.Content>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* The tray renders in its own layer, so Android's adjustResize doesn't
+            lift it — pad for the keyboard on both platforms. */}
+        <KeyboardAvoidingView behavior="padding">
           <Tray.View id="default">
             {/* Header */}
             <Tray.Header>
@@ -195,43 +196,45 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
 
             {/* Input bar */}
             <Tray.Footer>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.background,
-                    color: theme.text,
-                    borderColor: theme.border,
-                  },
-                ]}
-                placeholder="Add a comment..."
-                placeholderTextColor={theme.textSecondary}
-                value={text}
-                onChangeText={setText}
-                returnKeyType="send"
-                onSubmitEditing={handleSend}
-                blurOnSubmit={false}
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendBtn,
-                  {
-                    backgroundColor: text.trim() ? theme.brand.primary : theme.backgroundSelected,
-                  },
-                ]}
-                onPress={handleSend}
-                disabled={!text.trim()}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Send comment"
-              >
-                <Ionicons
-                  name="send"
-                  size={16}
-                  color={text.trim() ? '#fff' : theme.textSecondary}
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.background,
+                      color: theme.text,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                  placeholder="Add a comment..."
+                  placeholderTextColor={theme.textSecondary}
+                  value={text}
+                  onChangeText={setText}
+                  returnKeyType="send"
+                  onSubmitEditing={handleSend}
+                  blurOnSubmit={false}
+                  maxLength={500}
                 />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sendBtn,
+                    {
+                      backgroundColor: text.trim() ? theme.brand.primary : theme.backgroundSelected,
+                    },
+                  ]}
+                  onPress={handleSend}
+                  disabled={!text.trim()}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send comment"
+                >
+                  <Ionicons
+                    name="send"
+                    size={16}
+                    color={text.trim() ? '#fff' : theme.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
             </Tray.Footer>
           </Tray.View>
         </KeyboardAvoidingView>
@@ -287,6 +290,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     marginTop: 2,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   input: {
     flex: 1,

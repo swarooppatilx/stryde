@@ -18,8 +18,8 @@ import { type TimeFilter, useMap } from '@/hooks/useMap';
 
 const TIME_FILTERS: Array<{ value: TimeFilter; label: string }> = [
   { value: 'all', label: 'All time' },
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
 ];
 
 export default function MapScreen() {

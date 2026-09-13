@@ -4,7 +4,7 @@ import type Svg from 'react-native-svg';
 import { useShallow } from 'zustand/shallow';
 import { type ElevationData, getElevationForRoute } from '@/services/elevationService';
 import { useActivityStore } from '@/stores/activityStore';
-import { useSocialStore } from '@/stores/socialStore';
+import { activityKey, useSocialStore } from '@/stores/socialStore';
 import type { Activity } from '@/types';
 import { Alert } from '@/utils/alert';
 import { parsePolyline } from '@/utils/format';
@@ -28,7 +28,7 @@ export function useActivity() {
   const svgRef = useRef<Svg>(null);
 
   const activity: Activity | undefined = id
-    ? (getActivityById(id) ?? socialActivities[id.toLowerCase()])
+    ? (getActivityById(id) ?? socialActivities[activityKey(socialActivities, id)])
     : undefined;
 
   const coordinates = useMemo(
