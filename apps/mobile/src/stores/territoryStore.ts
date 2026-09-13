@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { territoryService } from '@/services/territoryService';
 import type { Ring } from '@/types';
-import { asyncStorageAdapter, isoDateReviver } from '../utils/storage';
+import { chainScopedStorageAdapter, isoDateReviver } from '../utils/storage';
 
 const DUPLICATE_COORD_TOLERANCE_DEG = 0.0001;
 const DUPLICATE_AREA_TOLERANCE_SQM = 1;
@@ -110,7 +110,7 @@ export const useTerritoryStore = create<TerritoryState>()(
     {
       name: '@stryde/territory-polygons',
       version: 2,
-      storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      storage: createJSONStorage(() => chainScopedStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({
         polygons: state.polygons,
         territoryMetadata: state.territoryMetadata,

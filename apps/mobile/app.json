@@ -24,6 +24,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "package": "com.stryde.app",
+      "permissions": ["android.permission.ACTIVITY_RECOGNITION"],
       "predictiveBackGestureEnabled": false,
       "queries": [
         { "package": "org.world.id.sandbox" },

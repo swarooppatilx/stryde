@@ -21,7 +21,6 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { CommentsSheet } from '@/components/comments-sheet';
-import { EmptyInboxState } from '@/components/empty-inbox-v1';
 import { FeedCard } from '@/components/feed-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -239,22 +238,17 @@ export default function HomeScreen() {
     [theme, greeting, weekStats, router]
   );
 
+  // A plain empty state — the old illustration's grey placeholder rows read
+  // as a feed that was still loading.
   const renderEmptyFeed = useCallback(
     () => (
-      <EmptyInboxState
-        title="No posts yet"
-        description="Your activities and posts from the community will appear here."
-        hideAction
-        animated={false}
-        colors={{
-          screen: 'transparent',
-          title: theme.text,
-          description: theme.textSecondary,
-          skeleton: theme.backgroundElement,
-          skeletonStrong: theme.backgroundSelected,
-        }}
-        style={styles.emptyCard}
-      />
+      <ThemedView style={styles.emptyFeed}>
+        <Ionicons name="footsteps-outline" size={36} color={theme.textSecondary} />
+        <ThemedText type="sectionTitle">No posts yet</ThemedText>
+        <ThemedText type="small" style={[styles.emptyFeedText, { color: theme.textSecondary }]}>
+          Your activities and posts from the community will appear here.
+        </ThemedText>
+      </ThemedView>
     ),
     [theme]
   );
@@ -363,6 +357,15 @@ function formatDistanceLocal(meters: number): string {
 }
 
 const styles = StyleSheet.create({
+  emptyFeed: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.six,
+    paddingHorizontal: Spacing.four,
+  },
+  emptyFeedText: {
+    textAlign: 'center',
+  },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   // Bottom padding reserves room for the absolutely-positioned FAB so it

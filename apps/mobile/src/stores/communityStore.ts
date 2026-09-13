@@ -1,10 +1,9 @@
 import { ACTIVITY_TYPE_BY_ID, ACTIVITY_TYPE_MAP, services } from '@repo/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-
-import { type ChallengeEvent, MOCK_EVENTS } from '@/data/mock-clubs';
 import type { ActivityType } from '@/types';
-import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
+import type { ChallengeEvent } from '@/types/event';
+import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
 
 export interface Club {
   id: string;
@@ -79,6 +78,7 @@ interface CommunityState {
   /** Optimistic local update after a joinEvent/leaveEvent tx confirms. */
   applyEventJoin: (eventId: string, joined: boolean) => void;
   upsertEvent: (event: ChallengeEvent) => void;
+  removeEvent: (eventId: string) => void;
 
   isClubJoined: (clubId: string) => boolean;
   isEventJoined: (eventId: string) => boolean;
@@ -156,10 +156,6 @@ export const useCommunityStore = create<CommunityState>()(
       fetchEvents: async () => {
         set({ eventsLoading: true });
         try {
-          if (!services.event.isEventRegistryDeployed()) {
-            set({ events: MOCK_EVENTS });
-            return;
-          }
           const events = await services.event.getAllEvents();
           set({ events: events.map(toChallengeEvent) });
         } catch (e) {
@@ -170,7 +166,6 @@ export const useCommunityStore = create<CommunityState>()(
       },
 
       fetchJoinedEvents: async (wallet: `0x${string}`) => {
-        // Demo events have no on-chain membership; joins stay local.
         if (!services.event.isEventRegistryDeployed()) return;
         try {
           const userEvents = await services.event.getUserEvents(wallet);
@@ -207,6 +202,9 @@ export const useCommunityStore = create<CommunityState>()(
               : [event, ...state.events],
           };
         }),
+
+      removeEvent: (eventId: string) =>
+        set((state) => ({ events: state.events.filter((e) => e.id !== eventId) })),
 
       isClubJoined: (clubId: string) => get().joinedClubIds.includes(clubId),
       isEventJoined: (eventId: string) => get().joinedEvents.includes(eventId),
@@ -246,7 +244,7 @@ export const useCommunityStore = create<CommunityState>()(
     {
       name: 'stryde-community',
       version: 4,
-      storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      storage: createJSONStorage(() => chainScopedStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({ joinedEvents: state.joinedEvents }),
       migrate: (persistedState: unknown, version: number) => {
         if (version < 4) {

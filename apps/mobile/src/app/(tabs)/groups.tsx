@@ -20,13 +20,13 @@ import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
 import { ENV } from '@/constants/config';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
-import type { ChallengeEvent } from '@/data/mock-clubs';
 import { useTheme } from '@/hooks/use-theme';
 import { useTransactor } from '@/hooks/useTransactor';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { type Club, useCommunityStore } from '@/stores/communityStore';
 import { useSocialStore } from '@/stores/socialStore';
 import type { ActivityType } from '@/types';
+import type { ChallengeEvent } from '@/types/event';
 import { formatDistance as formatActivityDistance, getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 
@@ -90,13 +90,17 @@ export default function CommunityScreen() {
   const fetchJoinedEvents = useCommunityStore((s) => s.fetchJoinedEvents);
   const applyEventJoin = useCommunityStore((s) => s.applyEventJoin);
 
+  // searchClubs/searchEvents read the store via get(), so the data arrays must
+  // be dependencies too — otherwise the lists never update after a fetch.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clubs drives searchClubs' result
   const filteredClubs = useMemo(
     () => searchClubs(clubQuery, sportFilter),
-    [clubQuery, sportFilter, searchClubs]
+    [clubs, clubQuery, sportFilter, searchClubs]
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: events drives searchEvents' result
   const filteredEvents = useMemo(
     () => searchEvents(eventQuery, eventSportFilter),
-    [eventQuery, eventSportFilter, searchEvents]
+    [events, eventQuery, eventSportFilter, searchEvents]
   );
 
   const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
@@ -110,7 +114,10 @@ export default function CommunityScreen() {
   const [pendingEventId, setPendingEventId] = useState<string | null>(null);
 
   const loadChallenges = useCallback(async () => {
-    if (!address) return;
+    if (!address) {
+      setChallenges([]);
+      return;
+    }
     try {
       const list = await services.challenge.getUserChallenges(address);
       setChallenges(list.slice().reverse());
@@ -198,7 +205,7 @@ export default function CommunityScreen() {
     const isJoined = joinedClubIds.includes(club.id);
     setPendingClubId(club.id);
     try {
-      const result = await transact(
+      await transact(
         () =>
           isJoined
             ? services.group.leaveGroup(wallet, BigInt(club.id))
@@ -206,11 +213,12 @@ export default function CommunityScreen() {
         {
           pending: isJoined ? 'Leaving club...' : 'Joining club...',
           success: isJoined ? 'Left club' : 'Joined club',
+        },
+        {
+          apply: () => applyClubMembership(club.id, !isJoined),
+          revert: () => applyClubMembership(club.id, isJoined),
         }
       );
-      if (result?.confirmed) {
-        applyClubMembership(club.id, !isJoined);
-      }
     } finally {
       setPendingClubId(null);
     }
@@ -219,16 +227,11 @@ export default function CommunityScreen() {
   const handleJoinEvent = async (eventId: string) => {
     if (!wallet || !address || pendingEventId) return;
     haptics.impactMedium();
-    if (!services.event.isEventRegistryDeployed()) {
-      // Demo events (EventRegistry not deployed yet): toggle locally, no tx.
-      applyEventJoin(eventId, !joinedEvents.includes(eventId));
-      return;
-    }
 
     const isJoined = joinedEvents.includes(eventId);
     setPendingEventId(eventId);
     try {
-      const result = await transact(
+      await transact(
         () =>
           isJoined
             ? services.event.leaveEvent(wallet, BigInt(eventId))
@@ -236,11 +239,12 @@ export default function CommunityScreen() {
         {
           pending: isJoined ? 'Leaving event...' : 'Joining event...',
           success: isJoined ? 'Left event' : 'Joined event',
+        },
+        {
+          apply: () => applyEventJoin(eventId, !isJoined),
+          revert: () => applyEventJoin(eventId, isJoined),
         }
       );
-      if (result?.confirmed) {
-        applyEventJoin(eventId, !isJoined);
-      }
     } finally {
       setPendingEventId(null);
     }
@@ -459,7 +463,9 @@ export default function CommunityScreen() {
         <ThemedView style={styles.empty}>
           <Ionicons name="trophy-outline" size={32} color={theme.textSecondary} />
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            No events found
+            {services.event.isEventRegistryDeployed()
+              ? 'No events yet'
+              : "Events aren't live on this network yet"}
           </ThemedText>
         </ThemedView>
       );
@@ -534,6 +540,18 @@ export default function CommunityScreen() {
           style={styles.newChallengeBtn}
         >
           + Create Club
+        </AppButton>
+      )}
+      {isEvents && services.event.isEventRegistryDeployed() && (
+        <AppButton
+          variant="secondary"
+          onPress={() => {
+            haptics.tap();
+            router.push('/create-event');
+          }}
+          style={styles.newChallengeBtn}
+        >
+          + Create Event
         </AppButton>
       )}
       {activeTab === 'Challenges' && (

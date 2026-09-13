@@ -107,14 +107,9 @@ export default function EventDetailScreen() {
   const handleJoin = async () => {
     if (!wallet || !event || joining) return;
     haptics.impactMedium();
-    if (!services.event.isEventRegistryDeployed()) {
-      // Demo events (EventRegistry not deployed yet): toggle locally, no tx.
-      applyEventJoin(event.id, !isJoined);
-      return;
-    }
     setJoining(true);
     try {
-      const result = await transact(
+      await transact(
         () =>
           isJoined
             ? services.event.leaveEvent(wallet, BigInt(event.id))
@@ -122,11 +117,12 @@ export default function EventDetailScreen() {
         {
           pending: isJoined ? 'Leaving event...' : 'Joining event...',
           success: isJoined ? 'Left event' : 'Joined event',
+        },
+        {
+          apply: () => applyEventJoin(event.id, !isJoined),
+          revert: () => applyEventJoin(event.id, isJoined),
         }
       );
-      if (result?.confirmed) {
-        applyEventJoin(event.id, !isJoined);
-      }
     } finally {
       setJoining(false);
     }

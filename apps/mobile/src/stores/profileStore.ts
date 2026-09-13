@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Gender } from '@/types';
 import { DEFAULT_SETTINGS, type ProfileSettings } from '@/utils/profile';
-import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
+import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
 
 interface ProfileState {
   username: string;
@@ -118,7 +118,7 @@ export const useProfileStore = create<ProfileState>()(
         }
         return state;
       },
-      storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      storage: createJSONStorage(() => chainScopedStorageAdapter, { reviver: isoDateReviver }),
     }
   )
 );

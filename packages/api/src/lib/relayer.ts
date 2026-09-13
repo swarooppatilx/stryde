@@ -37,7 +37,8 @@ export function getRelayerPublicClient(): ReturnType<typeof createPublicClient> 
   const client = createPublicClient({
     chain: config.chain,
     transport: http(config.rpcUrl, { retryCount: 3, retryDelay: 1000 }),
-    batch: { multicall: true },
+    // Anvil has no Multicall3 deployed, so only batch where the chain has it.
+    batch: { multicall: !!config.chain.contracts?.multicall3 },
   });
   _public = client;
   return client;

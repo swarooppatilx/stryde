@@ -146,7 +146,7 @@ export default function ClubDetailScreen() {
 
     setIsPending(true);
     try {
-      const result = await transact(
+      await transact(
         () =>
           isJoined
             ? services.group.leaveGroup(wallet, BigInt(club.id))
@@ -154,11 +154,12 @@ export default function ClubDetailScreen() {
         {
           pending: isJoined ? 'Leaving club...' : 'Joining club...',
           success: isJoined ? 'Left club' : 'Joined club',
+        },
+        {
+          apply: () => applyClubMembership(club.id, !isJoined),
+          revert: () => applyClubMembership(club.id, isJoined),
         }
       );
-      if (result?.confirmed) {
-        applyClubMembership(club.id, !isJoined);
-      }
     } finally {
       setIsPending(false);
     }

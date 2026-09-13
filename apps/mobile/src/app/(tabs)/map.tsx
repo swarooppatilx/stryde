@@ -164,10 +164,9 @@ export default function MapScreen() {
                     style={[
                       styles.timeChip,
                       {
-                        backgroundColor: active
-                          ? tint(theme.brand.primary, 0.12)
-                          : theme.backgroundElement,
-                        borderColor: theme.border,
+                        // Solid fill — a translucent tint reads as washed out over the map.
+                        backgroundColor: active ? theme.brand.primary : theme.backgroundElement,
+                        borderColor: active ? theme.brand.primary : theme.border,
                       },
                     ]}
                     accessibilityRole="button"
@@ -175,7 +174,7 @@ export default function MapScreen() {
                   >
                     <ThemedText
                       type="small"
-                      style={{ color: active ? theme.brand.primary : theme.textSecondary }}
+                      style={{ color: active ? '#fff' : theme.textSecondary }}
                     >
                       {f.label}
                     </ThemedText>
@@ -376,7 +375,9 @@ const styles = StyleSheet.create({
   topToolbar: {
     position: 'absolute',
     left: Spacing.three,
-    right: Spacing.three,
+    // Leave a gutter for the 44px control column on the right so the filter
+    // chips don't scroll underneath it.
+    right: Spacing.three + 44 + Spacing.two,
     gap: Spacing.two,
     paddingHorizontal: Spacing.two,
     paddingTop: Spacing.two,

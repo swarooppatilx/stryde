@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { asyncStorageAdapter } from '@/utils/storage';
+import { chainScopedStorageAdapter } from '@/utils/storage';
 
 interface WorldVerificationState {
   isVerified: boolean;
@@ -32,7 +32,7 @@ export const useWorldVerificationStore = create<WorldVerificationState>()(
     {
       name: '@stryde/world-verification',
       version: 1,
-      storage: createJSONStorage(() => asyncStorageAdapter),
+      storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )
 );

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { IActivityService } from '../types/services';
-import { asyncStorageAdapter, isoDateReviver } from '../utils/storage';
+import { chainScopedStorageAdapter, isoDateReviver } from '../utils/storage';
 
 interface ActivityState extends IActivityService {
   setActivities: (activities: import('@/types').Activity[]) => void;
@@ -31,7 +31,7 @@ export const useActivityStore = create<ActivityState>()(
     {
       name: '@stryde/activities',
       version: 1,
-      storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      storage: createJSONStorage(() => chainScopedStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({ activities: state.activities }),
       migrate: (persistedState: unknown, version: number) => {
         if (version < 1) {

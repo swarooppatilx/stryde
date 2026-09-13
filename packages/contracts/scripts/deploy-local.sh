@@ -160,8 +160,8 @@ def replace_addresses(match):
     new_body = old_body
     for key, addr in addresses.items():
         new_body = re.sub(
-            rf'({re.escape(key)}:\s*\x27)[^\x27]*\x27',
-            r'\g<1>' + addr + r'\x27',
+            rf'({re.escape(key)}:\s*)(ZERO_ADDRESS|\x27[^\x27]*\x27)',
+            lambda m, a=addr: m.group(1) + chr(39) + a + chr(39),
             new_body
         )
     return prefix + new_body + suffix

@@ -814,7 +814,11 @@ export default function ProfileScreen() {
 
                 <ThemedView style={styles.weekStatsRow}>
                   <ThemedView style={styles.weekStatItem}>
-                    <ThemedText style={[styles.weekStatValue, { color: theme.text }]}>
+                    <ThemedText
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={[styles.weekStatValue, { color: theme.text }]}
+                    >
                       {formatDistance(weeklyStats.totalDistance, unitSystem)}
                     </ThemedText>
                     <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -832,7 +836,11 @@ export default function ProfileScreen() {
                     </ThemedView>
                   </ThemedView>
                   <ThemedView style={styles.weekStatItem}>
-                    <ThemedText style={[styles.weekStatValue, { color: theme.text }]}>
+                    <ThemedText
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={[styles.weekStatValue, { color: theme.text }]}
+                    >
                       {weeklyStats.activityCount}
                     </ThemedText>
                     <ThemedText type="caption" style={{ color: theme.textSecondary }}>
@@ -850,7 +858,11 @@ export default function ProfileScreen() {
                     </ThemedView>
                   </ThemedView>
                   <ThemedView style={styles.weekStatItem}>
-                    <ThemedText style={[styles.weekStatValue, { color: theme.text }]}>
+                    <ThemedText
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={[styles.weekStatValue, { color: theme.text }]}
+                    >
                       {formatDuration(weeklyStats.totalDuration)}
                     </ThemedText>
                     <ThemedText type="caption" style={{ color: theme.textSecondary }}>

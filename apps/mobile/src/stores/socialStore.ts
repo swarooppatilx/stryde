@@ -9,7 +9,8 @@ import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Activity, User } from '@/types';
 import { mergeLocalActivities } from '@/utils/socialFeed';
-import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
+import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
+import { Toast } from '@/utils/toast';
 
 function sameAddress(a: string | undefined, b: string | undefined): boolean {
   return !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -29,6 +30,16 @@ function toActivityRecord(activities: SocialActivity[]): Record<string, SocialAc
     record[activity.id.toLowerCase()] = activity;
   }
   return record;
+}
+
+function resolveOnchainActivityId(activity: SocialActivity): bigint | undefined {
+  if (activity.activityId != null) return BigInt(activity.activityId);
+  // A just-recorded activity isn't in the chain-synced feed yet; its id was
+  // stored on the local record when recordActivity confirmed.
+  const local = useActivityStore
+    .getState()
+    .activities.find((a) => a.id === activity.id || a.activityHash === activity.activityHash);
+  return local?.onchainActivityId ? BigInt(local.onchainActivityId) : undefined;
 }
 
 export interface SocialUser extends User {
@@ -311,15 +322,18 @@ export const useSocialStore = create<SocialState>()(
         });
 
         // Send on-chain tx
-        const wallet = getActiveWallet();
-        if (!wallet || !activity?.activityId) return;
+        const onchainId = activity ? resolveOnchainActivityId(activity) : undefined;
 
         try {
+          if (!getActiveWallet() || onchainId === undefined) {
+            throw new Error('Activity is not on-chain yet');
+          }
           await queuedWrite(async (w) => {
-            await services.social.toggleKudos(w, activity.activityId!);
+            await services.social.toggleKudos(w, onchainId);
           });
         } catch (e) {
           console.warn('[Social] Kudos tx failed, rolling back:', e);
+          Toast.fail("Couldn't save kudos", 2);
           // Rollback
           const rollbackKudos = new Set(get().currentUserKudos);
           if (hasKudos) {
@@ -353,7 +367,7 @@ export const useSocialStore = create<SocialState>()(
 
         // Build a stable comment ID
         const commentIdBytes = services.social.computeCommentId(
-          activity.activityId ?? 0n,
+          resolveOnchainActivityId(activity) ?? 0n,
           currentUserId as `0x${string}`,
           text,
           BigInt(Math.floor(Date.now() / 1000))
@@ -376,10 +390,12 @@ export const useSocialStore = create<SocialState>()(
         });
 
         // Upload to IPFS + on-chain
-        const wallet = getActiveWallet();
-        if (!wallet || !activity.activityId) return;
+        const onchainId = resolveOnchainActivityId(activity);
 
         try {
+          if (!getActiveWallet() || onchainId === undefined) {
+            throw new Error('Activity is not on-chain yet');
+          }
           const { cid } = await services.social.uploadCommentToIpfs({
             activityHash: activity.activityHash ?? '',
             commentId: commentIdBytes,
@@ -389,15 +405,11 @@ export const useSocialStore = create<SocialState>()(
           });
 
           await queuedWrite(async (w) => {
-            await services.social.addComment(
-              w,
-              activity.activityId!,
-              commentIdBytes as `0x${string}`,
-              cid
-            );
+            await services.social.addComment(w, onchainId, commentIdBytes as `0x${string}`, cid);
           });
         } catch (e) {
           console.warn('[Social] Comment tx failed, rolling back:', e);
+          Toast.fail("Couldn't post comment", 2);
           // Rollback: remove the optimistic comment
           const rollbackActivity = get().activities[activityId];
           if (rollbackActivity) {
@@ -598,7 +610,7 @@ export const useSocialStore = create<SocialState>()(
     {
       name: 'stryde-social',
       version: 6,
-      storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
+      storage: createJSONStorage(() => chainScopedStorageAdapter, { reviver: isoDateReviver }),
       partialize: (state) => ({
         users: state.users,
         activities: state.activities,

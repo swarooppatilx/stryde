@@ -1,6 +1,6 @@
 import { services } from '@repo/shared';
 import * as Network from 'expo-network';
-import { asyncStorageAdapter } from '@/utils/storage';
+import { chainScopedStorageAdapter } from '@/utils/storage';
 
 let started = false;
 
@@ -18,7 +18,7 @@ export function startRelayQueue(): void {
   if (started) return;
   started = true;
 
-  services.relay.setRelayQueueStorage(asyncStorageAdapter);
+  services.relay.setRelayQueueStorage(chainScopedStorageAdapter);
 
   const updateConnectivity = async () => {
     try {
