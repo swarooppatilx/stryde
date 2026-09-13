@@ -23,6 +23,7 @@ export interface ChainConfig {
      * address on every chain mode until a human runs the deploy script. */
     groupRegistry: `0x${string}`;
     socialRegistry: `0x${string}`;
+    eventRegistry: `0x${string}`;
   };
 }
 
@@ -64,6 +65,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       moveToEarnToken: '0x3BF5cC3fDA8D89D9e0d35B5648Cf2781a94Ee9FA',
       groupRegistry: '0xcE8466Ea9BBC35cF3f4516ab2D0aAe3DB919B62d',
       socialRegistry: '0xdd5052dD38c900Da0864FAc5c26b4f41322d9bBC',
+      eventRegistry: ZERO_ADDRESS,
     },
   },
   'base-sepolia': {
@@ -82,6 +84,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       moveToEarnToken: ZERO_ADDRESS,
       groupRegistry: ZERO_ADDRESS,
       socialRegistry: ZERO_ADDRESS,
+      eventRegistry: ZERO_ADDRESS,
     },
   },
   local: {
@@ -100,6 +103,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
       moveToEarnToken: '0xa513E6E4b8f2a923D98304ec87F64353C4D5C853',
       groupRegistry: '0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6',
       socialRegistry: ZERO_ADDRESS,
+      eventRegistry: ZERO_ADDRESS,
     },
   },
 };

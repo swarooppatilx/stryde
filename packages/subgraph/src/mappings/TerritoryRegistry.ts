@@ -15,6 +15,10 @@ export function handleTerritoryClaimed(event: TerritoryClaimed): void {
   territory.capturedAt = event.params.capturedAt;
   territory.lastReinforced = event.params.capturedAt;
   territory.isActive = true;
+  territory.minLng = event.params.minLng;
+  territory.minLat = event.params.minLat;
+  territory.maxLng = event.params.maxLng;
+  territory.maxLat = event.params.maxLat;
   territory.save();
 }
 

@@ -16,6 +16,8 @@ type Profile @entity(immutable: false) {
   groupMemberships: [GroupMember!]! @derivedFrom(field: "user")
   kudosGiven: [ActivityKudos!]! @derivedFrom(field: "giver")
   commentsAuthored: [ActivityComment!]! @derivedFrom(field: "author")
+  eventsHosted: [Event!]! @derivedFrom(field: "host")
+  eventParticipations: [EventParticipant!]! @derivedFrom(field: "user")
 }
 
 type Activity @entity(immutable: false) {
@@ -42,6 +44,13 @@ type Territory @entity(immutable: false) {
   capturedAt: BigInt!
   lastReinforced: BigInt!
   isActive: Boolean!
+  # 1e6-fixed-point bounding box (same encoding as the contract args) —
+  # enables drawing others' territory polygons / a heatmap without reading the
+  # contract per-territory.
+  minLng: Int!
+  minLat: Int!
+  maxLng: Int!
+  maxLat: Int!
 }
 
 type Season @entity(immutable: false) {
@@ -137,4 +146,29 @@ type ActivityComment @entity(immutable: false) {
   author: Profile!
   cid: String!
   createdAt: BigInt!
+}
+
+type Event @entity(immutable: false) {
+  id: String! # eventId
+  host: Profile!
+  title: String!
+  description: String!
+  sportType: Int!
+  startTime: BigInt!
+  endTime: BigInt!
+  distanceGoal: BigInt!
+  startLat: Int!
+  startLng: Int!
+  participantCount: BigInt!
+  createdAt: BigInt!
+  active: Boolean! # false once cancelled / host-dissolved
+  participants: [EventParticipant!]! @derivedFrom(field: "event")
+}
+
+type EventParticipant @entity(immutable: false) {
+  id: String! # eventId-participantAddress
+  event: Event!
+  user: Profile!
+  joinedAt: BigInt!
+  active: Boolean! # false once this participant has left the event
 }

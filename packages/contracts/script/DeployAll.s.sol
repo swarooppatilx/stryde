@@ -12,6 +12,7 @@ import {TerritoryNFT} from "../src/TerritoryNFT.sol";
 import {MoveToEarnToken} from "../src/MoveToEarnToken.sol";
 import {GroupRegistry} from "../src/GroupRegistry.sol";
 import {SocialRegistry} from "../src/SocialRegistry.sol";
+import {EventRegistry} from "../src/EventRegistry.sol";
 
 contract DeployAll is Script {
     function run() external {
@@ -47,6 +48,8 @@ contract DeployAll is Script {
 
         SocialRegistry socialRegistry = new SocialRegistry();
         console.log("SocialRegistry:", address(socialRegistry));
+        EventRegistry eventRegistry = new EventRegistry();
+        console.log("EventRegistry:", address(eventRegistry));
 
         vm.stopBroadcast();
 
@@ -61,5 +64,6 @@ contract DeployAll is Script {
         console.log("moveToEarnToken=", address(moveToEarnToken));
         console.log("groupRegistry=", address(groupRegistry));
         console.log("socialRegistry=", address(socialRegistry));
+        console.log("eventRegistry=", address(eventRegistry));
     }
 }

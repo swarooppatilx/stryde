@@ -209,3 +209,36 @@ dataSources:
         - event: CommentAdded(indexed uint256,indexed address,indexed bytes32,string,uint256)
           handler: handleCommentAdded
       file: src/mappings/SocialRegistry.ts
+
+# EventRegistry is not deployed yet (address 0x0). Indexing a zero address from
+# block 0 would stall the subgraph, so this data source stays disabled until the
+# contract is deployed — then uncomment and set its address + startBlock.
+#   - kind: ethereum/contract
+#     name: EventRegistry
+#     network: sepolia
+#     source:
+#       # Not yet deployed — set this to the deployed EventRegistry address and
+#       # its post-deploy startBlock before generating/deploying the subgraph.
+#       address: "0x0000000000000000000000000000000000000000"
+#       abi: EventRegistry
+#       startBlock: 0
+#     mapping:
+#       kind: ethereum/events
+#       apiVersion: 0.0.7
+#       language: wasm/assemblyscript
+#       entities:
+#         - Event
+#         - EventParticipant
+#       abis:
+#         - name: EventRegistry
+#           file: ../contracts/out/EventRegistry.sol/EventRegistry.json
+#       eventHandlers:
+#         - event: EventCreated(indexed uint256,indexed address,string,string,uint8,uint256,uint256,uint256,int32,int32,uint256)
+#           handler: handleEventCreated
+#         - event: EventJoined(indexed uint256,indexed address,uint256)
+#           handler: handleEventJoined
+#         - event: EventLeft(indexed uint256,indexed address,uint256)
+#           handler: handleEventLeft
+#         - event: EventCancelled(indexed uint256,indexed address,uint256)
+#           handler: handleEventCancelled
+#       file: src/mappings/EventRegistry.ts

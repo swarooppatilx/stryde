@@ -37,6 +37,7 @@ export const ABIS = {
   moveToEarnToken: moveToEarnTokenAbi,
   groupRegistry: groupRegistryAbi,
   socialRegistry: socialRegistryAbi,
+  eventRegistry: eventRegistryAbi,
 } as const;
 
 export type ContractName = keyof typeof ABIS;

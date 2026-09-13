@@ -118,6 +118,13 @@ OUTPUT=$(forge script script/DeploySocialRegistry.s.sol \
 echo "$OUTPUT"
 SOCIAL_ADDRESS=$(echo "$OUTPUT" | grep -oP 'SocialRegistry deployed at: \K0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("socialRegistry=$SOCIAL_ADDRESS")
+echo "--- EventRegistry ---"
+OUTPUT=$(forge script script/DeployEventRegistry.s.sol \
+  --rpc-url "$ANVIL_RPC" \
+  --broadcast 2>&1)
+echo "$OUTPUT"
+EVENT_ADDRESS=$(echo "$OUTPUT" | grep -oP 'EventRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+CONTRACT_ADDRESSES+=("eventRegistry=$EVENT_ADDRESS")
 
 echo ""
 echo "=== Local Deployment Complete ==="

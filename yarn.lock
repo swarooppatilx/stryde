@@ -7567,6 +7567,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-network@npm:^57.0.2":
+  version: 57.0.2
+  resolution: "expo-network@npm:57.0.2"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+  checksum: 10c0/9a4cd8644993940f9c32ad18ab0b86f9f59c62a8ace59b75beaffe0c782446da7a755464718f506caf353b2786f3e7c76f3d05fd1068363e68e45d0d5e867033
+  languageName: node
+  linkType: hard
+
 "expo-router@npm:~57.0.19":
   version: 57.0.19
   resolution: "expo-router@npm:57.0.19"
@@ -7723,6 +7733,18 @@ __metadata:
     react-native-web:
       optional: true
   checksum: 10c0/f303240586b4569ecb9ef45adbe24a9c927bb005e16fa0ea8bae59c4ef94257f3f20dfbb12776dbafd179af3b4b77c6a467342aab7ee6968203f45a8e26239ab
+  languageName: node
+  linkType: hard
+
+"expo-task-manager@npm:^57.0.17":
+  version: 57.0.17
+  resolution: "expo-task-manager@npm:57.0.17"
+  dependencies:
+    unimodules-app-loader: "npm:~57.0.2"
+  peerDependencies:
+    expo: "*"
+    react-native: "*"
+  checksum: 10c0/3dec945ee13d05065f4118183c8caa274df56352c580713b250a2a4cd4128140c4ab8d4dfd501e104c9bcb52cbb4a157d68391d24063b438237df809152aa7c7
   languageName: node
   linkType: hard
 
@@ -11211,6 +11233,7 @@ __metadata:
     expo-linking: "npm:^57.0.9"
     expo-location: "npm:^57.0.16"
     expo-media-library: "npm:~57.0.5"
+    expo-network: "npm:^57.0.2"
     expo-router: "npm:~57.0.19"
     expo-secure-store: "npm:~57.0.3"
     expo-sensors: "npm:~57.0.2"
@@ -11218,6 +11241,7 @@ __metadata:
     expo-status-bar: "npm:~57.0.1"
     expo-symbols: "npm:~57.0.2"
     expo-system-ui: "npm:^57.0.3"
+    expo-task-manager: "npm:^57.0.17"
     expo-web-browser: "npm:~57.0.2"
     fast-base64-decode: "npm:^1.0.0"
     fast-text-encoding: "npm:^1.0.6"
@@ -14683,6 +14707,13 @@ __metadata:
   version: 2.2.0
   resolution: "unicode-property-aliases-ecmascript@npm:2.2.0"
   checksum: 10c0/b338529831c988ac696f2bdbcd4579d1c5cc844b24eda7269973c457fa81989bdb49a366af37a448eb1a60f1dae89559ea2a5854db2797e972a0162eee0778c6
+  languageName: node
+  linkType: hard
+
+"unimodules-app-loader@npm:~57.0.2":
+  version: 57.0.2
+  resolution: "unimodules-app-loader@npm:57.0.2"
+  checksum: 10c0/67abf8e778b4360e43d787289359c6771c30f084ce3693d57ac4943ecf53c711ba66254bc4cbf44015b5a39994b40795598b26257ffb4aff747dda8e7813765d
   languageName: node
   linkType: hard
 
