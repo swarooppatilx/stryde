@@ -6,9 +6,9 @@ dataSources:
     name: ProfileRegistry
     network: sepolia
     source:
-      address: "0x4Aa7127Aa6Cb07202e4040eA5Aa57434F8B67641"
+      address: "0x7F7C12C204229A76815470707De2384cd369bA23"
       abi: ProfileRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -30,9 +30,9 @@ dataSources:
     name: ActivityRegistry
     network: sepolia
     source:
-      address: "0x8aCAd61B9D875088C010db110d708F85E13e9859"
+      address: "0x569dFFc017a0040E381AE859dCfd34Ff7fB94b1c"
       abi: ActivityRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -54,9 +54,9 @@ dataSources:
     name: TerritoryRegistry
     network: sepolia
     source:
-      address: "0xa5ba09D89C3C6e8F9e84ABD0b73D350220204B6C"
+      address: "0x47A345474256c297eB78e28F1Eb5026269b8220a"
       abi: TerritoryRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -82,9 +82,9 @@ dataSources:
     name: SeasonManager
     network: sepolia
     source:
-      address: "0xe1B61aEA4dcD64C2aA20768Dcf94E5a57f7daF65"
+      address: "0xE4a98F8eEe705a9114d8BED7a9064Cc00be14CcD"
       abi: SeasonManager
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -110,9 +110,9 @@ dataSources:
     name: AchievementRegistry
     network: sepolia
     source:
-      address: "0x95d86d385397Cc264f565555c1a1b416A9b784c6"
+      address: "0x545945D83ff0dee4dBE993884E6951eA994Bbe8E"
       abi: AchievementRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -133,9 +133,9 @@ dataSources:
     name: ChallengeRegistry
     network: sepolia
     source:
-      address: "0x107CDb2828b7efB12Fa01ed4f185822441281787"
+      address: "0x0a149740740927270326C7014e7c04Aa5A0A299D"
       abi: ChallengeRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -161,9 +161,9 @@ dataSources:
     name: GroupRegistry
     network: sepolia
     source:
-      address: "0xcE8466Ea9BBC35cF3f4516ab2D0aAe3DB919B62d"
+      address: "0x314C216c504CEC6A2ccC0621Fc3E25Ff3487FFdD"
       abi: GroupRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -194,9 +194,9 @@ dataSources:
     name: SocialRegistry
     network: sepolia
     source:
-      address: "0xdd5052dD38c900Da0864FAc5c26b4f41322d9bBC"
+      address: "0x0E8b3Ca753D64809a2fE3982952bd86f9fF301AC"
       abi: SocialRegistry
-      startBlock: 11694692
+      startBlock: 11697363
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -216,35 +216,30 @@ dataSources:
           handler: handleCommentAdded
       file: src/mappings/SocialRegistry.ts
 
-# EventRegistry is not deployed yet (address 0x0). Indexing a zero address from
-# block 0 would stall the subgraph, so this data source stays disabled until the
-# contract is deployed — then uncomment and set its address + startBlock.
-#   - kind: ethereum/contract
-#     name: EventRegistry
-#     network: sepolia
-#     source:
-#       # Not yet deployed — set this to the deployed EventRegistry address and
-#       # its post-deploy startBlock before generating/deploying the subgraph.
-#       address: "0x0000000000000000000000000000000000000000"
-#       abi: EventRegistry
-#       startBlock: 0
-#     mapping:
-#       kind: ethereum/events
-#       apiVersion: 0.0.7
-#       language: wasm/assemblyscript
-#       entities:
-#         - Event
-#         - EventParticipant
-#       abis:
-#         - name: EventRegistry
-#           file: ../contracts/out/EventRegistry.sol/EventRegistry.json
-#       eventHandlers:
-#         - event: EventCreated(indexed uint256,indexed address,string,string,uint8,uint256,uint256,uint256,int32,int32,uint256)
-#           handler: handleEventCreated
-#         - event: EventJoined(indexed uint256,indexed address,uint256)
-#           handler: handleEventJoined
-#         - event: EventLeft(indexed uint256,indexed address,uint256)
-#           handler: handleEventLeft
-#         - event: EventCancelled(indexed uint256,indexed address,uint256)
-#           handler: handleEventCancelled
-#       file: src/mappings/EventRegistry.ts
+  - kind: ethereum/contract
+    name: EventRegistry
+    network: sepolia
+    source:
+      address: "0x3B7dc2CFFf7b9c14817a550441A32AF8D2C04fc5"
+      abi: EventRegistry
+      startBlock: 11697363
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Event
+        - EventParticipant
+      abis:
+        - name: EventRegistry
+          file: ../contracts/out/EventRegistry.sol/EventRegistry.json
+      eventHandlers:
+        - event: EventCreated(indexed uint256,indexed address,string,string,uint8,uint256,uint256,uint256,int32,int32,uint256)
+          handler: handleEventCreated
+        - event: EventJoined(indexed uint256,indexed address,uint256)
+          handler: handleEventJoined
+        - event: EventLeft(indexed uint256,indexed address,uint256)
+          handler: handleEventLeft
+        - event: EventCancelled(indexed uint256,indexed address,uint256)
+          handler: handleEventCancelled
+      file: src/mappings/EventRegistry.ts

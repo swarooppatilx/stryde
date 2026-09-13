@@ -11,14 +11,14 @@ const CHAIN_ID = Number(process.env.RELAYER_CHAIN_ID);
 const RPC_URL = process.env.RELAYER_RPC_URL;
 
 const SEPOLIA_CONTRACTS: Record<string, `0x${string}`> = {
-  profileRegistry: '0x4Aa7127Aa6Cb07202e4040eA5Aa57434F8B67641',
-  activityRegistry: '0x8aCAd61B9D875088C010db110d708F85E13e9859',
-  territoryRegistry: '0xa5ba09D89C3C6e8F9e84ABD0b73D350220204B6C',
-  seasonManager: '0xe1B61aEA4dcD64C2aA20768Dcf94E5a57f7daF65',
-  achievementRegistry: '0x95d86d385397Cc264f565555c1a1b416A9b784c6',
-  challengeRegistry: '0x107CDb2828b7efB12Fa01ed4f185822441281787',
-  territoryNFT: '0x1356C008ea21469275C7298F441F2354e7187C25',
-  moveToEarnToken: '0x3BF5cC3fDA8D89D9e0d35B5648Cf2781a94Ee9FA',
+  profileRegistry: '0x7F7C12C204229A76815470707De2384cd369bA23',
+  activityRegistry: '0x569dFFc017a0040E381AE859dCfd34Ff7fB94b1c',
+  territoryRegistry: '0x47A345474256c297eB78e28F1Eb5026269b8220a',
+  seasonManager: '0xE4a98F8eEe705a9114d8BED7a9064Cc00be14CcD',
+  achievementRegistry: '0x545945D83ff0dee4dBE993884E6951eA994Bbe8E',
+  challengeRegistry: '0x0a149740740927270326C7014e7c04Aa5A0A299D',
+  territoryNFT: '0xf1d2263C51c3FE311325Da69a48df1049A52EB07',
+  moveToEarnToken: '0xa154f1E0A9dAb00F107668B1dEe7DE9fA187Eae5',
 };
 
 // Anvil deploys from its default account #0 at nonce 0 give deterministic
