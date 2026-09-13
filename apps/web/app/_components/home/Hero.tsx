@@ -2,6 +2,8 @@ import Image from 'next/image';
 import styles from './Hero.module.css';
 import { GithubIcon } from './icons/GithubIcon';
 
+const GITHUB_URL = 'https://github.com/swarooppatilx/stryde';
+
 export function Hero() {
   return (
     <div className={styles.hero}>
@@ -41,10 +43,15 @@ export function Hero() {
             />
           </div>
         </div>
-        <div className={styles.githubPill}>
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.githubPill}
+        >
           <GithubIcon />
           <span className={styles.githubPillLabel}>Get it on Github</span>
-        </div>
+        </a>
       </div>
     </div>
   );
