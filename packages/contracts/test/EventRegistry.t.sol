@@ -245,6 +245,44 @@ contract EventRegistryTest is Test {
         registry.joinEvent(eventId);
     }
 
+    function test_Exploit_CancelledEventNoLongerCountsAsJoined() public {
+        uint256 eventId = _createEvent();
+        vm.prank(bob);
+        registry.joinEvent(eventId);
+        assertTrue(registry.isJoined(eventId, bob));
+
+        vm.prank(alice);
+        registry.cancelEvent(eventId);
+
+        // The host cancelled it for everyone: no participant may still read as joined.
+        assertFalse(registry.isJoined(eventId, bob));
+        assertFalse(registry.isJoined(eventId, alice));
+    }
+
+    function test_LeaveCancelledEvent_ClearsTheParticipantsOwnRecord() public {
+        uint256 eventId = _createEvent();
+        vm.prank(bob);
+        registry.joinEvent(eventId);
+        vm.prank(alice);
+        registry.cancelEvent(eventId);
+        assertEq(registry.getUserEventIds(bob, 0, 10).length, 1);
+
+        vm.prank(bob);
+        registry.leaveEvent(eventId);
+
+        assertEq(registry.getUserEventIds(bob, 0, 10).length, 0);
+    }
+
+    function test_LeaveCancelledEvent_RevertsForSomeoneWhoNeverJoined() public {
+        uint256 eventId = _createEvent();
+        vm.prank(alice);
+        registry.cancelEvent(eventId);
+
+        vm.prank(bob);
+        vm.expectRevert(IEventRegistry.EventNotFound.selector);
+        registry.leaveEvent(eventId);
+    }
+
     // ─── Pagination ─────────────────────────────────────────────────
 
     function test_GetUserEventIds_Pagination() public {

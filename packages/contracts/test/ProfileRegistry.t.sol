@@ -152,6 +152,8 @@ contract ProfileRegistryTest is Test {
     // ─── Verification ───────────────────────────────────────────────
 
     function test_Verify() public {
+        vm.prank(alice);
+        registry.register("alice_run");
         bytes32 nullifier = keccak256("alice-nullifier");
 
         vm.expectEmit(true, false, false, true);
@@ -168,10 +170,50 @@ contract ProfileRegistryTest is Test {
     }
 
     function test_Verify_RevertIfAlreadyVerified() public {
+        vm.prank(alice);
+        registry.register("alice_run");
         registry.verify(alice, keccak256("alice-nullifier"));
 
         vm.expectRevert(IProfileRegistry.AlreadyVerified.selector);
         registry.verify(alice, keccak256("alice-nullifier-2"));
+    }
+
+    function test_Exploit_OneHumanCannotVerifyTwoWallets() public {
+        vm.prank(alice);
+        registry.register("alice_run");
+        vm.prank(bob);
+        registry.register("bob_run");
+        bytes32 sameHuman = keccak256("one-world-id-human");
+
+        registry.verify(alice, sameHuman);
+
+        // The same World ID nullifier on a second wallet is the same person: refused.
+        vm.expectRevert(IProfileRegistry.NullifierAlreadyUsed.selector);
+        registry.verify(bob, sameHuman);
+        assertFalse(registry.isVerified(bob));
+    }
+
+    function test_Verify_RevertIfNotRegistered() public {
+        vm.expectRevert(IProfileRegistry.NotRegistered.selector);
+        registry.verify(alice, keccak256("alice-nullifier"));
+    }
+
+    function test_Verify_DifferentHumansBothVerify() public {
+        vm.prank(alice);
+        registry.register("alice_run");
+        vm.prank(bob);
+        registry.register("bob_run");
+
+        registry.verify(alice, keccak256("human-a"));
+        registry.verify(bob, keccak256("human-b"));
+
+        assertTrue(registry.isVerified(alice));
+        assertTrue(registry.isVerified(bob));
+    }
+
+    function test_SetVerifier_RevertZeroAddress() public {
+        vm.expectRevert(IProfileRegistry.ZeroAddress.selector);
+        registry.setVerifier(address(0));
     }
 
     function test_IsVerified_ReturnsFalseByDefault() public {
@@ -179,6 +221,8 @@ contract ProfileRegistryTest is Test {
     }
 
     function test_SetVerifier() public {
+        vm.prank(alice);
+        registry.register("alice_run");
         vm.expectEmit(true, false, false, false);
         emit VerifierUpdated(bob);
         registry.setVerifier(bob);
