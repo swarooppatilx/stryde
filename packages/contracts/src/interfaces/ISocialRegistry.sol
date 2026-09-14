@@ -15,6 +15,7 @@ interface ISocialRegistry {
 
     // Errors
     error DuplicateComment();
+    error CidTooLong();
 
     // Write functions
     function toggleKudos(uint256 activityId) external;

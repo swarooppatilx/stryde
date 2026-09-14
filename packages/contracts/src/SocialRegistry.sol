@@ -2,10 +2,14 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ISocialRegistry} from "./interfaces/ISocialRegistry.sol";
 
-contract SocialRegistry is ISocialRegistry, Ownable, Pausable {
+contract SocialRegistry is ISocialRegistry, Ownable2Step, Pausable {
+    /// @dev An IPFS CID is under 100 characters; the cap keeps a stray string from bloating logs.
+    uint256 public constant MAX_CID_LENGTH = 128;
+
     mapping(uint256 => mapping(address => bool)) private _kudosGiven;
     mapping(bytes32 => bool) private _commentUsed;
 
@@ -22,11 +26,12 @@ contract SocialRegistry is ISocialRegistry, Ownable, Pausable {
         }
     }
 
-    function addComment(
-        uint256 activityId,
-        bytes32 commentId,
-        string calldata commentCid
-    ) external override whenNotPaused {
+    function addComment(uint256 activityId, bytes32 commentId, string calldata commentCid)
+        external
+        override
+        whenNotPaused
+    {
+        if (bytes(commentCid).length > MAX_CID_LENGTH) revert CidTooLong();
         if (_commentUsed[commentId]) revert DuplicateComment();
         _commentUsed[commentId] = true;
 

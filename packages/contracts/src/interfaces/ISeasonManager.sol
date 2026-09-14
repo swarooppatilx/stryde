@@ -8,6 +8,7 @@ interface ISeasonManager {
     event ContributionRecorded(
         uint256 indexed seasonId, address indexed participant, uint256 contribution, uint256 total
     );
+    event RecorderUpdated(address indexed recorder, bool allowed);
 
     // Errors
     error ZeroAddress();
@@ -15,6 +16,7 @@ interface ISeasonManager {
     error SeasonAlreadyActive();
     error InvalidDuration();
     error InvalidSeason();
+    error NotRecorder();
 
     // Structs
     struct Season {
@@ -31,9 +33,11 @@ interface ISeasonManager {
     function getParticipantContribution(uint256 seasonId, address participant) external view returns (uint256);
     function getTotalContribution(uint256 seasonId) external view returns (uint256);
     function getParticipantCount(uint256 seasonId) external view returns (uint256);
+    function isRecorder(address account) external view returns (bool);
 
     // Write functions
     function startSeason(uint256 duration) external;
     function endSeason() external;
     function recordContribution(address participant, uint256 amount) external;
+    function setRecorder(address recorder, bool allowed) external;
 }

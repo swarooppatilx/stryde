@@ -15,6 +15,7 @@ interface IChallengeRegistry {
     event ChallengeAccepted(uint256 indexed challengeId, address indexed opponent);
     event ChallengeSettled(uint256 indexed challengeId, address indexed winner, address indexed loser, uint256 payout);
     event ChallengeCancelled(uint256 indexed challengeId, address indexed canceller);
+    event SettlerUpdated(address indexed newSettler);
     event ChallengeWithdrawn(uint256 indexed challengeId, address indexed withdrawer, uint256 amount);
 
     // Errors
@@ -28,6 +29,9 @@ interface IChallengeRegistry {
     error AlreadySettled();
     error AlreadyCancelled();
     error CannotRefund();
+    error NotSettler();
+    error DeadlineNotPassed();
+    error SettleWindowClosed();
 
     // Struct
     enum ChallengeStatus {

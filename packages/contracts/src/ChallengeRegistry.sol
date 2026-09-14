@@ -2,19 +2,38 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IChallengeRegistry} from "./interfaces/IChallengeRegistry.sol";
 
-contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyGuard {
+contract ChallengeRegistry is IChallengeRegistry, Ownable2Step, Pausable, ReentrancyGuard {
     uint256 private _nextChallengeId = 1;
 
     mapping(uint256 => Challenge) private _challenges;
     mapping(address => uint256[]) private _userChallenges;
     mapping(uint256 => mapping(address => bool)) private _hasDonePayout;
 
-    constructor() Ownable(msg.sender) {}
+    /// @notice After a challenge's deadline the settler has this long to name the winner; if it
+    /// never does, each side can take their own stake back. Refunds open only when settling closes,
+    /// so a loser cannot refund first and leave the winner's payout short.
+    uint256 public constant SETTLE_WINDOW = 7 days;
+
+    /// @notice The only address that may declare a winner: the backend that works out who actually
+    /// covered the distance. Participants cannot settle for themselves (they could name themselves
+    /// winner and take the opponent's stake).
+    address public settler;
+
+    constructor() Ownable(msg.sender) {
+        settler = msg.sender;
+    }
+
+    function setSettler(address newSettler) external onlyOwner {
+        if (newSettler == address(0)) revert ZeroAddress();
+        settler = newSettler;
+        emit SettlerUpdated(newSettler);
+    }
 
     function createChallenge(address opponent, uint8 activityType, uint256 targetMetric, uint256 duration)
         external
@@ -61,12 +80,13 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
     }
 
     function settleChallenge(uint256 challengeId, address winner) external override whenNotPaused {
+        if (msg.sender != settler) revert NotSettler();
         Challenge storage c = _challenges[challengeId];
         if (c.challenger == address(0)) revert NotParticipant();
-        if (msg.sender != c.challenger && msg.sender != c.opponent) revert NotParticipant();
         if (c.status == ChallengeStatus.Settled) revert AlreadySettled();
         if (c.status != ChallengeStatus.Accepted) revert NotSettled();
-        if (block.timestamp > c.deadline) revert DeadlinePassed();
+        if (block.timestamp <= c.deadline) revert DeadlineNotPassed();
+        if (block.timestamp > c.deadline + SETTLE_WINDOW) revert SettleWindowClosed();
         if (winner != c.challenger && winner != c.opponent) revert NotParticipant();
 
         c.status = ChallengeStatus.Settled;
@@ -112,11 +132,10 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
             _hasDonePayout[challengeId][msg.sender] = true;
             _payOut(msg.sender, c.stake);
             emit ChallengeWithdrawn(challengeId, msg.sender, c.stake);
-        } else if (c.status == ChallengeStatus.Accepted && block.timestamp > c.deadline) {
-            // Both sides staked but nobody called settleChallenge before the
-            // deadline (settleChallenge itself reverts with DeadlinePassed past
-            // this point). Rather than stranding both stakes forever, each party
-            // reclaims their own stake back.
+        } else if (c.status == ChallengeStatus.Accepted && block.timestamp > c.deadline + SETTLE_WINDOW) {
+            // Both sides staked but the settler never named a winner within the settle
+            // window. Rather than stranding both stakes forever, each party reclaims
+            // their own stake.
             if (msg.sender != c.challenger && msg.sender != c.opponent) revert NotParticipant();
             if (_hasDonePayout[challengeId][msg.sender]) revert AlreadySettled();
             _hasDonePayout[challengeId][msg.sender] = true;
@@ -135,7 +154,12 @@ contract ChallengeRegistry is IChallengeRegistry, Ownable, Pausable, ReentrancyG
         return _nextChallengeId - 1;
     }
 
-    function getUserChallenges(address user, uint256 offset, uint256 limit) external view override returns (uint256[] memory) {
+    function getUserChallenges(address user, uint256 offset, uint256 limit)
+        external
+        view
+        override
+        returns (uint256[] memory)
+    {
         uint256[] storage arr = _userChallenges[user];
         if (offset >= arr.length) {
             return new uint256[](0);

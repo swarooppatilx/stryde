@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -12,7 +13,7 @@ import {ITerritoryNFT} from "./interfaces/ITerritoryNFT.sol";
 /// Minted when a user claims a territory, burned when that territory is lost to decay.
 /// tokenId is `uint256(polygonHash)` directly — TerritoryRegistry's own identifier —
 /// so no separate id/hash mapping is needed.
-contract TerritoryNFT is ITerritoryNFT, ERC721, Ownable, Pausable, AccessControl {
+contract TerritoryNFT is ITerritoryNFT, ERC721, Ownable2Step, Pausable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     string public baseURI;
