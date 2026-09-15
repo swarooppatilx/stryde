@@ -277,4 +277,29 @@ contract AchievementRegistryTest is Test {
         uint256[] memory tokens = registry.getTokenIds(alice);
         assertEq(tokens.length, count);
     }
+
+    // ─── uint256 overload dedupe (SWA-69) ──────────────────────────
+
+    function test_MintAchievementUint_RevertAlreadyMinted() public {
+        registry.defineAchievement(uint256(7), "Seven", "");
+
+        registry.mintAchievement(alice, uint256(7), bytes32("activity-1"));
+        assertTrue(registry.hasMinted(alice, bytes32(uint256(7))));
+
+        vm.expectRevert(IAchievementRegistry.AlreadyMinted.selector);
+        registry.mintAchievement(alice, uint256(7), bytes32("activity-2"));
+
+        assertEq(registry.balanceOf(alice), 1);
+    }
+
+    function test_MintAchievement_DedupeAcrossOverloads() public {
+        _defineAchievements();
+
+        registry.mintAchievement(alice, FIRST_ACTIVITY);
+
+        vm.expectRevert(IAchievementRegistry.AlreadyMinted.selector);
+        registry.mintAchievement(alice, uint256(FIRST_ACTIVITY), bytes32("activity-1"));
+
+        assertEq(registry.balanceOf(alice), 1);
+    }
 }
