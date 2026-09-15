@@ -13,43 +13,76 @@ import {MoveToEarnToken} from "../src/MoveToEarnToken.sol";
 import {GroupRegistry} from "../src/GroupRegistry.sol";
 import {SocialRegistry} from "../src/SocialRegistry.sol";
 import {EventRegistry} from "../src/EventRegistry.sol";
+import {RelayerRoles} from "./RelayerRoles.sol";
 
 contract DeployAll is Script {
+    // State, not locals: eleven contracts plus the role grant overflow the compiler's stack.
+    ProfileRegistry internal profileRegistry;
+    ActivityRegistry internal activityRegistry;
+    TerritoryRegistry internal territoryRegistry;
+    SeasonManager internal seasonManager;
+    AchievementRegistry internal achievementRegistry;
+    ChallengeRegistry internal challengeRegistry;
+    TerritoryNFT internal territoryNFT;
+    MoveToEarnToken internal moveToEarnToken;
+    GroupRegistry internal groupRegistry;
+    SocialRegistry internal socialRegistry;
+    EventRegistry internal eventRegistry;
+
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
 
-        ProfileRegistry profileRegistry = new ProfileRegistry();
+        profileRegistry = new ProfileRegistry();
         console.log("ProfileRegistry:", address(profileRegistry));
 
-        ActivityRegistry activityRegistry = new ActivityRegistry();
+        activityRegistry = new ActivityRegistry();
         console.log("ActivityRegistry:", address(activityRegistry));
 
-        TerritoryRegistry territoryRegistry = new TerritoryRegistry();
+        territoryRegistry = new TerritoryRegistry();
         console.log("TerritoryRegistry:", address(territoryRegistry));
 
-        SeasonManager seasonManager = new SeasonManager();
+        seasonManager = new SeasonManager();
         console.log("SeasonManager:", address(seasonManager));
 
-        AchievementRegistry achievementRegistry = new AchievementRegistry();
+        achievementRegistry = new AchievementRegistry();
         console.log("AchievementRegistry:", address(achievementRegistry));
 
-        ChallengeRegistry challengeRegistry = new ChallengeRegistry();
+        challengeRegistry = new ChallengeRegistry();
         console.log("ChallengeRegistry:", address(challengeRegistry));
 
-        TerritoryNFT territoryNFT = new TerritoryNFT();
+        territoryNFT = new TerritoryNFT();
         console.log("TerritoryNFT:", address(territoryNFT));
 
-        MoveToEarnToken moveToEarnToken = new MoveToEarnToken();
+        moveToEarnToken = new MoveToEarnToken();
         console.log("MoveToEarnToken:", address(moveToEarnToken));
 
-        GroupRegistry groupRegistry = new GroupRegistry();
+        groupRegistry = new GroupRegistry();
         console.log("GroupRegistry:", address(groupRegistry));
 
-        SocialRegistry socialRegistry = new SocialRegistry();
+        socialRegistry = new SocialRegistry();
         console.log("SocialRegistry:", address(socialRegistry));
-        EventRegistry eventRegistry = new EventRegistry();
+        eventRegistry = new EventRegistry();
         console.log("EventRegistry:", address(eventRegistry));
+
+        // The deployer starts with every role. When the relayer is a different key, hand it its roles in the same
+        // run; otherwise verification, settlement, season contributions and minting stop working. Set
+        // RELAYER_ADDRESS to the relayer's address (leave it unset when the relayer key is the deployer's).
+        address relayer = vm.envOr("RELAYER_ADDRESS", vm.addr(deployerPrivateKey));
+        if (relayer != vm.addr(deployerPrivateKey)) {
+            RelayerRoles.grant(
+                relayer,
+                profileRegistry,
+                seasonManager,
+                achievementRegistry,
+                challengeRegistry,
+                territoryNFT,
+                moveToEarnToken
+            );
+            console.log("Relayer roles granted to:", relayer);
+        } else {
+            console.log("Relayer is the deployer: no extra role transactions needed");
+        }
 
         vm.stopBroadcast();
 
