@@ -1,0 +1,130 @@
+{
+  "transactions": [
+    {
+      "hash": "0x893fb9858fde6791ba9a0c9538bc96bddaa0170afa044e82f9afa9a3915ab7ef",
+      "transactionType": "CREATE",
+      "contractName": "ProfileRegistry",
+      "contractAddress": "0x348CE6aF8eA0C50fb44F284dCCA73b7EE5112314"
+    },
+    {
+      "hash": "0x954369e36aa833a71f1d21a42d865672f9c7d6a56cb1970f08af5f03fc112b43",
+      "transactionType": "CREATE",
+      "contractName": "ActivityRegistry",
+      "contractAddress": "0x30a910fc25F0977907Af86345c0B26C34e7d2439"
+    },
+    {
+      "hash": "0x310726d8928f914e34ce16e5c7db8f6401cb0600b4ee2a34982a19ab54934130",
+      "transactionType": "CREATE",
+      "contractName": "TerritoryRegistry",
+      "contractAddress": "0x22802b1C6fda5CA6FBC519830879a17214DbA1e2"
+    },
+    {
+      "hash": "0xad1b46999f8ebd89acc89d01323ca99064e379b102b67b2b99c9b1078e5ab393",
+      "transactionType": "CREATE",
+      "contractName": "SeasonManager",
+      "contractAddress": "0xfc42018ea93384FA6703d0Eb72656C67261D1732"
+    },
+    {
+      "hash": "0x9b73de56be8c38ed03e834fdeb242cdca141be0d206f1574db98dfee0f56fd24",
+      "transactionType": "CREATE",
+      "contractName": "AchievementRegistry",
+      "contractAddress": "0x537F289b59b9944e14978a23f57133B738747f81"
+    },
+    {
+      "hash": "0xbe2a8907189cbf2ca8515fa3f0f09cb67d442c44763edb4b3e6e90348e24e27e",
+      "transactionType": "CREATE",
+      "contractName": "ChallengeRegistry",
+      "contractAddress": "0x6E196c21292E0eDE7748A04A5a62bE0b6ae6004c"
+    },
+    {
+      "hash": "0x9c1ce60338a4893f6df87fcc8e549f9e9a0fa74015dc4874d70ec9207f193985",
+      "transactionType": "CREATE",
+      "contractName": "TerritoryNFT",
+      "contractAddress": "0xfC9044241B4edA72779d9F9876426D256048531B"
+    },
+    {
+      "hash": "0xd417586ace8fb2669c19f5524755862fc4df6027c448d141b519b0d2146450e5",
+      "transactionType": "CREATE",
+      "contractName": "MoveToEarnToken",
+      "contractAddress": "0x6Cc5211470De17d69B3208e26B08fFAD0b6260F6"
+    },
+    {
+      "hash": "0xf6788e247011b0306f63040a0107f7455866cf9a96422de863205467aebeddb6",
+      "transactionType": "CREATE",
+      "contractName": "GroupRegistry",
+      "contractAddress": "0xeeBBd3aAADcC95919e6f3a78E3A2cdA57D0a3241"
+    },
+    {
+      "hash": "0x7ace730a5114c13b14b7107b9907a355ab76833e02e60a2f2838db31a4b6ee84",
+      "transactionType": "CREATE",
+      "contractName": "SocialRegistry",
+      "contractAddress": "0xfc97445a56b61471720EF9e2bb0759d8d3c76561"
+    },
+    {
+      "hash": "0xbaf10378d6b7666de95a2d5d276979c63d5658234e811b7fe413817dfd7ea9c9",
+      "transactionType": "CREATE",
+      "contractName": "EventRegistry",
+      "contractAddress": "0xDead8aA0b3840f272c8293E6DD34932cF5a7f027"
+    }
+  ],
+  "receipts": [
+    {
+      "transactionHash": "0x893fb9858fde6791ba9a0c9538bc96bddaa0170afa044e82f9afa9a3915ab7ef",
+      "blockNumber": "0xb814bb",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0x954369e36aa833a71f1d21a42d865672f9c7d6a56cb1970f08af5f03fc112b43",
+      "blockNumber": "0xb814bf",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0x310726d8928f914e34ce16e5c7db8f6401cb0600b4ee2a34982a19ab54934130",
+      "blockNumber": "0xb814c2",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0xad1b46999f8ebd89acc89d01323ca99064e379b102b67b2b99c9b1078e5ab393",
+      "blockNumber": "0xb814c5",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0x9b73de56be8c38ed03e834fdeb242cdca141be0d206f1574db98dfee0f56fd24",
+      "blockNumber": "0xb814c8",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0xbe2a8907189cbf2ca8515fa3f0f09cb67d442c44763edb4b3e6e90348e24e27e",
+      "blockNumber": "0xb814cc",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0x9c1ce60338a4893f6df87fcc8e549f9e9a0fa74015dc4874d70ec9207f193985",
+      "blockNumber": "0xb814cf",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0xd417586ace8fb2669c19f5524755862fc4df6027c448d141b519b0d2146450e5",
+      "blockNumber": "0xb814d3",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0xf6788e247011b0306f63040a0107f7455866cf9a96422de863205467aebeddb6",
+      "blockNumber": "0xb814d6",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0x7ace730a5114c13b14b7107b9907a355ab76833e02e60a2f2838db31a4b6ee84",
+      "blockNumber": "0xb814d9",
+      "status": "0x1"
+    },
+    {
+      "transactionHash": "0xbaf10378d6b7666de95a2d5d276979c63d5658234e811b7fe413817dfd7ea9c9",
+      "blockNumber": "0xb814dc",
+      "status": "0x1"
+    }
+  ],
+  "chain": 11155111,
+  "timestamp": 1793814154019,
+  "note": "Written from the receipts of 11 forge create runs: Sepolia charges ~5x the gas Foundry simulates, so DeployAll could not set per-contract gas limits."
+}
