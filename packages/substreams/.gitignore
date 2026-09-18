@@ -1,6 +1,6 @@
 target/
 *.spkg
 src/pb/
-buf.gen.yaml
-Cargo.lock
 src/abi/
+# Binary crate: keep the lockfile so CI builds the same dependency set (overrides global ignores).
+!Cargo.lock
