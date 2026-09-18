@@ -19,7 +19,7 @@ export function handleGroupCreated(event: GroupCreated): void {
   const groupId = event.params.groupId.toString();
 
   const group = new Group(groupId);
-  group.owner = event.params.owner;
+  group.owner = getOrCreateProfile(event.params.owner).id;
   group.name = event.params.name;
   group.location = event.params.location;
   group.description = event.params.description;
@@ -95,7 +95,7 @@ export function handleGroupOwnershipTransferred(event: GroupOwnershipTransferred
   const group = Group.load(groupId);
   if (!group) return;
 
-  group.owner = event.params.newOwner;
+  group.owner = getOrCreateProfile(event.params.newOwner).id;
   group.save();
 }
 

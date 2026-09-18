@@ -32,7 +32,10 @@ export function handleContributionRecorded(event: ContributionRecorded): void {
   const season = Season.load(event.params.seasonId.toString());
   if (!season) return;
 
-  season.totalContributions = event.params.total;
+  // `total` is this participant's running total, not the season's, so it must be
+  // accumulated rather than assigned — assigning it made every season's total
+  // equal to whichever participant recorded last.
+  season.totalContributions = season.totalContributions.plus(event.params.contribution);
 
   const participantId = event.params.seasonId.toString() + '-' + event.params.participant.toHexString();
   let seasonParticipant = SeasonParticipant.load(participantId);
