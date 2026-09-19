@@ -3,6 +3,7 @@ import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
 import { getContracts, getPublicClient } from './client';
 import { type ActivityMetadata, fetchJsonFromIpfs } from './ipfs';
+import { scanLogWindows } from './logScan';
 import { getActivitiesFromSubgraph } from './subgraph';
 
 export interface SyncedActivity {
@@ -15,13 +16,9 @@ export interface SyncedActivity {
   territoryArea: number;
   timestamp: number;
   metadata: string;
-  /** IPFS CID set via ActivityRegistry.setActivityMetadata, if the owner has
-   * attached off-chain metadata (name/description/photos) to this activity. */
+  /** IPFS CID set via ActivityRegistry.setActivityMetadata, if the owner attached off-chain metadata. */
   metadataCid?: string;
-  /** Populated from `metadataCid` (see hydrateActivityMetadata below) so
-   * activities synced fresh from the chain — e.g. a new device, or after
-   * logout — can show their real name/description/photos instead of the
-   * blank fields a purely local-AsyncStorage record would have. */
+  /** Populated from `metadataCid` (see hydrateActivityMetadata) so chain-synced activities on a new device show their real name/description/photos. */
   metadataName?: string;
   metadataDescription?: string;
   metadataPhotos?: string[];
@@ -73,11 +70,7 @@ const ACTIVITY_METADATA_UPDATED_EVENT = {
   ],
 } as const;
 
-/** Only reached for chain modes with no subgraph configured (e.g. local
- * Anvil) or when the subgraph query itself fails — mirrors the getLogs
- * fallback pattern used for ActivityRecorded above and for ProfileRegistry's
- * AvatarUpdated in services/profile.ts. Returns activityId -> latest
- * metadataCid, last write wins. */
+/** getLogs fallback for modes with no subgraph or when its query fails; returns activityId -> latest metadataCid (last write wins). */
 async function fetchActivityMetadataCids(
   client: ReturnType<typeof getPublicClient>,
   contracts: ReturnType<typeof getContracts>,
@@ -85,13 +78,15 @@ async function fetchActivityMetadataCids(
 ): Promise<Map<string, string>> {
   const byActivityId = new Map<string, string>();
   try {
-    const logs = await client.getLogs({
-      address: contracts.activityRegistry.address,
-      event: ACTIVITY_METADATA_UPDATED_EVENT,
-      args: owner ? { owner } : undefined,
-      fromBlock: 0n,
-      toBlock: 'latest',
-    });
+    const logs = await scanLogWindows((fromBlock, toBlock) =>
+      client.getLogs({
+        address: contracts.activityRegistry.address,
+        event: ACTIVITY_METADATA_UPDATED_EVENT,
+        args: owner ? { owner } : undefined,
+        fromBlock,
+        toBlock,
+      })
+    );
 
     for (const log of logs) {
       const { args } = decodeEventLog({
@@ -99,11 +94,7 @@ async function fetchActivityMetadataCids(
         data: log.data,
         topics: log.topics,
       });
-      const a = args as unknown as {
-        activityId: bigint;
-        owner: `0x${string}`;
-        metadataCid: string;
-      };
+      const a = args;
       byActivityId.set(a.activityId.toString(), a.metadataCid);
     }
   } catch (error) {
@@ -123,11 +114,7 @@ function withMetadataCids(
   });
 }
 
-/** Resolves each activity's `metadataCid` (if any) to its off-chain
- * name/description/photos via IPFS, so activities loaded via chain sync —
- * e.g. on a fresh install/new device, with nothing in local AsyncStorage —
- * show their real metadata instead of blank fields. Best-effort: a fetch
- * failure for one CID just leaves that activity's metadata fields unset. */
+/** Resolves each activity's `metadataCid` to its off-chain name/description/photos via IPFS. Best-effort: a failed fetch leaves that activity's fields unset. */
 async function hydrateActivityMetadata(activities: SyncedActivity[]): Promise<SyncedActivity[]> {
   const cids = Array.from(
     new Set(activities.map((a) => a.metadataCid).filter((cid): cid is string => !!cid))
@@ -161,13 +148,15 @@ async function fetchActivityRecordedLogs(
   contracts: ReturnType<typeof getContracts>,
   owner?: `0x${string}`
 ): Promise<SyncedActivity[]> {
-  const logs = await client.getLogs({
-    address: contracts.activityRegistry.address,
-    event: ACTIVITY_RECORDED_EVENT,
-    args: owner ? { owner } : undefined,
-    fromBlock: 0n,
-    toBlock: 'latest',
-  });
+  const logs = await scanLogWindows((fromBlock, toBlock) =>
+    client.getLogs({
+      address: contracts.activityRegistry.address,
+      event: ACTIVITY_RECORDED_EVENT,
+      args: owner ? { owner } : undefined,
+      fromBlock,
+      toBlock,
+    })
+  );
 
   return logs.map((log) => {
     const { args } = decodeEventLog({
@@ -175,16 +164,7 @@ async function fetchActivityRecordedLogs(
       data: log.data,
       topics: log.topics,
     });
-    const a = args as unknown as {
-      activityId: bigint;
-      owner: `0x${string}`;
-      activityHash: `0x${string}`;
-      activityType: number;
-      distance: bigint;
-      duration: bigint;
-      timestamp: bigint;
-      territoryArea: bigint;
-    };
+    const a = args;
 
     const activityType: ActivityType = ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run';
 
@@ -202,12 +182,7 @@ async function fetchActivityRecordedLogs(
   });
 }
 
-/** A single participant's recorded activity history, used e.g. to compare
- * distances when settling a challenge. Prefers the deployed subgraph (indexed,
- * filtered by wallet, no fromBlock:0 rescan) when one exists for the active
- * chain mode; falls back to scanning ActivityRecorded logs directly for modes
- * with no subgraph (e.g. local Anvil) or if the subgraph request itself
- * fails. */
+/** One participant's recorded activity history (e.g. to settle a challenge); subgraph first (filtered by wallet), else scans ActivityRecorded logs. */
 export async function syncActivitiesFromChain(wallet: `0x${string}`): Promise<SyncedActivity[]> {
   try {
     const fromSubgraph = await getActivitiesFromSubgraph(wallet);
@@ -232,15 +207,11 @@ export async function syncActivitiesFromChain(wallet: `0x${string}`): Promise<Sy
       `[sync] syncActivitiesFromChain: getLogs fallback failed for wallet ${wallet}`,
       error
     );
-    return [];
+    throw error;
   }
 }
 
-/** Every recorded activity across all users, for the cross-user social feed.
- * Prefers the deployed subgraph (indexed, no fromBlock:0 rescan) when one
- * exists for the active chain mode; falls back to scanning ActivityRecorded
- * logs directly for modes with no subgraph (e.g. local Anvil) or if the
- * subgraph request itself fails. */
+/** Every recorded activity across users for the social feed; subgraph first, else scans ActivityRecorded logs. */
 export async function syncAllActivitiesFromChain(): Promise<SyncedActivity[]> {
   try {
     const fromSubgraph = await getActivitiesFromSubgraph();
@@ -262,7 +233,7 @@ export async function syncAllActivitiesFromChain(): Promise<SyncedActivity[]> {
     return hydrated.sort((a, b) => (b.activityId > a.activityId ? 1 : -1));
   } catch (e) {
     console.warn('[Sync] Failed to sync all activities from chain:', e);
-    return [];
+    throw e;
   }
 }
 
@@ -279,12 +250,10 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
     })) as `0x${string}`[];
   } catch (e) {
     console.warn('[Sync] Failed to fetch territory IDs:', e);
-    return [];
+    throw e;
   }
 
-  // Multicall3 when the chain has it (Sepolia); plain parallel reads when it
-  // doesn't (local Anvil deploys no Multicall3, so viem's multicall throws and
-  // took the whole chain sync down with it).
+  // Multicall3 where the chain has it (Sepolia); plain parallel reads otherwise, since local Anvil has none and viem's multicall would throw.
   const calls = territoryIds.map((id) => ({
     ...contracts.territoryRegistry,
     functionName: 'getTerritory' as const,
@@ -300,11 +269,9 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
           : { status: 'failure' as const, error: r.reason }
       );
 
-  const rawTerritories = results.map((callResult, i): SyncedTerritory | null => {
-    if (callResult.status === 'failure') {
-      console.warn('[Sync] Failed to read territory details:', callResult.error);
-      return null;
-    }
+  return results.map((callResult, i): SyncedTerritory => {
+    // A partial list would be taken as the full set and drop this territory from the app.
+    if (callResult.status === 'failure') throw callResult.error;
     const t = callResult.result as {
       controller: `0x${string}`;
       capturedAt: bigint;
@@ -332,23 +299,28 @@ export async function syncTerritoriesFromChain(wallet: `0x${string}`): Promise<S
       maxLat: t.maxLat,
     } as SyncedTerritory;
   });
-
-  return rawTerritories.filter((t): t is SyncedTerritory => t !== null);
 }
 
+/**
+ * Reads the wallet's profile id. A wallet without a profile is a normal
+ * answer ({ isRegistered: false }); a failed read throws, so callers can tell
+ * "not registered" from "couldn't check".
+ */
 export async function syncProfileFromChain(wallet: `0x${string}`): Promise<SyncedProfile> {
   const client = getPublicClient();
   const contracts = getContracts();
 
-  try {
-    const profileId = (await client.readContract({
-      ...contracts.profileRegistry,
-      functionName: 'getProfileId',
-      args: [wallet],
-    })) as bigint;
-    return { isRegistered: true, profileId };
-  } catch (e) {
-    console.warn('[Sync] Failed to sync profile:', e);
-    return { isRegistered: false, profileId: null };
-  }
+  const isRegistered = (await client.readContract({
+    ...contracts.profileRegistry,
+    functionName: 'isRegistered',
+    args: [wallet],
+  })) as boolean;
+  if (!isRegistered) return { isRegistered: false, profileId: null };
+
+  const profileId = (await client.readContract({
+    ...contracts.profileRegistry,
+    functionName: 'getProfileId',
+    args: [wallet],
+  })) as bigint;
+  return { isRegistered: true, profileId };
 }

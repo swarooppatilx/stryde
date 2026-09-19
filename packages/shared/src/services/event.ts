@@ -1,13 +1,11 @@
-import { parseEventLogs } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { parseEventLogs, zeroAddress } from 'viem';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
 import { getEventsFromSubgraph, getUserEventsFromSubgraph } from './subgraph';
+import { writeAndConfirm } from './tx';
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
-/** EventRegistry ships as the zero address until it's deployed to a chain.
- * Callers use this to fall back instead of reading/writing to 0x0. */
+/** EventRegistry is the zero address until deployed; callers use this to fall back instead of calling 0x0. */
 export function isEventRegistryDeployed(): boolean {
-  return getContracts().eventRegistry.address.toLowerCase() !== ZERO_ADDRESS;
+  return getContracts().eventRegistry.address.toLowerCase() !== zeroAddress;
 }
 
 function assertEventRegistryDeployed(): void {
@@ -16,9 +14,7 @@ function assertEventRegistryDeployed(): void {
   }
 }
 
-/** Sentinel sportType value for an event spanning multiple activity types —
- * mirrors GroupRegistry's MULTI_SPORT_TYPE (255) so multi-sport events never
- * collide with a real ACTIVITY_TYPE_MAP value (0-11). */
+/** Sentinel `sportType` for multi-sport events; mirrors GroupRegistry's MULTI_SPORT_TYPE (255) so it never collides with ACTIVITY_TYPE_MAP (0-11). */
 export const MULTI_SPORT_TYPE = 255;
 
 export interface OnchainEvent {
@@ -30,8 +26,7 @@ export interface OnchainEvent {
   startTime: number;
   endTime: number;
   distanceGoal: number;
-  /** 1e6-fixed-point coordinates (TerritoryRegistry encoding), or 0/0 when
-   * the host chose not to pin the event to a place. */
+  /** 1e6-fixed-point coordinates (TerritoryRegistry encoding), or 0/0 when the event has no place. */
   startLat: number;
   startLng: number;
   participantCount: number;
@@ -90,7 +85,7 @@ export async function getEventCount(): Promise<bigint> {
   return client.readContract({
     ...contracts.eventRegistry,
     functionName: 'getEventCount',
-  }) as Promise<bigint>;
+  });
 }
 
 export async function isEventJoined(eventId: bigint, user: `0x${string}`): Promise<boolean> {
@@ -100,25 +95,24 @@ export async function isEventJoined(eventId: bigint, user: `0x${string}`): Promi
     ...contracts.eventRegistry,
     functionName: 'isJoined',
     args: [eventId, user],
-  }) as Promise<boolean>;
+  });
 }
 
 export async function getUserEventIds(
   user: `0x${string}`,
   offset = 0n,
   limit = 100n
-): Promise<bigint[]> {
+): Promise<readonly bigint[]> {
   const client = getPublicClient();
   const contracts = getContracts();
   return client.readContract({
     ...contracts.eventRegistry,
     functionName: 'getUserEventIds',
     args: [user, offset, limit],
-  }) as Promise<bigint[]>;
+  });
 }
 
-/** Every active event, on-chain scan fallback for chain modes with no
- * subgraph deployed (or if the subgraph request fails). */
+/** Every active event via on-chain scan; fallback when no subgraph is deployed or its request fails. */
 async function scanAllEventsFromChain(): Promise<OnchainEvent[]> {
   const count = await getEventCount();
   if (count === 0n) return [];
@@ -128,9 +122,7 @@ async function scanAllEventsFromChain(): Promise<OnchainEvent[]> {
   return events.filter((e) => e.active);
 }
 
-/** All active events, for the community/groups tab. Prefers the deployed
- * subgraph when one exists for the active chain mode; falls back to scanning
- * getEventCount()/getEvent() directly for modes with no subgraph. */
+/** All active events; uses the subgraph when available, else scans getEventCount()/getEvent(). */
 export async function getAllEvents(): Promise<OnchainEvent[]> {
   if (!isEventRegistryDeployed()) return [];
   try {
@@ -140,16 +132,11 @@ export async function getAllEvents(): Promise<OnchainEvent[]> {
     console.warn('[Event] Subgraph fetch failed, falling back to on-chain scan:', e);
   }
 
-  try {
-    return await scanAllEventsFromChain();
-  } catch (e) {
-    console.warn('[Event] Failed to scan events from chain:', e);
-    return [];
-  }
+  // No catch: an empty list means "there are none", not "couldn't read".
+  return scanAllEventsFromChain();
 }
 
-/** The events a single wallet currently participates in. Prefers the
- * subgraph when deployed; falls back to getUserEventIds()+getEvent(). */
+/** The events a wallet participates in; subgraph first, else getUserEventIds()+getEvent(). */
 export async function getUserEvents(user: `0x${string}`): Promise<OnchainEvent[]> {
   if (!isEventRegistryDeployed()) return [];
   try {
@@ -159,14 +146,9 @@ export async function getUserEvents(user: `0x${string}`): Promise<OnchainEvent[]
     console.warn('[Event] Subgraph fetch failed, falling back to on-chain scan:', e);
   }
 
-  try {
-    const ids = await getUserEventIds(user);
-    const events = await Promise.all(ids.map((id) => getEvent(id)));
-    return events.filter((e) => e.active);
-  } catch (e) {
-    console.warn('[Event] Failed to fetch user events from chain:', e);
-    return [];
-  }
+  const ids = await getUserEventIds(user);
+  const events = await Promise.all(ids.map((id) => getEvent(id)));
+  return events.filter((e) => e.active);
 }
 
 export async function createEvent(
@@ -184,13 +166,8 @@ export async function createEvent(
 ): Promise<{ eventId: bigint; confirmed: boolean }> {
   assertEventRegistryDeployed();
   const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
-  const hash = await wallet.writeContract({
-    ...contracts.eventRegistry,
+  const { confirmed, receipt } = await writeAndConfirm(wallet, 'eventRegistry', {
     functionName: 'createEvent',
     args: [
       params.title,
@@ -202,12 +179,8 @@ export async function createEvent(
       params.startLat ?? 0,
       params.startLng ?? 0,
     ],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') {
+  if (!confirmed) {
     return { eventId: 0n, confirmed: false };
   }
 
@@ -217,9 +190,7 @@ export async function createEvent(
     logs: receipt.logs,
   });
 
-  const eventId =
-    ((event as { args?: Record<string, unknown> })?.args as { eventId?: bigint } | undefined)
-      ?.eventId ?? 0n;
+  const eventId = event?.args.eventId ?? 0n;
   return { eventId, confirmed: true };
 }
 
@@ -228,22 +199,12 @@ export async function joinEvent(
   eventId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   assertEventRegistryDeployed();
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
-  const hash = await wallet.writeContract({
-    ...contracts.eventRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'eventRegistry', {
     functionName: 'joinEvent',
     args: [eventId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
 export async function leaveEvent(
@@ -251,22 +212,12 @@ export async function leaveEvent(
   eventId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   assertEventRegistryDeployed();
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
-  const hash = await wallet.writeContract({
-    ...contracts.eventRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'eventRegistry', {
     functionName: 'leaveEvent',
     args: [eventId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
 export async function cancelEvent(
@@ -274,20 +225,10 @@ export async function cancelEvent(
   eventId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
   assertEventRegistryDeployed();
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
-  const hash = await wallet.writeContract({
-    ...contracts.eventRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'eventRegistry', {
     functionName: 'cancelEvent',
     args: [eventId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
