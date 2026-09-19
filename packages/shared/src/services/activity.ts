@@ -1,8 +1,9 @@
 import { keccak256, parseEventLogs, toBytes } from 'viem';
 import { ACTIVITY_TYPE_MAP } from '../constants';
 import type { ActivityType } from '../types';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
 import { type ActivityMetadata, uploadJsonToIpfs } from './ipfs';
+import { writeAndConfirm } from './tx';
 
 export async function getActivityHash(activityId: bigint): Promise<`0x${string}`> {
   const client = getPublicClient();
@@ -11,7 +12,7 @@ export async function getActivityHash(activityId: bigint): Promise<`0x${string}`
     ...contracts.activityRegistry,
     functionName: 'getActivityHash',
     args: [activityId],
-  }) as Promise<`0x${string}`>;
+  });
 }
 
 export async function getActivityOwner(activityId: bigint): Promise<`0x${string}`> {
@@ -21,7 +22,7 @@ export async function getActivityOwner(activityId: bigint): Promise<`0x${string}
     ...contracts.activityRegistry,
     functionName: 'getActivityOwner',
     args: [activityId],
-  }) as Promise<`0x${string}`>;
+  });
 }
 
 export async function getActivityTimestamp(activityId: bigint): Promise<bigint> {
@@ -31,7 +32,7 @@ export async function getActivityTimestamp(activityId: bigint): Promise<bigint> 
     ...contracts.activityRegistry,
     functionName: 'getActivityTimestamp',
     args: [activityId],
-  }) as Promise<bigint>;
+  });
 }
 
 export async function getActivityCount(user: `0x${string}`): Promise<bigint> {
@@ -41,17 +42,7 @@ export async function getActivityCount(user: `0x${string}`): Promise<bigint> {
     ...contracts.activityRegistry,
     functionName: 'getActivityCount',
     args: [user],
-  }) as Promise<bigint>;
-}
-
-export async function getUserActivityIds(user: `0x${string}`): Promise<bigint[]> {
-  const client = getPublicClient();
-  const contracts = getContracts();
-  return client.readContract({
-    ...contracts.activityRegistry,
-    functionName: 'getUserActivityIds',
-    args: [user],
-  }) as Promise<bigint[]>;
+  });
 }
 
 export async function totalActivities(): Promise<bigint> {
@@ -60,7 +51,7 @@ export async function totalActivities(): Promise<bigint> {
   return client.readContract({
     ...contracts.activityRegistry,
     functionName: 'totalActivities',
-  }) as Promise<bigint>;
+  });
 }
 
 export function computeActivityHash(
@@ -84,9 +75,6 @@ export async function recordActivity(
   }
 ): Promise<{ activityId: bigint; txHash: `0x${string}`; confirmed: boolean }> {
   const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
   const activityHash = computeActivityHash(
     params.polyline,
@@ -96,8 +84,7 @@ export async function recordActivity(
 
   const activityTypeId = ACTIVITY_TYPE_MAP[params.activityType];
 
-  const hash = await wallet.writeContract({
-    ...contracts.activityRegistry,
+  const { txHash, confirmed, receipt } = await writeAndConfirm(wallet, 'activityRegistry', {
     functionName: 'recordActivity',
     args: [
       activityHash,
@@ -106,14 +93,9 @@ export async function recordActivity(
       BigInt(Math.round(params.duration)),
       BigInt(Math.round(params.territoryArea)),
     ],
-    account,
-    chain: config.chain,
   });
-
-  const client = getPublicClient();
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') {
-    return { activityId: 0n, txHash: hash, confirmed: false };
+  if (!confirmed) {
+    return { activityId: 0n, txHash, confirmed: false };
   }
 
   const [event] = parseEventLogs({
@@ -123,62 +105,33 @@ export async function recordActivity(
   });
 
   return {
-    activityId:
-      ((event as { args?: Record<string, unknown> })?.args as { activityId?: bigint } | undefined)
-        ?.activityId ?? 0n,
-    txHash: hash,
+    activityId: event?.args.activityId ?? 0n,
+    txHash,
     confirmed: true,
   };
 }
 
-/** Uploads an activity's off-chain metadata (name/description/photos) to
- * IPFS via this app's relay API — the on-chain ActivityRegistry record only
- * ever stores the hash/owner/timestamp (see recordActivity above), so this
- * richer data needs a place to live that isn't purely on-device AsyncStorage
- * if it's going to survive logout or a device switch. */
+/** Uploads an activity's off-chain metadata (name/description/photos) to IPFS via the relay API; on-chain ActivityRegistry stores only hash/owner/timestamp. */
 export async function uploadActivityMetadata(
   metadata: ActivityMetadata
 ): Promise<{ cid: string; size: number }> {
   return uploadJsonToIpfs(`activity-metadata-${Date.now()}`, metadata as Record<string, unknown>);
 }
 
-/** Attaches a previously-uploaded metadata CID to an on-chain activity via
- * the additive `setActivityMetadata` function on ActivityRegistry. This is a
- * brand new function on the already-deployed contract — it does NOT touch
- * recordActivity's signature or behavior, so existing callers of
- * recordActivity are unaffected. Only the activity's own owner may call this
- * (enforced on-chain); mirrors ProfileRegistry's setAvatar/AvatarUpdated
- * pattern (a setter that just emits an event for the subgraph to index). */
+/** Attaches an uploaded metadata CID to an on-chain activity via `setActivityMetadata`; owner-only on-chain, and it emits an event for the subgraph like ProfileRegistry's setAvatar. */
 export async function setActivityMetadata(
   wallet: ReturnType<typeof getWalletClient>,
   activityId: bigint,
   metadataCid: string
 ): Promise<{ txHash: `0x${string}`; confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.activityRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'activityRegistry', {
     functionName: 'setActivityMetadata',
     args: [activityId, metadataCid],
-    account,
-    chain: config.chain,
   });
-
-  const client = getPublicClient();
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { txHash: hash, confirmed: receipt.status === 'success' };
+  return { txHash, confirmed };
 }
 
-/** Convenience wrapper for the common create-activity flow: uploads
- * name/description/photos to IPFS, then attaches the resulting CID on-chain.
- * Returns null (rather than throwing) when there's no metadata worth
- * persisting, and lets IPFS/on-chain failures propagate to the caller, which
- * should treat this as best-effort — the activity itself is already recorded
- * via recordActivity by the time this runs, so a failure here should not be
- * treated as the activity having failed to save. */
+/** Uploads name/description/photos to IPFS and attaches the CID on-chain; null when there is no metadata worth persisting. IPFS and on-chain failures propagate; callers should treat them as best-effort since the activity is already recorded. */
 export async function uploadAndSetActivityMetadata(
   wallet: ReturnType<typeof getWalletClient>,
   activityId: bigint,

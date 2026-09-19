@@ -1,3 +1,4 @@
+import { zeroAddress } from 'viem';
 import { baseSepolia, type Chain, foundry, sepolia } from 'viem/chains';
 import type { ActivityType } from './types';
 
@@ -7,9 +8,10 @@ export interface ChainConfig {
   chain: Chain;
   chainId: number;
   rpcUrl: string;
-  /** Empty string means no subgraph is deployed for this mode — callers fall
-   * back to reading events directly off-chain (see services/sync.ts). */
+  /** Empty string means no subgraph is deployed for this mode; callers read events directly (see services/sync.ts). */
   subgraphUrl: string;
+  /** First block of the current deployment; event scans start here instead of at genesis. */
+  deployBlock: bigint;
   contracts: {
     profileRegistry: `0x${string}`;
     activityRegistry: `0x${string}`;
@@ -19,15 +21,12 @@ export interface ChainConfig {
     challengeRegistry: `0x${string}`;
     territoryNFT: `0x${string}`;
     moveToEarnToken: `0x${string}`;
-    /** Not yet deployed to any network — see GroupRegistry PR notes. Zero
-     * address on every chain mode until a human runs the deploy script. */
+    /** Zero address on every chain mode until the deploy script runs. */
     groupRegistry: `0x${string}`;
     socialRegistry: `0x${string}`;
     eventRegistry: `0x${string}`;
   };
 }
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
 
 const DEFAULT_LOCAL_RPC = 'http://127.0.0.1:8545';
 let localRpcOverride: string | null = null;
@@ -46,26 +45,23 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
   'ethereum-sepolia': {
     chain: sepolia,
     chainId: 11155111,
-    // Ankr's free eth_sepolia endpoint now rejects eth_getTransactionReceipt
-    // and other calls with "Unauthorized: you must authenticate with an API
-    // key" — that silently broke confirmation polling for every on-chain
-    // write (activities, challenges, achievements, etc: they'd succeed
-    // on-chain but the app would spin for the full 3-minute viem timeout
-    // and then report failure). publicnode's endpoint has no such gate.
+    // Ankr's free eth_sepolia endpoint rejects eth_getTransactionReceipt without an API key, which breaks confirmation polling (writes succeed but the app spins for the 3-minute viem timeout); publicnode has no such gate.
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
-    subgraphUrl: 'https://api.studio.thegraph.com/query/1760059/stryde/v0.6.0',
+    // Empty on purpose: the v0.6.0 subgraph indexes the previous deployment's addresses. Reads use the chain-log fallbacks until the Arkiv index serves them.
+    subgraphUrl: '',
+    deployBlock: 12063931n,
     contracts: {
-      profileRegistry: '0x7F7C12C204229A76815470707De2384cd369bA23',
-      activityRegistry: '0x569dFFc017a0040E381AE859dCfd34Ff7fB94b1c',
-      territoryRegistry: '0x47A345474256c297eB78e28F1Eb5026269b8220a',
-      seasonManager: '0xE4a98F8eEe705a9114d8BED7a9064Cc00be14CcD',
-      achievementRegistry: '0x545945D83ff0dee4dBE993884E6951eA994Bbe8E',
-      challengeRegistry: '0x0a149740740927270326C7014e7c04Aa5A0A299D',
-      territoryNFT: '0xf1d2263C51c3FE311325Da69a48df1049A52EB07',
-      moveToEarnToken: '0xa154f1E0A9dAb00F107668B1dEe7DE9fA187Eae5',
-      groupRegistry: '0x314C216c504CEC6A2ccC0621Fc3E25Ff3487FFdD',
-      socialRegistry: '0x0E8b3Ca753D64809a2fE3982952bd86f9fF301AC',
-      eventRegistry: '0x3B7dc2CFFf7b9c14817a550441A32AF8D2C04fc5',
+      profileRegistry: '0x348CE6aF8eA0C50fb44F284dCCA73b7EE5112314',
+      activityRegistry: '0x30a910fc25F0977907Af86345c0B26C34e7d2439',
+      territoryRegistry: '0x22802b1C6fda5CA6FBC519830879a17214DbA1e2',
+      seasonManager: '0xfc42018ea93384FA6703d0Eb72656C67261D1732',
+      achievementRegistry: '0x537F289b59b9944e14978a23f57133B738747f81',
+      challengeRegistry: '0x6E196c21292E0eDE7748A04A5a62bE0b6ae6004c',
+      territoryNFT: '0xfC9044241B4edA72779d9F9876426D256048531B',
+      moveToEarnToken: '0x6Cc5211470De17d69B3208e26B08fFAD0b6260F6',
+      groupRegistry: '0xeeBBd3aAADcC95919e6f3a78E3A2cdA57D0a3241',
+      socialRegistry: '0xfc97445a56b61471720EF9e2bb0759d8d3c76561',
+      eventRegistry: '0xDead8aA0b3840f272c8293E6DD34932cF5a7f027',
     },
   },
   'base-sepolia': {
@@ -73,18 +69,19 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     chainId: 84532,
     rpcUrl: 'https://sepolia.base.org',
     subgraphUrl: '',
+    deployBlock: 0n,
     contracts: {
-      profileRegistry: ZERO_ADDRESS,
-      activityRegistry: ZERO_ADDRESS,
-      territoryRegistry: ZERO_ADDRESS,
-      seasonManager: ZERO_ADDRESS,
-      achievementRegistry: ZERO_ADDRESS,
-      challengeRegistry: ZERO_ADDRESS,
-      territoryNFT: ZERO_ADDRESS,
-      moveToEarnToken: ZERO_ADDRESS,
-      groupRegistry: ZERO_ADDRESS,
-      socialRegistry: ZERO_ADDRESS,
-      eventRegistry: ZERO_ADDRESS,
+      profileRegistry: zeroAddress,
+      activityRegistry: zeroAddress,
+      territoryRegistry: zeroAddress,
+      seasonManager: zeroAddress,
+      achievementRegistry: zeroAddress,
+      challengeRegistry: zeroAddress,
+      territoryNFT: zeroAddress,
+      moveToEarnToken: zeroAddress,
+      groupRegistry: zeroAddress,
+      socialRegistry: zeroAddress,
+      eventRegistry: zeroAddress,
     },
   },
   local: {
@@ -92,6 +89,7 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     chainId: 31337,
     rpcUrl: DEFAULT_LOCAL_RPC,
     subgraphUrl: '',
+    deployBlock: 0n,
     contracts: {
       profileRegistry: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
       activityRegistry: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',

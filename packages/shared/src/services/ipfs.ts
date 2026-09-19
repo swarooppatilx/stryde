@@ -1,18 +1,16 @@
 import type { Ring } from '../types';
 
 export interface IpfsConfig {
-  /** Base URL of this app's own relay API (see packages/api/src/routes/ipfs.ts),
-   * e.g. `https://api.example.com` or `http://localhost:3000`. */
+  /** Base URL of the relay API (packages/api/src/routes/ipfs.ts), e.g. `http://localhost:3000`. */
   apiUrl: string;
   apiKey?: string;
+  /** Answers the app's own API calls instead of the network (a profile with no backend); the normal `fetch` when unset. */
+  fetch?: typeof fetch;
 }
 
 let ipfsConfig: IpfsConfig | null = null;
 
-/** Must be called once at app startup (mirrors setChainMode) before any of
- * this module's upload functions are used — packages/shared has no env
- * config of its own, so the API base URL/key are injected by the caller
- * (e.g. apps/mobile's _layout.tsx, using ENV.API_URL / ENV.API_KEY). */
+/** Must be called once at startup (like setChainMode) before any upload function; this package has no env config, so the caller injects the API base URL and key. */
 export function setIpfsConfig(config: IpfsConfig): void {
   ipfsConfig = config;
 }
@@ -30,33 +28,18 @@ export interface ActivityMetadata {
   name?: string;
   description?: string;
   photos?: string[];
-  /** Encoded route, and the closed territory ring if this activity captured
-   * one — the only durable place either lives. ActivityRegistry itself only
-   * stores a hash/distance/duration/area, and a bare polygon/route never fit
-   * on-chain economically, so without this a viewer who isn't the device
-   * that recorded the run (any other user, or a purely chain-seeded
-   * activity) has no map/route thumbnail to render at all. */
+  /** Encoded route and the closed territory ring, if any: the only durable place either lives, since ActivityRegistry stores only hash/distance/duration/area. */
   polyline?: string;
   territory?: Ring | null;
-  /** The activity's route, as [lng, lat][] in the same ordering as the
-   * on-chain `polyline` arg to recordActivity(). Stored so the map tab can
-   * re-render a saved activity's route (and renders others' routes via the
-   * shared metadata readers in apps/mobile/src/services). */
+  /** The route as [lng, lat][] in the same order as the on-chain `polyline` arg to recordActivity(). */
   coordinates?: Array<[number, number]>;
 }
 
 const UPLOAD_TIMEOUT_MS = 30_000;
 const FETCH_TIMEOUT_MS = 15_000;
 
-/** Uploads arbitrary JSON content to IPFS via this app's own relay API
- * (`POST /api/ipfs/upload`), which pins to Pinata — the exact same upload
- * path/pattern as apps/mobile/src/services/ipfsService.ts's uploadToIpfs, so
- * both the mobile client and this shared package hit the same endpoint and
- * request shape. Requires setIpfsConfig() to have been called first. */
-export async function uploadJsonToIpfs(
-  name: string,
-  content: Record<string, unknown>
-): Promise<IpfsUploadResult> {
+/** Uploads JSON to IPFS via the relay API (`POST /api/ipfs/upload`, pinned to Pinata); requires setIpfsConfig() first. */
+export async function uploadJsonToIpfs(name: string, content: object): Promise<IpfsUploadResult> {
   if (!ipfsConfig) {
     throw new Error('IPFS not configured — call setIpfsConfig() first');
   }
@@ -66,7 +49,7 @@ export async function uploadJsonToIpfs(
 
   let response: Response;
   try {
-    response = await fetch(`${ipfsConfig.apiUrl}/api/ipfs/upload`, {
+    response = await (ipfsConfig.fetch ?? fetch)(`${ipfsConfig.apiUrl}/api/ipfs/upload`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -98,10 +81,7 @@ export function ipfsToHttpUrl(cid: string): string {
   return `https://gateway.pinata.cloud/ipfs/${cid}`;
 }
 
-/** Fetches JSON content previously pinned via uploadJsonToIpfs, straight from
- * the public IPFS gateway (no relay/API-key needed for reads). Returns null
- * — rather than throwing — on any failure, so callers can treat missing/
- * unreachable metadata as "just show what we have" instead of an error. */
+/** Fetches JSON pinned via uploadJsonToIpfs from the public gateway (no API key for reads). Returns null on any failure so callers can show what they have. */
 export async function fetchJsonFromIpfs<T = Record<string, unknown>>(
   cid: string
 ): Promise<T | null> {
