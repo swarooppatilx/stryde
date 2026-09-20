@@ -1,8 +1,9 @@
 import type { WalletClient } from 'viem';
-import { decodeEventLog, keccak256, toBytes } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient } from './client';
+import { decodeEventLog, keccak256, toBytes, zeroAddress } from 'viem';
+import { getContracts, getPublicClient } from './client';
 import { fetchJsonFromIpfs, uploadJsonToIpfs } from './ipfs';
 import { getCommentsFromSubgraph, getKudosFromSubgraph } from './subgraph';
+import { writeAndConfirm } from './tx';
 
 export interface SyncedKudos {
   activityId: bigint;
@@ -34,9 +35,12 @@ export function computeCommentId(
   activityId: bigint,
   author: `0x${string}`,
   text: string,
-  timestamp: bigint
+  timestamp: bigint,
+  /** Tells apart two comments with the same text in the same second; without it they were one on-chain comment. Left out, the id is what it always was. */
+  nonce = ''
 ): `0x${string}` {
-  return keccak256(toBytes(`${activityId.toString()}:${author}:${text}:${timestamp.toString()}`));
+  const base = `${activityId.toString()}:${author}:${text}:${timestamp.toString()}`;
+  return keccak256(toBytes(nonce === '' ? base : `${base}:${nonce}`));
 }
 
 export async function uploadCommentToIpfs(
@@ -47,7 +51,7 @@ export async function uploadCommentToIpfs(
     type: 'activity_comment',
     ...comment,
   };
-  return uploadJsonToIpfs(`comment-${Date.now()}`, doc as unknown as Record<string, unknown>);
+  return uploadJsonToIpfs(`comment-${Date.now()}`, doc);
 }
 
 const KUDO_GIVEN_EVENT = {
@@ -94,7 +98,46 @@ async function fetchCommentText(cid: string): Promise<string | null> {
 }
 
 const LOOKBACK_BLOCKS = 250_000n;
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+interface KudosEvent extends SyncedKudos {
+  blockNumber: bigint;
+  logIndex: number;
+}
+
+function decodeKudosLog(
+  event: typeof KUDO_GIVEN_EVENT | typeof KUDO_REVOKED_EVENT,
+  log: {
+    data: `0x${string}`;
+    topics: [`0x${string}`, ...`0x${string}`[]] | [];
+    blockNumber: bigint | null;
+    logIndex: number | null;
+  },
+  active: boolean
+): KudosEvent {
+  const { args } = decodeEventLog({ abi: [event], data: log.data, topics: log.topics });
+  const a = args;
+  return {
+    activityId: a.activityId,
+    giver: a.giver.toLowerCase(),
+    timestamp: Number(a.timestamp),
+    active,
+    blockNumber: log.blockNumber ?? 0n,
+    logIndex: log.logIndex ?? 0,
+  };
+}
+
+/** Folds gives and revokes in the order they happened onchain; the last event per (activity, giver) wins. */
+export function replayKudos(events: KudosEvent[]): SyncedKudos[] {
+  const ordered = [...events].sort((x, y) => {
+    if (x.blockNumber === y.blockNumber) return x.logIndex - y.logIndex;
+    return x.blockNumber < y.blockNumber ? -1 : 1;
+  });
+  const state = new Map<string, SyncedKudos>();
+  for (const { blockNumber: _b, logIndex: _l, ...kudo } of ordered) {
+    state.set(`${kudo.activityId}:${kudo.giver}`, kudo);
+  }
+  return Array.from(state.values()).filter((k) => k.active);
+}
 
 async function fetchSocialLogsFromChain(): Promise<{
   kudos: SyncedKudos[];
@@ -104,7 +147,7 @@ async function fetchSocialLogsFromChain(): Promise<{
   const contracts = getContracts();
   const socialAddr = contracts.socialRegistry.address;
 
-  if (!socialAddr || socialAddr.toLowerCase() === ZERO_ADDRESS) {
+  if (!socialAddr || socialAddr.toLowerCase() === zeroAddress) {
     return { kudos: [], comments: [] };
   }
 
@@ -132,42 +175,10 @@ async function fetchSocialLogsFromChain(): Promise<{
     }),
   ]);
 
-  // Rebuild kudos state: track give/revoke per (activityId, giver)
-  const kudosState = new Map<string, SyncedKudos>();
-
-  for (const log of givenLogs) {
-    const { args } = decodeEventLog({
-      abi: [KUDO_GIVEN_EVENT],
-      data: log.data,
-      topics: log.topics,
-    });
-    const a = args as unknown as { activityId: bigint; giver: `0x${string}`; timestamp: bigint };
-    const key = `${a.activityId}:${a.giver.toLowerCase()}`;
-    kudosState.set(key, {
-      activityId: a.activityId,
-      giver: a.giver.toLowerCase(),
-      timestamp: Number(a.timestamp),
-      active: true,
-    });
-  }
-
-  for (const log of revokedLogs) {
-    const { args } = decodeEventLog({
-      abi: [KUDO_REVOKED_EVENT],
-      data: log.data,
-      topics: log.topics,
-    });
-    const a = args as unknown as { activityId: bigint; giver: `0x${string}`; timestamp: bigint };
-    const key = `${a.activityId}:${a.giver.toLowerCase()}`;
-    kudosState.set(key, {
-      activityId: a.activityId,
-      giver: a.giver.toLowerCase(),
-      timestamp: Number(a.timestamp),
-      active: false,
-    });
-  }
-
-  const kudos = Array.from(kudosState.values()).filter((k) => k.active);
+  const kudos = replayKudos([
+    ...givenLogs.map((log) => decodeKudosLog(KUDO_GIVEN_EVENT, log, true)),
+    ...revokedLogs.map((log) => decodeKudosLog(KUDO_REVOKED_EVENT, log, false)),
+  ]);
 
   // Parse comments
   const comments: SyncedComment[] = [];
@@ -177,13 +188,7 @@ async function fetchSocialLogsFromChain(): Promise<{
       data: log.data,
       topics: log.topics,
     });
-    const a = args as unknown as {
-      activityId: bigint;
-      author: `0x${string}`;
-      commentId: `0x${string}`;
-      commentCid: string;
-      timestamp: bigint;
-    };
+    const a = args;
     comments.push({
       id: a.commentId,
       activityId: a.activityId,
@@ -251,28 +256,45 @@ export async function toggleKudos(
   wallet: WalletClient,
   activityId: bigint
 ): Promise<{ txHash: `0x${string}`; confirmed: boolean; gave: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
+  const account = wallet.account;
   if (!account) throw new Error('No wallet account found');
 
-  // Check current state
-  const current = await getPublicClient().readContract({
-    ...contracts.socialRegistry,
+  const hadKudos = await getPublicClient().readContract({
+    ...getContracts().socialRegistry,
     functionName: 'hasKudos',
-    args: [activityId, account],
+    args: [activityId, account.address],
   });
-
-  const hash = await wallet.writeContract({
-    ...contracts.socialRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'socialRegistry', {
     functionName: 'toggleKudos',
     args: [activityId],
-    account,
-    chain: config.chain,
   });
+  return { txHash, confirmed, gave: !hadKudos };
+}
 
-  const receipt = await getPublicClient().waitForTransactionReceipt({ hash });
-  return { txHash: hash, confirmed: receipt.status === 'success', gave: !current };
+/**
+ * Makes sure the wallet's kudos on an activity is (or is not) there. Unlike `toggleKudos` it is
+ * safe to repeat: when the chain already matches, nothing is sent.
+ */
+export async function setKudos(
+  wallet: WalletClient,
+  activityId: bigint,
+  wanted: boolean
+): Promise<{ changed: false } | { changed: true; txHash: `0x${string}`; confirmed: boolean }> {
+  const account = wallet.account;
+  if (!account) throw new Error('No wallet account found');
+
+  const has = await getPublicClient().readContract({
+    ...getContracts().socialRegistry,
+    functionName: 'hasKudos',
+    args: [activityId, account.address],
+  });
+  if (has === wanted) return { changed: false };
+
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'socialRegistry', {
+    functionName: 'toggleKudos',
+    args: [activityId],
+  });
+  return { changed: true, txHash, confirmed };
 }
 
 export async function addComment(
@@ -281,19 +303,9 @@ export async function addComment(
   commentId: `0x${string}`,
   cid: string
 ): Promise<{ txHash: `0x${string}`; confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.socialRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'socialRegistry', {
     functionName: 'addComment',
     args: [activityId, commentId, cid],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await getPublicClient().waitForTransactionReceipt({ hash });
-  return { txHash: hash, confirmed: receipt.status === 'success' };
+  return { txHash, confirmed };
 }
