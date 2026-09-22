@@ -7,12 +7,7 @@ export interface RelayResult {
   queued?: boolean;
 }
 
-/**
- * Minimal async key/value persistence used by the offline queue. Conforms to
- * the shape of AsyncStorage (via the mobile app's asyncStorageAdapter), so the
- * mobile app injects real on-device persistence while API/web tests run with
- * an in-memory store.
- */
+/** Minimal async key/value persistence for the offline queue; shaped like AsyncStorage so the app injects real persistence while API/web tests use an in-memory store. */
 export interface RelayQueueStorage {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
@@ -25,6 +20,8 @@ export interface RelayQueueEntry {
   body: Record<string, unknown>;
   attempts: number;
   createdAt: number;
+  /** Don't retry before this time (set after a failed replay). */
+  notBefore?: number;
 }
 
 interface RelayQueueState {
@@ -87,6 +84,22 @@ function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** The relayer answered, but with a refusal. */
+class RelayHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+/** Answers that will not change on retry: the request itself is wrong or not allowed. */
+const PERMANENT_STATUSES = new Set([400, 403, 404, 409, 422]);
+const MAX_REPLAY_ATTEMPTS = 8;
+/** Aborts a hung request so it becomes an error isNetworkError() recognises and is queued for retry instead of silently lost. */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 /** Raw relay POST — no queue involvement. Throws on any non-2xx/network error. */
 async function relayPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const config = getIpfsConfig();
@@ -94,18 +107,33 @@ async function relayPost<T>(path: string, body: Record<string, unknown>): Promis
     throw new Error('Relay not configured — call setIpfsConfig() first');
   }
 
-  const response = await fetch(`${config.apiUrl}/api/relay/${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await (config.fetch ?? fetch)(`${config.apiUrl}/api/relay/${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error('Relay request timed out');
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(error.error || `Relay request failed: ${response.status}`);
+    throw new RelayHttpError(
+      error.error || `Relay request failed: ${response.status}`,
+      response.status
+    );
   }
 
   return response.json() as Promise<T>;
@@ -162,13 +190,11 @@ function backoffFor(attempts: number): number {
   return delay;
 }
 
-type AsyncRetryFn = (path: string, body: Record<string, unknown>) => Promise<RelayResult>;
-
 /**
- * Replays every queued relay write that isn't currently reachable. Retrying
- * the whole queue top-to-bottom keeps mints order-consistent and self-healing:
- * a mint that fails (e.g. transient chain outage) fails to the back of the
- * queue its time budget rather than wedging the entries behind it.
+ * Replays every queued relay write once its backoff has passed. A write the
+ * relayer refuses for good (bad request, not authorized) is dropped rather than
+ * retried forever; anything else waits longer each time. Writes queued while
+ * the replay was running are kept.
  */
 export async function drainRelayQueue(): Promise<{ replayed: number; failed: number }> {
   if (!queueStorage) return { replayed: 0, failed: 0 };
@@ -183,38 +209,39 @@ export async function drainRelayQueue(): Promise<{ replayed: number; failed: num
   }
 }
 
-async function runDrain(
-  sendFn: AsyncRetryFn = (path, body) => send(path, body)
-): Promise<{ replayed: number; failed: number }> {
-  let state = await readQueue();
-  if (state.entries.length === 0) return { replayed: 0, failed: 0 };
+async function runDrain(): Promise<{ replayed: number; failed: number }> {
+  const snapshot = (await readQueue()).entries;
+  if (snapshot.length === 0) return { replayed: 0, failed: 0 };
 
-  const remaining: RelayQueueEntry[] = [];
+  const keep = new Map<string, RelayQueueEntry>();
   let replayed = 0;
   let failed = 0;
 
-  for (const entry of state.entries) {
-    if (!isOnline()) {
-      remaining.push(entry);
+  for (const entry of snapshot) {
+    if (!isOnline() || (entry.notBefore ?? 0) > Date.now()) {
+      keep.set(entry.id, entry);
       continue;
     }
     try {
-      const result = await sendFn(entry.path, entry.body);
-      if (result.queued) {
-        remaining.push(entry);
-      } else {
-        replayed++;
+      await relayPost<RelayResult>(entry.path, entry.body);
+      replayed++;
+    } catch (error) {
+      if (isNetworkError(error)) {
+        keep.set(entry.id, entry);
+        continue;
       }
-    } catch {
-      entry.attempts += 1;
-      entry.createdAt = Date.now() + backoffFor(entry.attempts);
-      remaining.push(entry);
       failed++;
+      const permanent = error instanceof RelayHttpError && PERMANENT_STATUSES.has(error.status);
+      const attempts = entry.attempts + 1;
+      if (permanent || attempts >= MAX_REPLAY_ATTEMPTS) continue;
+      keep.set(entry.id, { ...entry, attempts, notBefore: Date.now() + backoffFor(attempts) });
     }
   }
 
-  state = { entries: remaining };
-  await writeQueue(state);
+  // Re-read so a write queued while we were sending isn't overwritten.
+  const seen = new Set(snapshot.map((e) => e.id));
+  const added = (await readQueue()).entries.filter((e) => !seen.has(e.id));
+  await writeQueue({ entries: [...keep.values(), ...added] });
   return { replayed, failed };
 }
 
@@ -252,6 +279,20 @@ export function relayMintTerritoryNFT(
   });
 }
 
+/** The relayer settles: the contract accepts only its settler, and the winner is worked out server-side from the indexed record, never taken from the caller. */
+export function relaySettleChallenge(challengeId: bigint): Promise<RelayResult> {
+  return send('settle-challenge', { challengeId: challengeId.toString() });
+}
+
 export function relayStartSeason(durationSeconds: number): Promise<RelayResult> {
   return send('start-season', { durationSeconds });
+}
+
+/** The relayer credits the distance recorded onchain for `activityHash`, once per activity. */
+export function relayRecordContribution(
+  participant: string,
+  amount: number,
+  activityHash: `0x${string}`
+): Promise<RelayResult> {
+  return send('record-contribution', { participant, amount, activityHash });
 }

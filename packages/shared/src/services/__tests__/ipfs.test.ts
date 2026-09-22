@@ -96,3 +96,16 @@ describe('fetchJsonFromIpfs', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('uploadJsonToIpfs with an injected fetch', () => {
+  it('asks the injected fetch instead of the network', async () => {
+    const injected = vi.fn(async () => Response.json({ cid: 'bafysandbox', size: 7 }));
+    const network = vi.spyOn(globalThis, 'fetch');
+    setIpfsConfig({ apiUrl: 'http://api.test', fetch: injected as typeof fetch });
+
+    expect(await uploadJsonToIpfs('n', { a: 1 })).toEqual({ cid: 'bafysandbox', size: 7 });
+    expect(injected).toHaveBeenCalledTimes(1);
+    expect(network).not.toHaveBeenCalled();
+    network.mockRestore();
+  });
+});
