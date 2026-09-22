@@ -1,6 +1,8 @@
-import { decodeEventLog, parseEventLogs } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { parseEventLogs } from 'viem';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
+import { scanLogWindows } from './logScan';
 import { getProfileAvatarsFromSubgraph, getProfilesFromSubgraph } from './subgraph';
+import { writeAndConfirm } from './tx';
 
 export async function isRegistered(wallet: `0x${string}`): Promise<boolean> {
   const client = getPublicClient();
@@ -9,7 +11,7 @@ export async function isRegistered(wallet: `0x${string}`): Promise<boolean> {
     ...contracts.profileRegistry,
     functionName: 'isRegistered',
     args: [wallet],
-  }) as Promise<boolean>;
+  });
 }
 
 export async function getProfileId(wallet: `0x${string}`): Promise<bigint> {
@@ -19,7 +21,7 @@ export async function getProfileId(wallet: `0x${string}`): Promise<bigint> {
     ...contracts.profileRegistry,
     functionName: 'getProfileId',
     args: [wallet],
-  }) as Promise<bigint>;
+  });
 }
 
 export async function getWallet(profileId: bigint): Promise<`0x${string}`> {
@@ -29,7 +31,7 @@ export async function getWallet(profileId: bigint): Promise<`0x${string}`> {
     ...contracts.profileRegistry,
     functionName: 'getWallet',
     args: [profileId],
-  }) as Promise<`0x${string}`>;
+  });
 }
 
 export async function totalProfiles(): Promise<bigint> {
@@ -38,7 +40,7 @@ export async function totalProfiles(): Promise<bigint> {
   return client.readContract({
     ...contracts.profileRegistry,
     functionName: 'totalProfiles',
-  }) as Promise<bigint>;
+  });
 }
 
 export interface RegisteredUser {
@@ -68,42 +70,31 @@ const AVATAR_UPDATED_EVENT = {
   ],
 } as const;
 
-/** Last-resort fallback: derives a wallet's current avatar from the latest
- * AvatarUpdated log it emitted — last write wins. This does an unbounded
- * getLogs scan, which public RPC providers (e.g. the Sepolia publicnode
- * endpoint) reject past a small block range, so it should only be reached
- * when no subgraph is configured for the active chain mode. */
+/** Last-resort avatar lookup from the latest AvatarUpdated log (last write wins). The unbounded getLogs scan is rejected by public RPCs past a small block range, so reach it only when no subgraph is configured. */
 async function getLatestAvatarByWalletFromLogs(): Promise<Map<string, string>> {
   const client = getPublicClient();
   const contracts = getContracts();
 
   const byWallet = new Map<string, string>();
   try {
-    const logs = await client.getLogs({
-      address: contracts.profileRegistry.address,
-      event: AVATAR_UPDATED_EVENT,
-      fromBlock: 0n,
-      toBlock: 'latest',
-    });
+    const logs = await scanLogWindows((fromBlock, toBlock) =>
+      client.getLogs({
+        address: contracts.profileRegistry.address,
+        event: AVATAR_UPDATED_EVENT,
+        fromBlock,
+        toBlock,
+        strict: true,
+      })
+    );
 
-    for (const log of logs) {
-      const parsed = decodeEventLog({
-        abi: contracts.profileRegistry.abi,
-        data: log.data,
-        topics: log.topics,
-      });
-      const args = parsed.args as unknown as { wallet: `0x${string}`; cid: string };
-      byWallet.set(args.wallet.toLowerCase(), args.cid);
-    }
+    for (const { args } of logs) byWallet.set(args.wallet.toLowerCase(), args.cid);
   } catch (error) {
     console.warn('[profile] getLatestAvatarByWallet: failed to fetch AvatarUpdated logs', error);
   }
   return byWallet;
 }
 
-/** Subgraph-first, falling back to the unbounded getLogs scan only when no
- * subgraph is configured (or the subgraph query fails) for the active chain
- * mode — mirrors the resilience pattern used elsewhere in this file. */
+/** Subgraph first, falling back to the unbounded getLogs scan when none is configured or the query fails. */
 async function getLatestAvatarByWallet(): Promise<Map<string, string>> {
   try {
     const fromSubgraph = await getProfileAvatarsFromSubgraph();
@@ -138,33 +129,23 @@ export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
 
   try {
     const [logs, avatarsByWallet] = await Promise.all([
-      client.getLogs({
-        address: contracts.profileRegistry.address,
-        event: PROFILE_CREATED_EVENT,
-        fromBlock: 0n,
-        toBlock: 'latest',
-      }),
+      scanLogWindows((fromBlock, toBlock) =>
+        client.getLogs({
+          address: contracts.profileRegistry.address,
+          event: PROFILE_CREATED_EVENT,
+          fromBlock,
+          toBlock,
+          strict: true,
+        })
+      ),
       getLatestAvatarByWallet(),
     ]);
 
-    const users = logs.map((log) => {
-      const parsed = decodeEventLog({
-        abi: contracts.profileRegistry.abi,
-        data: log.data,
-        topics: log.topics,
-      });
-      const args = parsed.args as unknown as {
-        profileId: bigint;
-        wallet: `0x${string}`;
-        username: string;
-        joinedAt: bigint;
-      };
-      return {
-        wallet: args.wallet,
-        username: args.username,
-        avatarCid: avatarsByWallet.get(args.wallet.toLowerCase()),
-      };
-    });
+    const users = logs.map(({ args }) => ({
+      wallet: args.wallet,
+      username: args.username,
+      avatarCid: avatarsByWallet.get(args.wallet.toLowerCase()),
+    }));
 
     const verifiedResults = await Promise.allSettled(
       users.map((u) =>
@@ -182,7 +163,7 @@ export async function getRegisteredUsers(): Promise<RegisteredUser[]> {
     });
   } catch (error) {
     console.warn('[profile] getRegisteredUsers: getLogs fallback failed', error);
-    return [];
+    throw error;
   }
 }
 
@@ -190,58 +171,39 @@ export async function setAvatar(
   wallet: ReturnType<typeof getWalletClient>,
   cid: string
 ): Promise<{ txHash: `0x${string}`; confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.profileRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'profileRegistry', {
     functionName: 'setAvatar',
     args: [cid],
-    account,
-    chain: config.chain,
   });
+  return { txHash, confirmed };
+}
 
-  const client = getPublicClient();
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { txHash: hash, confirmed: receipt.status === 'success' };
+/** Changes the wallet's username on ProfileRegistry (reverts if it is taken or the wallet has no profile). */
+export async function setUsername(
+  wallet: ReturnType<typeof getWalletClient>,
+  newUsername: string
+): Promise<{ txHash: `0x${string}`; confirmed: boolean }> {
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'profileRegistry', {
+    functionName: 'setUsername',
+    args: [newUsername],
+  });
+  return { txHash, confirmed };
 }
 
 export async function register(
   wallet: ReturnType<typeof getWalletClient>,
   username: string
 ): Promise<{ profileId: bigint; txHash: `0x${string}`; confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.profileRegistry,
+  const { txHash, confirmed, receipt } = await writeAndConfirm(wallet, 'profileRegistry', {
     functionName: 'register',
     args: [username],
-    account,
-    chain: config.chain,
   });
-
-  const client = getPublicClient();
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') {
-    return { profileId: 0n, txHash: hash, confirmed: false };
-  }
+  if (!confirmed) return { profileId: 0n, txHash, confirmed };
 
   const [event] = parseEventLogs({
-    abi: contracts.profileRegistry.abi,
+    abi: getContracts().profileRegistry.abi,
     eventName: 'ProfileCreated',
     logs: receipt.logs,
   });
-
-  return {
-    profileId:
-      ((event as { args?: Record<string, unknown> })?.args as { profileId?: bigint } | undefined)
-        ?.profileId ?? 0n,
-    txHash: hash,
-    confirmed: true,
-  };
+  return { profileId: event?.args.profileId ?? 0n, txHash, confirmed };
 }

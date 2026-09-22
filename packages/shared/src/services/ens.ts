@@ -2,29 +2,15 @@ import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
 import { createTtlCache } from './cache';
 
-// ENS resolution always happens against Sepolia (per PRD: must be live
-// ENSv2 resolution, not hardcoded), independent of the app's active
-// ChainMode — a user transacting on local Anvil can still have an ENS
-// name resolved for display.
+// ENS resolution always uses Sepolia (live ENSv2), independent of the active ChainMode, so a user on local Anvil still gets a name for display.
 //
-// Deliberately NOT reusing the shared ethereum-sepolia RPC config here:
-// ENS resolution goes through the Universal Resolver's CCIP-read gateway
-// calls (eth_call to 0xeeee...eeee with an x-batch-gateway param), and
-// the free Ankr endpoint used elsewhere rejects that pattern without an
-// API key ("Unauthorized... must authenticate"). viem's bundled default
-// Sepolia RPC (thirdweb) handles it fine.
+// Deliberately not the shared ethereum-sepolia RPC config: resolution uses the Universal Resolver's CCIP-read gateway (eth_call with an x-batch-gateway param), which the free Ankr endpoint rejects without an API key. viem's default Sepolia RPC handles it.
 const ensClient = createPublicClient({
   chain: sepolia,
   transport: http(),
 });
 
-// ENSv2's Universal Resolver on Sepolia, wired to ENSv2's new hierarchical
-// ENS Registry (0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e — passed as its
-// registry constructor arg), NOT the legacy Universal Resolver viem defaults
-// to for the Sepolia chain definition. Source: ensdomains/ens-contracts
-// (staging branch) deployments/sepolia/UniversalResolver.json — verified
-// on-chain (has deployed bytecode at this address on Sepolia) before use;
-// do not swap this for a paraphrased/relayed address from anywhere else.
+// ENSv2 Universal Resolver on Sepolia, wired to the ENSv2 hierarchical ENS Registry (0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e), not the legacy resolver viem defaults to. Source: ensdomains/ens-contracts (staging) deployments/sepolia/UniversalResolver.json, verified to have bytecode on Sepolia; do not replace with an address from elsewhere.
 const ENSV2_UNIVERSAL_RESOLVER_SEPOLIA = '0x3c85752a5d47DD09D677C645Ff2A938B38fbFEbA';
 
 const ENS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -46,7 +32,7 @@ export async function resolveEnsName(address: `0x${string}`): Promise<string | n
     nameCache.set(key, name);
     return name;
   } catch {
-    nameCache.set(key, null);
+    // Not cached: a network error says nothing about whether the name exists.
     return null;
   }
 }
@@ -64,7 +50,27 @@ export async function resolveEnsAddress(name: string): Promise<`0x${string}` | n
     addressCache.set(key, address);
     return address;
   } catch {
-    addressCache.set(key, null);
+    return null;
+  }
+}
+
+const avatarCache = createTtlCache<string | null>(ENS_CACHE_TTL_MS, ENS_CACHE_MAX);
+
+/** The avatar record of an ENS name as a web URL (IPFS and NFT avatars are resolved), or null. */
+export async function resolveEnsAvatar(name: string): Promise<string | null> {
+  const key = name.toLowerCase();
+  const cached = avatarCache.get(key);
+  if (cached !== undefined) return cached;
+
+  try {
+    const avatar = await ensClient.getEnsAvatar({
+      name,
+      universalResolverAddress: ENSV2_UNIVERSAL_RESOLVER_SEPOLIA,
+    });
+    avatarCache.set(key, avatar);
+    return avatar;
+  } catch {
+    // Not cached: a failed lookup says nothing about whether a record exists.
     return null;
   }
 }
