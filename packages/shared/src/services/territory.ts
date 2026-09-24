@@ -1,5 +1,7 @@
 import { keccak256, toBytes } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
+import { toFixedPoint } from './fixedPoint';
+import { writeAndConfirm } from './tx';
 
 const polygonHashCache = new Map<string, `0x${string}`>();
 
@@ -10,7 +12,7 @@ export async function getController(territoryId: `0x${string}`): Promise<`0x${st
     ...contracts.territoryRegistry,
     functionName: 'getController',
     args: [territoryId],
-  }) as Promise<`0x${string}`>;
+  });
 }
 
 export async function getTerritory(territoryId: `0x${string}`) {
@@ -34,14 +36,14 @@ export async function getTerritory(territoryId: `0x${string}`) {
   }>;
 }
 
-export async function getUserTerritories(user: `0x${string}`): Promise<`0x${string}`[]> {
+export async function getUserTerritories(user: `0x${string}`): Promise<readonly `0x${string}`[]> {
   const client = getPublicClient();
   const contracts = getContracts();
   return client.readContract({
     ...contracts.territoryRegistry,
     functionName: 'getUserTerritories',
     args: [user],
-  }) as Promise<`0x${string}`[]>;
+  });
 }
 
 export async function getUserTerritoryCount(user: `0x${string}`): Promise<bigint> {
@@ -51,7 +53,7 @@ export async function getUserTerritoryCount(user: `0x${string}`): Promise<bigint
     ...contracts.territoryRegistry,
     functionName: 'getUserTerritoryCount',
     args: [user],
-  }) as Promise<bigint>;
+  });
 }
 
 export async function totalTerritories(): Promise<bigint> {
@@ -60,7 +62,7 @@ export async function totalTerritories(): Promise<bigint> {
   return client.readContract({
     ...contracts.territoryRegistry,
     functionName: 'totalTerritories',
-  }) as Promise<bigint>;
+  });
 }
 
 export function computePolygonHash(polygon: Array<[number, number]>): `0x${string}` {
@@ -73,10 +75,6 @@ export function computePolygonHash(polygon: Array<[number, number]>): `0x${strin
   return hash;
 }
 
-function toFixedPoint(value: number): number {
-  return Math.round(value * 1e6);
-}
-
 export async function claimTerritory(
   wallet: ReturnType<typeof getWalletClient>,
   params: {
@@ -85,11 +83,6 @@ export async function claimTerritory(
     strength?: number;
   }
 ): Promise<{ territoryId: `0x${string}`; txHash: `0x${string}`; confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
   const polygonHash = computePolygonHash(params.polygon);
 
   let minLng = Infinity,
@@ -105,8 +98,7 @@ export async function claimTerritory(
 
   const strength = params.strength ?? 100;
 
-  const hash = await wallet.writeContract({
-    ...contracts.territoryRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'territoryRegistry', {
     functionName: 'claimTerritory',
     args: [
       polygonHash,
@@ -117,12 +109,7 @@ export async function claimTerritory(
       toFixedPoint(maxLng),
       toFixedPoint(maxLat),
     ],
-    account,
-    chain: config.chain,
   });
 
-  const client = getPublicClient();
-  const receipt = await client.waitForTransactionReceipt({ hash });
-
-  return { territoryId: polygonHash, txHash: hash, confirmed: receipt.status === 'success' };
+  return { territoryId: polygonHash, txHash, confirmed };
 }

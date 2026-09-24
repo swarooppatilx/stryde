@@ -1,9 +1,12 @@
-import { parseEventLogs } from 'viem';
-import { ACTIVITY_TYPE_MAP } from '../constants';
+import { parseEventLogs, zeroAddress } from 'viem';
+import { ACTIVITY_TYPE_BY_ID, ACTIVITY_TYPE_MAP } from '../constants';
 import type { ActivityType } from '../types';
 import { createTtlCache } from './cache';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { getChainMode, getContracts, getPublicClient, type getWalletClient } from './client';
+import { scanLogWindows } from './logScan';
+import { relaySettleChallenge } from './relay';
 import { syncActivitiesFromChain } from './sync';
+import { writeAndConfirm } from './tx';
 
 const WINNER_CACHE_TTL_MS = 30 * 1000;
 const winnerCache = createTtlCache<`0x${string}` | null>(WINNER_CACHE_TTL_MS);
@@ -39,7 +42,8 @@ interface RawChallenge {
   status: number;
 }
 
-export async function getChallenge(challengeId: bigint): Promise<OnchainChallenge> {
+/** Reads one challenge, or null if the registry never issued the id. A missing id returns a zeroed struct (Solidity's default mapping value), not a revert, so existence is checked via the challenger: otherwise callers render a phantom "0x0000… vs 0m" challenge. */
+export async function getChallenge(challengeId: bigint): Promise<OnchainChallenge | null> {
   const client = getPublicClient();
   const contracts = getContracts();
   const raw = (await client.readContract({
@@ -47,6 +51,8 @@ export async function getChallenge(challengeId: bigint): Promise<OnchainChalleng
     functionName: 'getChallenge',
     args: [challengeId],
   })) as RawChallenge;
+
+  if (raw.challenger === zeroAddress) return null;
 
   return {
     id: challengeId,
@@ -65,19 +71,22 @@ export async function getUserChallengeIds(
   user: `0x${string}`,
   offset = 0n,
   limit = 100n
-): Promise<bigint[]> {
+): Promise<readonly bigint[]> {
   const client = getPublicClient();
   const contracts = getContracts();
   return client.readContract({
     ...contracts.challengeRegistry,
     functionName: 'getUserChallenges',
     args: [user, BigInt(offset), BigInt(limit)],
-  }) as Promise<bigint[]>;
+  });
 }
 
 export async function getUserChallenges(user: `0x${string}`): Promise<OnchainChallenge[]> {
   const ids = await getUserChallengeIds(user);
-  return Promise.all(ids.map((id) => getChallenge(id)));
+  const challenges = await Promise.all(ids.map((id) => getChallenge(id)));
+  // Ids come from the registry, so they exist — but drop a zeroed entry rather than put
+  // a phantom in someone's challenge list.
+  return challenges.filter((challenge): challenge is OnchainChallenge => challenge !== null);
 }
 
 export async function createChallenge(
@@ -91,13 +100,8 @@ export async function createChallenge(
   }
 ): Promise<{ challengeId: bigint; confirmed: boolean }> {
   const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
-  const hash = await wallet.writeContract({
-    ...contracts.challengeRegistry,
+  const { confirmed, receipt } = await writeAndConfirm(wallet, 'challengeRegistry', {
     functionName: 'createChallenge',
     args: [
       params.opponent,
@@ -106,12 +110,8 @@ export async function createChallenge(
       BigInt(Math.round(params.durationSeconds)),
     ],
     value: params.stakeWei,
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') {
+  if (!confirmed) {
     return { challengeId: 0n, confirmed: false };
   }
 
@@ -124,9 +124,7 @@ export async function createChallenge(
     logs: receipt.logs,
   });
 
-  const challengeId =
-    ((event as { args?: Record<string, unknown> })?.args as { challengeId?: bigint } | undefined)
-      ?.challengeId ?? 0n;
+  const challengeId = event?.args.challengeId ?? 0n;
   return { challengeId, confirmed: true };
 }
 
@@ -135,152 +133,114 @@ export async function acceptChallenge(
   challengeId: bigint,
   stakeWei: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.challengeRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'challengeRegistry', {
     functionName: 'acceptChallenge',
     args: [challengeId],
     value: stakeWei,
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
-/**
- * Compares each participant's recorded activity distance between the challenge's
- * creation and its deadline to pick a winner. There's no backend/subgraph yet, so
- * this reads straight from each participant's ActivityRecorded logs — whoever calls
- * `settleChallenge` submits the result, since settlement itself is permissionless.
- */
-export async function determineWinner(challenge: OnchainChallenge): Promise<`0x${string}` | null> {
-  const key = challenge.id.toString();
-  const cached = winnerCache.get(key);
-  if (cached !== undefined) return cached;
-
+/** Picks a winner by comparing each participant's recorded distance between creation and deadline from their ActivityRecorded logs. Only used to tell the athlete whether there is anything to settle; the relayer decides the winner itself. */
+/** When the challenge began: the timestamp of the block that created it (0 if its log can't be found). */
+async function challengeStart(challenge: OnchainChallenge): Promise<number> {
   const client = getPublicClient();
   const contracts = getContracts();
 
-  const createdLogs = await client.getLogs({
-    address: contracts.challengeRegistry.address,
-    event: {
-      type: 'event',
-      name: 'ChallengeCreated',
-      inputs: [
-        { type: 'uint256', name: 'challengeId', indexed: true },
-        { type: 'address', name: 'challenger', indexed: true },
-        { type: 'address', name: 'opponent', indexed: true },
-        { type: 'uint8', name: 'activityType', indexed: false },
-        { type: 'uint256', name: 'targetMetric', indexed: false },
-        { type: 'uint256', name: 'deadline', indexed: false },
-        { type: 'uint256', name: 'stake', indexed: false },
-      ],
-    },
-    args: { challengeId: challenge.id },
-    fromBlock: 0n,
-    toBlock: 'latest',
-  });
+  const createdLogs = await scanLogWindows((fromBlock, toBlock) =>
+    client.getLogs({
+      address: contracts.challengeRegistry.address,
+      event: {
+        type: 'event',
+        name: 'ChallengeCreated',
+        inputs: [
+          { type: 'uint256', name: 'challengeId', indexed: true },
+          { type: 'address', name: 'challenger', indexed: true },
+          { type: 'address', name: 'opponent', indexed: true },
+          { type: 'uint8', name: 'activityType', indexed: false },
+          { type: 'uint256', name: 'targetMetric', indexed: false },
+          { type: 'uint256', name: 'deadline', indexed: false },
+          { type: 'uint256', name: 'stake', indexed: false },
+        ],
+      },
+      args: { challengeId: challenge.id },
+      fromBlock,
+      toBlock,
+    })
+  );
 
   const createdBlock = createdLogs[0]?.blockNumber;
-  let startTimestamp = 0;
-  if (createdBlock !== undefined) {
-    const block = await client.getBlock({ blockNumber: createdBlock });
-    startTimestamp = Number(block.timestamp);
-  }
+  if (createdBlock === undefined) return 0;
+  const block = await client.getBlock({ blockNumber: createdBlock });
+  return Number(block.timestamp);
+}
 
+/** How far each side has gone so far, in the challenge's sport and inside its window (meters). */
+export async function getChallengeStandings(
+  challenge: OnchainChallenge
+): Promise<{ challenger: number; opponent: number }> {
+  const startTimestamp = await challengeStart(challenge);
   const [challengerActivities, opponentActivities] = await Promise.all([
     syncActivitiesFromChain(challenge.challenger),
     syncActivitiesFromChain(challenge.opponent),
   ]);
 
+  // A run challenge is not won by cycling. An unknown sport id counts everything.
+  const sport = ACTIVITY_TYPE_BY_ID[challenge.activityType];
   const sumDistance = (activities: Awaited<ReturnType<typeof syncActivitiesFromChain>>) =>
     activities
       .filter((a) => a.timestamp >= startTimestamp && a.timestamp <= challenge.deadline)
+      .filter((a) => !sport || a.activityType === sport)
       .reduce((sum, a) => sum + a.distance, 0);
 
-  const challengerDistance = sumDistance(challengerActivities);
-  const opponentDistance = sumDistance(opponentActivities);
+  return {
+    challenger: sumDistance(challengerActivities),
+    opponent: sumDistance(opponentActivities),
+  };
+}
 
+export async function determineWinner(challenge: OnchainChallenge): Promise<`0x${string}` | null> {
+  const key = `${getChainMode()}:${challenge.id.toString()}`;
+  const cached = winnerCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const { challenger, opponent } = await getChallengeStandings(challenge);
   let winner: `0x${string}` | null;
-  if (challengerDistance === opponentDistance) {
+  if (challenger === opponent) {
     winner = null;
   } else {
-    winner = challengerDistance > opponentDistance ? challenge.challenger : challenge.opponent;
+    winner = challenger > opponent ? challenge.challenger : challenge.opponent;
   }
   winnerCache.set(key, winner);
   return winner;
 }
 
+/** Asks the relayer to settle a challenge after its deadline. Only the contract's settler may, and it names the winner itself. */
 export async function settleChallenge(
-  wallet: ReturnType<typeof getWalletClient>,
-  challengeId: bigint,
-  winner: `0x${string}`
+  challengeId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.challengeRegistry,
-    functionName: 'settleChallenge',
-    args: [challengeId, winner],
-    account,
-    chain: config.chain,
-  });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  const result = await relaySettleChallenge(challengeId);
+  return { confirmed: result.confirmed, txHash: result.hash };
 }
 
 export async function cancelChallenge(
   wallet: ReturnType<typeof getWalletClient>,
   challengeId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.challengeRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'challengeRegistry', {
     functionName: 'cancelChallenge',
     args: [challengeId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
 export async function withdrawStake(
   wallet: ReturnType<typeof getWalletClient>,
   challengeId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.challengeRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'challengeRegistry', {
     functionName: 'withdrawStake',
     args: [challengeId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }

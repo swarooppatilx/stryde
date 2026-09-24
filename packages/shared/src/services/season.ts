@@ -6,12 +6,12 @@ import {
   getPublicClient,
   type getWalletClient,
 } from './client';
-import { relayStartSeason } from './relay';
+import { relayRecordContribution, relayStartSeason } from './relay';
 import { getLeaderboardFromSubgraph, type SubgraphLeaderboardEntry } from './subgraph';
 
 export type { SubgraphLeaderboardEntry } from './subgraph';
 
-const THIRTY_DAYS_SECONDS = 30n * 24n * 60n * 60n;
+const _THIRTY_DAYS_SECONDS = 30n * 24n * 60n * 60n;
 const CURRENT_SEASON_TTL_MS = 10 * 1000;
 const CONTRIBUTION_TTL_MS = 10 * 1000;
 const LEADERBOARD_TTL_MS = 15 * 1000;
@@ -29,6 +29,11 @@ interface RawSeason {
   startTime: bigint;
   endTime: bigint;
   isActive: boolean;
+}
+
+function compareDescending(a: bigint, b: bigint): number {
+  if (a > b) return -1;
+  return a < b ? 1 : 0;
 }
 
 function toSyncedSeason(raw: RawSeason): SyncedSeason {
@@ -70,7 +75,7 @@ export async function getParticipantContribution(
   seasonId: bigint,
   participant: `0x${string}`
 ): Promise<bigint> {
-  const key = `${seasonId.toString()}:${participant.toLowerCase()}`;
+  const key = `${getChainMode()}:${seasonId.toString()}:${participant.toLowerCase()}`;
   const cached = contributionCache.get(key);
   if (cached !== undefined) return cached;
 
@@ -95,7 +100,7 @@ export async function getLeaderboard(
   seasonId: bigint,
   participants: `0x${string}`[]
 ): Promise<LeaderboardEntry[]> {
-  const key = `${seasonId.toString()}:${participants
+  const key = `${getChainMode()}:${seasonId.toString()}:${participants
     .map((p) => p.toLowerCase())
     .sort()
     .join(',')}`;
@@ -107,9 +112,7 @@ export async function getLeaderboard(
   const leaderboard = participants
     .map((participant, i) => ({ participant, contribution: contributions[i] ?? 0n }))
     .filter((entry) => entry.contribution > 0n)
-    .sort((a, b) =>
-      b.contribution > a.contribution ? 1 : a.contribution > b.contribution ? -1 : 0
-    );
+    .sort((a, b) => compareDescending(a.contribution, b.contribution));
 
   leaderboardCache.set(key, leaderboard);
   return leaderboard;
@@ -138,13 +141,7 @@ async function batchGetContributions(
   return results;
 }
 
-/** Multi-metric leaderboard (distance + territory area + achievements),
- * composed via a single subgraph query (see getLeaderboardFromSubgraph) when
- * one is configured for the active chain mode. Falls back to the on-chain,
- * distance-only getLeaderboard for chain modes with no subgraph (e.g. local
- * Anvil) or if the subgraph query itself fails — `usernameByWallet` fills in
- * display names for the fallback path, since the on-chain path has no
- * username data of its own. */
+/** Multi-metric leaderboard (distance, territory area, achievements) from one subgraph query; falls back to the distance-only on-chain getLeaderboard when there is no subgraph or it fails, with `usernameByWallet` supplying names the on-chain path lacks. */
 export async function getWeightedLeaderboard(
   seasonId: bigint,
   participants: `0x${string}`[],
@@ -169,65 +166,32 @@ export async function getWeightedLeaderboard(
   }));
 }
 
-/**
- * Starts a season if none is currently active, so there's always something for
- * `recordContribution`/the leaderboard to attach to. `startSeason` is owner-gated
- * on-chain — this only succeeds in local dev, where every user shares the deployer
- * (owner) account. A real deployment needs an explicit admin action instead.
- */
+/** Starts a season if none is active so contributions and the leaderboard have one to attach to. `startSeason` is owner-gated, so the relayer starts it. */
 export async function ensureActiveSeason(
-  wallet: ReturnType<typeof getWalletClient>
+  _wallet: ReturnType<typeof getWalletClient>
 ): Promise<SyncedSeason> {
   const current = await getCurrentSeason();
   if (current.isActive) return current;
 
-  if (getChainMode() !== 'local') {
-    await relayStartSeason(30 * 24 * 60 * 60);
-    currentSeasonCache.clear();
-    return getCurrentSeason();
+  const started = await relayStartSeason(30 * 24 * 60 * 60);
+  if (!started.confirmed) {
+    throw new Error(
+      started.queued ? 'Season start is queued until you are back online' : 'Season did not start'
+    );
   }
-
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.seasonManager,
-    functionName: 'startSeason',
-    args: [THIRTY_DAYS_SECONDS],
-    account,
-    chain: config.chain,
-  });
-  await client.waitForTransactionReceipt({ hash });
-
   currentSeasonCache.clear();
   return getCurrentSeason();
 }
 
 export async function recordContribution(
-  wallet: ReturnType<typeof getWalletClient>,
+  _wallet: ReturnType<typeof getWalletClient>,
   participant: `0x${string}`,
-  amount: number
+  amount: number,
+  activityHash: `0x${string}`
 ): Promise<{ confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.seasonManager,
-    functionName: 'recordContribution',
-    args: [participant, BigInt(Math.round(amount))],
-    account,
-    chain: config.chain,
-  });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status === 'success') {
-    invalidateSeasonCaches();
-  }
-  return { confirmed: receipt.status === 'success' };
+  // SeasonManager only accepts contributions from its owner or allowed
+  // recorders, which an ordinary user's wallet is not: the relayer writes it.
+  const result = await relayRecordContribution(participant, Math.round(amount), activityHash);
+  if (result.confirmed) invalidateSeasonCaches();
+  return { confirmed: result.confirmed };
 }
