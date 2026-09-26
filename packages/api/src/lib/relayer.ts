@@ -1,18 +1,14 @@
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-} from 'viem';
+import { createPublicClient, createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getRelayChainConfig } from './chainConfig.js';
+import { ConfigError } from './relayErrors.js';
 
 let _wallet: ReturnType<typeof createWalletClient> | null = null;
 let _public: ReturnType<typeof createPublicClient> | null = null;
-let _address: `0x${string}` | null = null;
 
 function envOrThrow(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`[relayer] Missing env var: ${name}`);
+  if (!value) throw new ConfigError(name);
   return value;
 }
 
@@ -21,13 +17,12 @@ export function getRelayerWallet(): ReturnType<typeof createWalletClient> {
   const privateKey = envOrThrow('RELAYER_PRIVATE_KEY') as `0x${string}`;
   const config = getRelayChainConfig();
   const account = privateKeyToAccount(privateKey);
-  _address = account.address;
   _wallet = createWalletClient({
     account,
     chain: config.chain,
     transport: http(config.rpcUrl, { retryCount: 3, retryDelay: 1000 }),
   });
-  console.log(`[relayer] Initialised wallet ${account.address} on chain ${config.chainId}`);
+  console.info(`[relayer] Initialised wallet ${account.address} on chain ${config.chainId}`);
   return _wallet;
 }
 
@@ -45,7 +40,7 @@ export function getRelayerPublicClient(): ReturnType<typeof createPublicClient> 
 }
 
 export function getRelayerAddress(): `0x${string}` {
-  if (_address) return _address;
-  getRelayerWallet();
-  return _address!;
+  const address = getRelayerWallet().account?.address;
+  if (!address) throw new ConfigError('RELAYER_PRIVATE_KEY');
+  return address;
 }
