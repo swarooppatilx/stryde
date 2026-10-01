@@ -4,7 +4,10 @@
     "types": ["node"],
     "typeRoots": ["../../node_modules/@types"],
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["es2022"]
   },
   "include": ["src"],
   "exclude": ["src/**/__tests__/**"]

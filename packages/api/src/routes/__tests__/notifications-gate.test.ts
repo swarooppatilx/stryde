@@ -1,51 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import app from '../../index.js';
 
-describe('apiKeyGate on /notifications/*', () => {
-  const originalNodeEnv = process.env.NODE_ENV;
-  const originalApiKey = process.env.API_KEY;
-
-  beforeEach(() => {
-    process.env.NODE_ENV = 'production';
-    process.env.API_KEY = 'test-api-key';
-  });
-
-  afterEach(() => {
-    process.env.NODE_ENV = originalNodeEnv;
-    process.env.API_KEY = originalApiKey;
-  });
-
-  it('rejects requests with no API key', async () => {
-    const res = await app.request('/api/notifications/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: 'ExponentPushToken[whatever]' }),
-    });
-
-    expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json).toEqual({ error: 'Unauthorized' });
-  });
-
-  it('rejects requests with the wrong API key', async () => {
-    const res = await app.request('/api/notifications/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': 'wrong-key' },
-      body: JSON.stringify({ to: 'ExponentPushToken[whatever]' }),
-    });
-
-    expect(res.status).toBe(401);
-  });
-
-  it('is fail-closed in production when API_KEY itself is unset', async () => {
-    process.env.API_KEY = '';
-
-    const res = await app.request('/api/notifications/push', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: 'ExponentPushToken[whatever]' }),
-    });
-
-    expect(res.status).toBe(503);
+// /notifications/push took any Expo token and any text behind only the API key that ships in every
+// build, so anyone could push arbitrary notifications to any athlete. The app never called it; pushes
+// now go out only from server events (see lib/pushSender.ts). routes/notifications.ts is left unmounted.
+describe('the open push relay', () => {
+  it('is not served, with or without a key', async () => {
+    for (const headers of [{}, { 'x-api-key': 'anything' }] as Record<string, string>[]) {
+      const res = await app.request('/api/notifications/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ to: 'ExponentPushToken[whatever]', title: 'x' }),
+      });
+      expect(res.status).toBe(404);
+    }
   });
 });
