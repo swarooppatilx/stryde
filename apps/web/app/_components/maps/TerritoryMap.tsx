@@ -4,17 +4,26 @@ import type { IControl, Map as MapLibreMapType } from 'maplibre-gl';
 import { GeolocateControl, Map as MapLibreMap, NavigationControl, ScaleControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
+import type { TerritoryFeatureCollection } from '../../_lib/territories';
 import styles from './TerritoryMap.module.css';
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
-const TERRITORY_RING: [number, number][] = [
-  [73.847, 18.521],
-  [73.849, 18.528],
-  [73.856, 18.526],
-  [73.854, 18.519],
-  [73.847, 18.521],
-];
+// Pune, where the demo happens; shown when there is no territory to frame yet.
+const DEFAULT_CENTER: [number, number] = [73.8567, 18.5204];
+
+function boundsOf(
+  collection: TerritoryFeatureCollection
+): [[number, number], [number, number]] | null {
+  const points = collection.features.flatMap((f) => f.geometry.coordinates[0] ?? []);
+  if (points.length === 0) return null;
+  const lngs = points.map(([lng]) => lng);
+  const lats = points.map(([, lat]) => lat);
+  return [
+    [Math.min(...lngs), Math.min(...lats)],
+    [Math.max(...lngs), Math.max(...lats)],
+  ];
+}
 
 class PitchToggleControl implements IControl {
   private button?: HTMLButtonElement;
@@ -45,27 +54,23 @@ class PitchToggleControl implements IControl {
 }
 
 type TerritoryMapProps = {
+  territories: TerritoryFeatureCollection;
   onMapReady?: (map: MapLibreMapType) => void;
 };
 
-export function TerritoryMap({ onMapReady }: TerritoryMapProps) {
+export function TerritoryMap({ territories, onMapReady }: TerritoryMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const lngs = TERRITORY_RING.map(([lng]) => lng);
-    const lats = TERRITORY_RING.map(([, lat]) => lat);
-    const center: [number, number] = [
-      (Math.min(...lngs) + Math.max(...lngs)) / 2,
-      (Math.min(...lats) + Math.max(...lats)) / 2,
-    ];
+    const bounds = boundsOf(territories);
 
     const map = new MapLibreMap({
       container: containerRef.current,
       style: MAP_STYLE_URL,
-      center,
-      zoom: 12,
+      center: DEFAULT_CENTER,
+      zoom: 11,
     });
 
     map.addControl(new NavigationControl(), 'top-left');
@@ -76,17 +81,7 @@ export function TerritoryMap({ onMapReady }: TerritoryMapProps) {
     requestAnimationFrame(() => map.resize());
 
     map.on('load', () => {
-      map.addSource('territory', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'Polygon',
-            coordinates: [TERRITORY_RING],
-          },
-        },
-      });
+      map.addSource('territory', { type: 'geojson', data: territories });
 
       map.addLayer({
         id: 'territory-fill',
@@ -108,19 +103,13 @@ export function TerritoryMap({ onMapReady }: TerritoryMapProps) {
         },
       });
 
-      map.fitBounds(
-        [
-          [Math.min(...lngs), Math.min(...lats)],
-          [Math.max(...lngs), Math.max(...lats)],
-        ],
-        { padding: 80, duration: 0 }
-      );
+      if (bounds) map.fitBounds(bounds, { padding: 80, duration: 0, maxZoom: 15 });
 
       onMapReady?.(map);
     });
 
     return () => map.remove();
-  }, [onMapReady]);
+  }, [territories, onMapReady]);
 
   return <div ref={containerRef} className={styles.mapContainer} />;
 }

@@ -1,13 +1,23 @@
+import { fetchLeaderboard, formatArea, formatKm } from '../../_lib/leaderboard';
 import styles from './LeaderboardTable.module.css';
 
-const ROWS = [
-  { rank: 1, athlete: 'Sarah Chen', distance: '212.4 km', territory: '1.4 km²' },
-  { rank: 2, athlete: 'Fernando Rayra', distance: '198.1 km', territory: '1.1 km²' },
-  { rank: 3, athlete: 'Priya Sharma', distance: '176.5 km', territory: '0.9 km²' },
-  { rank: 4, athlete: 'Marcus Webb', distance: '154.2 km', territory: '0.7 km²' },
-];
+/** The current season's leaderboard, read live from Stryde's subgraph on every revalidation. */
+export async function LeaderboardTable() {
+  const rows = await fetchLeaderboard();
 
-export function LeaderboardTable() {
+  if (rows === null) {
+    return (
+      <p className={styles.note}>
+        The live leaderboard is unavailable right now. Try again shortly.
+      </p>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <p className={styles.note}>No athletes on the board yet. Be the first to record a run.</p>
+    );
+  }
+
   return (
     <table className={styles.table}>
       <thead>
@@ -19,12 +29,20 @@ export function LeaderboardTable() {
         </tr>
       </thead>
       <tbody>
-        {ROWS.map((row) => (
+        {rows.map((row) => (
           <tr key={row.rank}>
             <td className={styles.rank}>{row.rank}</td>
-            <td className={styles.athlete}>{row.athlete}</td>
-            <td className={styles.stat}>{row.distance}</td>
-            <td className={styles.stat}>{row.territory}</td>
+            <td className={styles.athlete}>
+              {row.athlete}
+              {row.verified ? (
+                <span className={styles.verified} title="Verified human (World ID)">
+                  {' '}
+                  ✓
+                </span>
+              ) : null}
+            </td>
+            <td className={styles.stat}>{formatKm(row.distanceMeters)}</td>
+            <td className={styles.stat}>{formatArea(row.territorySqm)}</td>
           </tr>
         ))}
       </tbody>

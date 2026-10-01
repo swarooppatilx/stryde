@@ -30,3 +30,12 @@
 .stat {
   color: var(--color-body-text);
 }
+
+.note {
+  padding: 1rem 0;
+  opacity: 0.7;
+}
+
+.verified {
+  opacity: 0.8;
+}

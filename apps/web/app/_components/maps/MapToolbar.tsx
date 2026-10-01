@@ -71,7 +71,7 @@ export function MapToolbar({ map }: MapToolbarProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') runSearch();
+            if (e.key === 'Enter') void runSearch();
           }}
         />
       </div>
