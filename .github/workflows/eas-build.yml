@@ -3,6 +3,9 @@ name: Build APK
 on:
   push:
     branches: [main]
+  # The push trigger only builds for a head commit that starts with `feat:`, so a
+  # demo-critical fix:/perf: change would ship no APK. Allow a manual run.
+  workflow_dispatch:
 
 concurrency:
   group: eas-build-${{ github.ref }}
@@ -10,7 +13,7 @@ concurrency:
 
 jobs:
   build-apk:
-    if: startsWith(github.event.head_commit.message, 'feat:')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'feat:')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,20 +22,37 @@ jobs:
           node-version: 20
       - run: corepack enable
       - run: yarn install --immutable
-      - name: Write build env from secrets
+      # A .env written here never reaches the build: EAS uploads the project
+      # like a fresh clone, so the gitignored file is dropped and every
+      # EXPO_PUBLIC_* value ships empty (the Sep 2026 APK hung on boot with no
+      # Privy app ID). Push the values into the EAS "preview" environment
+      # that eas.json's preview profile reads instead.
+      - name: Sync build env to EAS
         working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
+          EXPO_PUBLIC_PRIVY_APP_ID: ${{ secrets.EXPO_PUBLIC_PRIVY_APP_ID }}
+          EXPO_PUBLIC_PRIVY_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_PRIVY_CLIENT_ID }}
+          EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
+          EXPO_PUBLIC_WORLD_APP_ID: ${{ secrets.EXPO_PUBLIC_WORLD_APP_ID }}
+          EXPO_PUBLIC_WORLD_RP_ID: ${{ secrets.EXPO_PUBLIC_WORLD_RP_ID }}
+          EXPO_PUBLIC_WORLD_ENVIRONMENT: ${{ secrets.EXPO_PUBLIC_WORLD_ENVIRONMENT }}
+          EXPO_PUBLIC_FACEBOOK_APP_ID: ${{ secrets.EXPO_PUBLIC_FACEBOOK_APP_ID }}
         run: |
-          cat > .env <<'EOF'
-          EXPO_PUBLIC_PRIVY_APP_ID=${{ secrets.EXPO_PUBLIC_PRIVY_APP_ID }}
-          EXPO_PUBLIC_PRIVY_CLIENT_ID=${{ secrets.EXPO_PUBLIC_PRIVY_CLIENT_ID }}
-          EXPO_PUBLIC_API_KEY=${{ secrets.EXPO_PUBLIC_API_KEY }}
-          EXPO_PUBLIC_WORLD_APP_ID=${{ secrets.EXPO_PUBLIC_WORLD_APP_ID }}
-          EXPO_PUBLIC_WORLD_RP_ID=${{ secrets.EXPO_PUBLIC_WORLD_RP_ID }}
-          EXPO_PUBLIC_WORLD_ENVIRONMENT=${{ secrets.EXPO_PUBLIC_WORLD_ENVIRONMENT }}
-          EXPO_PUBLIC_FACEBOOK_APP_ID=${{ secrets.EXPO_PUBLIC_FACEBOOK_APP_ID }}
-          EOF
+          # Without these the app can't get past the Privy splash, so fail
+          # the job instead of shipping a dead APK.
+          for name in EXPO_PUBLIC_PRIVY_APP_ID EXPO_PUBLIC_PRIVY_CLIENT_ID; do
+            if [ -z "${!name}" ]; then echo "::error::secret $name is empty"; exit 1; fi
+          done
+          for name in EXPO_PUBLIC_PRIVY_APP_ID EXPO_PUBLIC_PRIVY_CLIENT_ID EXPO_PUBLIC_API_KEY \
+            EXPO_PUBLIC_WORLD_APP_ID EXPO_PUBLIC_WORLD_RP_ID EXPO_PUBLIC_WORLD_ENVIRONMENT \
+            EXPO_PUBLIC_FACEBOOK_APP_ID; do
+            if [ -z "${!name}" ]; then echo "::warning::secret $name is empty, leaving EAS value as-is"; continue; fi
+            yarn dlx eas-cli@25.1.1 env:create --environment preview --name "$name" --value "${!name}" \
+              --visibility plaintext --force --non-interactive
+          done
       - name: Build APK
         working-directory: apps/mobile
         env:
           EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
-        run: yarn dlx eas-cli@latest build --platform android --profile preview --non-interactive
+        run: yarn dlx eas-cli@25.1.1 build --platform android --profile preview --non-interactive
