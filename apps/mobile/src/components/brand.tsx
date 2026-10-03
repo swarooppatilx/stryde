@@ -1,17 +1,13 @@
-import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { Palette } from '@/constants/palette';
 
 interface BrandMarkProps {
   size?: number;
   color?: string;
 }
 
-/**
- * The Stryde bolt mark. Paths are the exact vectors exported from the
- * Figma brand file - viewBox is set to their native bounding box rather
- * than renumbering coordinates, so they can be pasted in verbatim.
- */
-export function BrandMark({ size = 32, color = '#FFFFFF' }: BrandMarkProps) {
+/** The Stryde bolt mark. The viewBox is the paths' native bounding box so the exported vectors stay verbatim. */
+export function BrandMark({ size = 32, color = Palette.white }: BrandMarkProps) {
   const height = (size * 350) / 210;
   return (
     <Svg width={size} height={height} viewBox="151 81 210 350" fill="none">
@@ -27,7 +23,7 @@ interface BrandWordmarkProps {
 }
 
 /** The "STRYDE" logotype, as exact vector letterforms (not a system font). */
-export function BrandWordmark({ width = 200, color = '#FFFFFF' }: BrandWordmarkProps) {
+export function BrandWordmark({ width = 200, color = Palette.white }: BrandWordmarkProps) {
   const height = (width * 60) / 262;
   return (
     <Svg width={width} height={height} viewBox="171 236 262 60" fill="none">
@@ -53,27 +49,5 @@ export function BrandWordmark({ width = 200, color = '#FFFFFF' }: BrandWordmarkP
         d="M433 248.894H406.152V260.681H428.069V273.532H413.907L406.152 262.17V283.23L433 283.206V295.915H393.424V236.043H433V248.894Z"
       />
     </Svg>
-  );
-}
-
-interface BrandLockupProps {
-  markSize?: number;
-  wordmarkWidth?: number;
-  color?: string;
-  gap?: number;
-}
-
-/** Mark + wordmark side by side, as seen in the Stryde brand file. */
-export function BrandLockup({
-  markSize = 28,
-  wordmarkWidth = 120,
-  color = '#FFFFFF',
-  gap = 8,
-}: BrandLockupProps) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap }}>
-      <BrandMark size={markSize} color={color} />
-      <BrandWordmark width={wordmarkWidth} color={color} />
-    </View>
   );
 }

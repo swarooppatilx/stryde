@@ -1,0 +1,193 @@
+/**
+ * The social API answered on the device, for the Sandbox profile (no network). It speaks the same
+ * routes and answer shapes as `packages/api` for follows, bio/location and posts, so the app code
+ * under test cannot tell the difference, but it keeps everything in memory and does not check
+ * signatures. Dev builds only.
+ */
+interface StoredPost {
+  id: string;
+  author: string;
+  text: string;
+  photos: string[];
+  createdAt: number;
+  clientId: string;
+}
+
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+const refuse = (status: number, code: string, error: string) => json(status, { error, code });
+
+const lower = (value: unknown) => String(value ?? '').toLowerCase();
+
+export function createSandboxApi(now: () => number = () => Math.floor(Date.now() / 1000)) {
+  const follows = new Map<string, number>(); // `${follower}>${followee}` -> followedAt
+  const about = new Map<string, { bio: string; location: string }>();
+  const commentLikes = new Map<string, string[]>(); // commentId -> likers, in the order they liked
+  const posts: StoredPost[] = [];
+  let nextPost = 1;
+
+  const followList = (address: string, side: 'follower' | 'followee') => {
+    const entries = [...follows.entries()]
+      .map(([key, followedAt]) => {
+        const [follower, followee] = key.split('>') as [string, string];
+        return { follower, followee, followedAt };
+      })
+      .filter((f) => f[side] === address)
+      .map((f) => ({
+        address: side === 'follower' ? f.followee : f.follower,
+        followedAt: f.followedAt,
+      }));
+    return { addresses: entries.map((e) => e.address), entries, truncated: false };
+  };
+
+  const applyFollow = (body: { intent?: Record<string, unknown> }) => {
+    const intent = body.intent ?? {};
+    const follower = lower(intent.follower);
+    const followee = lower(intent.followee);
+    if (follower === followee) return refuse(400, 'self_follow', 'You cannot follow yourself');
+    const key = `${follower}>${followee}`;
+    if (intent.action === 'unfollow') {
+      follows.delete(key);
+      return json(200, { following: false, created: false });
+    }
+    if (follows.has(key)) return json(200, { following: true, created: false });
+    follows.set(key, now());
+    return json(200, { following: true, created: true });
+  };
+
+  const applyAbout = (body: { intent?: Record<string, unknown> }) => {
+    const intent = body.intent ?? {};
+    const author = lower(intent.author);
+    const bio = String(intent.bio ?? '').trim();
+    const location = String(intent.location ?? '').trim();
+    if (!bio && !location) about.delete(author);
+    else about.set(author, { bio, location });
+    return json(200, { about: { bio, location } });
+  };
+
+  const applyCommentLike = (body: { intent?: Record<string, unknown> }) => {
+    const intent = body.intent ?? {};
+    const commentId = lower(intent.commentId);
+    const liker = lower(intent.liker);
+    const likers = commentLikes.get(commentId) ?? [];
+    if (intent.action === 'unlike') {
+      commentLikes.set(
+        commentId,
+        likers.filter((l) => l !== liker)
+      );
+      return json(200, { liked: false, created: false });
+    }
+    if (likers.includes(liker)) return json(200, { liked: true, created: false });
+    commentLikes.set(commentId, [...likers, liker]);
+    return json(200, { liked: true, created: true });
+  };
+
+  const readCommentLikes = (query: URLSearchParams) => {
+    const likes: Record<string, string[]> = {};
+    for (const id of (query.get('ids') ?? '').split(',').filter(Boolean)) {
+      likes[id.toLowerCase()] = commentLikes.get(id.toLowerCase()) ?? [];
+    }
+    return json(200, { likes, truncated: false });
+  };
+
+  const applyPost = (body: { intent?: Record<string, unknown> }) => {
+    const intent = body.intent ?? {};
+    const author = lower(intent.author);
+    if (intent.action === 'delete') {
+      const index = posts.findIndex((p) => p.id === intent.postId);
+      const existing = posts[index];
+      if (existing && existing.author !== author) {
+        return refuse(403, 'forbidden', 'You can only delete your own posts');
+      }
+      if (existing) posts.splice(index, 1);
+      return json(200, { deleted: true });
+    }
+    const clientId = String(intent.clientId ?? '');
+    const already = posts.find((p) => p.author === author && p.clientId === clientId);
+    if (already) return json(200, { post: already });
+    const created: StoredPost = {
+      id: `sandbox-post-${nextPost++}`,
+      author,
+      text: String(intent.text ?? '').trim(),
+      photos: Array.isArray(intent.photos) ? (intent.photos as string[]) : [],
+      createdAt: now(),
+      clientId,
+    };
+    posts.push(created);
+    return json(200, { post: created });
+  };
+
+  const readPosts = (query: URLSearchParams) => {
+    const authors = new Set(
+      (query.get('authors') ?? '')
+        .split(',')
+        .filter(Boolean)
+        .map((a) => a.toLowerCase())
+    );
+    const limit = Number(query.get('limit') ?? 20);
+    return json(200, {
+      posts: posts
+        .filter((p) => authors.has(p.author))
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, limit),
+    });
+  };
+
+  const readAbout = (query: URLSearchParams) => {
+    const found: Record<string, { bio: string; location: string }> = {};
+    for (const author of (query.get('authors') ?? '').split(',').filter(Boolean)) {
+      const text = about.get(author.toLowerCase());
+      if (text) found[author.toLowerCase()] = text;
+    }
+    return json(200, { about: found });
+  };
+
+  /** Relayed writes (mints, season credit) always succeed; each gets its own transaction hash. */
+  let relayed = 0;
+  const confirmRelay = () => {
+    relayed += 1;
+    return json(200, { confirmed: true, hash: `0x${relayed.toString(16).padStart(64, '0')}` });
+  };
+
+  /** A pin always works; the cid is derived from the content so equal uploads share one. */
+  const pin = (init?: RequestInit) => {
+    const body = String(init?.body ?? '');
+    let hash = 5381;
+    for (let i = 0; i < body.length; i++) hash = (hash * 33) ^ body.charCodeAt(i);
+    return json(200, { cid: `bafysandbox${(hash >>> 0).toString(36)}`, size: body.length });
+  };
+
+  const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(String(input));
+    const method = (init?.method ?? 'GET').toUpperCase();
+    if (method === 'POST' && url.pathname.includes('/api/relay/')) return confirmRelay();
+    if (method === 'POST' && url.pathname.endsWith('/api/ipfs/upload')) return pin(init);
+    const route = url.pathname.replace(/^.*\/api\/social\//, '');
+
+    if (method === 'POST') {
+      let body: { intent?: Record<string, unknown> };
+      try {
+        body = JSON.parse(String(init?.body ?? ''));
+      } catch {
+        return json(400, { error: 'Invalid JSON body' });
+      }
+      if (route === 'follow') return applyFollow(body);
+      if (route === 'about') return applyAbout(body);
+      if (route === 'post') return applyPost(body);
+      if (route === 'comment-like') return applyCommentLike(body);
+      if (route === 'report') return json(200, { reported: true, created: true });
+    } else {
+      if (route.startsWith('following/'))
+        return json(200, followList(lower(route.slice(10)), 'follower'));
+      if (route.startsWith('followers/'))
+        return json(200, followList(lower(route.slice(10)), 'followee'));
+      if (route === 'about') return readAbout(url.searchParams);
+      if (route === 'posts') return readPosts(url.searchParams);
+      if (route === 'comment-likes') return readCommentLikes(url.searchParams);
+    }
+    return json(404, { error: `Not faked in the sandbox: ${method} ${route}` });
+  };
+
+  return { fetch: fakeFetch as typeof fetch };
+}

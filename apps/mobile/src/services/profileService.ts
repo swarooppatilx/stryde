@@ -1,6 +1,6 @@
 import { getAccessToken } from '@privy-io/expo';
-
-import type { IProfileService } from '../types/services';
+import type { IProfileService } from '@/types/services';
+import { logger } from '@/utils/logger';
 
 const PRIVY_BASE_URL = 'https://auth.privy.io/api/v1';
 
@@ -29,7 +29,7 @@ class ProfileService implements IProfileService {
       const data = await res.json();
       return data?.user?.custom_metadata ?? null;
     } catch (error) {
-      console.error('[ProfileService] fetchMetadata failed', error);
+      logger.error('[ProfileService] fetchMetadata failed', error);
       return null;
     }
   }
@@ -50,7 +50,7 @@ class ProfileService implements IProfileService {
 
       return res.ok;
     } catch (error) {
-      console.error('[ProfileService] updateMetadata failed', error);
+      logger.error('[ProfileService] updateMetadata failed', error);
       return false;
     }
   }

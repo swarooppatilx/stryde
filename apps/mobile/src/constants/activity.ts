@@ -1,6 +1,6 @@
 import type { Ionicons } from '@expo/vector-icons';
 
-import type { ActivityFeel, ActivityType } from '@/types';
+import type { ActivityEffort, ActivityFeel, ActivityType } from '@/types';
 
 export const SPORT_ICONS: Record<ActivityType, keyof typeof Ionicons.glyphMap> = {
   run: 'walk',
@@ -37,12 +37,45 @@ export const SPORT_TYPES: {
   { type: 'climb', icon: 'trending-up-outline', label: 'Climb', category: 'strength' },
 ];
 
+/** Fastest plausible speed per sport; faster fixes are GPS glitches. */
+export const MAX_SPEED_KMH: Record<ActivityType, number> = {
+  run: 25,
+  walk: 10,
+  hike: 15,
+  // 50 rejected real road-ride descents (60–80 km/h); fast descents can reach ~120.
+  ride: 120,
+  swim: 8,
+  yoga: 5,
+  workout: 10,
+  hiit: 15,
+  dance: 15,
+  climb: 10,
+  skate: 20,
+  row: 15,
+};
+
+export const GPS_DISTANCE_SPORTS: ReadonlySet<ActivityType> = new Set<ActivityType>([
+  'run',
+  'ride',
+  'walk',
+  'hike',
+  'skate',
+  'row',
+]);
+
 export const FEEL_OPTIONS: { value: ActivityFeel; emoji: string; label: string }[] = [
   { value: 'great', emoji: '😍', label: 'Great' },
   { value: 'good', emoji: '😊', label: 'Good' },
   { value: 'ok', emoji: '😐', label: 'OK' },
   { value: 'bad', emoji: '😕', label: 'Bad' },
   { value: 'terrible', emoji: '😫', label: 'Terrible' },
+];
+
+export const EFFORT_OPTIONS: { value: ActivityEffort; label: string; description: string }[] = [
+  { value: 'easy', label: 'Easy', description: 'You could talk the whole way.' },
+  { value: 'moderate', label: 'Moderate', description: 'Breathing harder, still able to talk.' },
+  { value: 'hard', label: 'Hard', description: 'Short sentences only.' },
+  { value: 'max', label: 'Max effort', description: 'All out. You could not have kept it up.' },
 ];
 
 export function getSportIcon(type: ActivityType | undefined): keyof typeof Ionicons.glyphMap {

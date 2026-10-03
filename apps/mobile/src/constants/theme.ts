@@ -1,16 +1,9 @@
-/**
- * Design tokens for Stryde.
- *
- * These feed two places: our own `useTheme()` hook (for plain RN styling)
- * and the Ant Design Mobile `Provider` (for @ant-design/react-native
- * components), so both systems always agree on color/spacing/radius.
- */
-
-import '@/global.css';
+/** Design tokens shared by `useTheme()` and the Ant Design Mobile `Provider`. */
 
 import { Platform } from 'react-native';
 
-/** Converts a hex color to an rgba() string at the given alpha (0-1). */
+import { Palette } from './palette';
+
 export function tint(hex: string, alpha: number): string {
   const value = hex.replace('#', '');
   const full =
@@ -27,18 +20,32 @@ export function tint(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Fills and icons. Text in a status colour uses the `*Text` roles in `Colors`, which clear AA. */
 export const Brand = {
-  primary: '#E14502',
-  primaryPressed: '#B83801',
-  primaryTint: tint('#E14502', 0.12),
-  success: '#1A9E5C',
-  warning: '#D4900A',
-  danger: '#E5484D',
-  info: '#2B5AC1',
-  verified: '#1D9BF0',
-  white: '#FFFFFF',
-  black: '#0B0B0C',
+  primary: Palette.orange.o3,
+  primaryPressed: Palette.orange.o2,
+  primaryTint: tint(Palette.orange.o3, 0.12),
+  success: Palette.green.g2,
+  warning: Palette.yellow.y3,
+  danger: Palette.red.r3,
+  dangerPressed: Palette.red.r2,
+  info: Palette.blue.b3,
+  verified: Palette.blue.b4,
+  white: Palette.white,
+  black: Palette.black,
 } as const;
+
+/** Other athletes' territory on the map (the viewer's own is the brand orange). */
+export const OTHERS_TERRITORY_COLOR = Palette.violet.v3;
+
+/** Activity-density colours for the map heatmap: [density stop, colour], cool to hot. */
+export const HEAT_RAMP = [
+  [0, tint(Palette.green.g2, 0)],
+  [0.25, tint(Palette.violet.v3, 0.4)],
+  [0.5, tint(Palette.pink.p3, 0.55)],
+  [0.75, tint(Palette.orange.o3, 0.7)],
+  [1, tint(Palette.red.r3, 0.9)],
+] as const;
 
 export const AchievementColors = {
   green: '#34C759',
@@ -52,20 +59,47 @@ export const AchievementColors = {
 
 export const Colors = {
   light: {
-    text: '#14171A',
-    textSecondary: '#4B5563',
-    background: '#FFFFFF',
-    backgroundElement: '#F5F5F6',
-    backgroundSelected: '#ECEDEF',
-    border: '#E5E7EB',
+    text: Palette.black,
+    textSecondary: Palette.neutral.n2,
+    textTertiary: Palette.neutral.n3,
+    placeholder: Palette.neutral.n3,
+    disabled: Palette.neutral.n45,
+    // The page is the grey canvas and a card is white on it (sunken n6
+    // canvas, white raised surface). The old pairing, a #FAFAFA card on a white page, was 1.04:1.
+    background: Palette.neutral.n6,
+    backgroundElement: Palette.white,
+    backgroundSelected: Palette.neutral.n6,
+    backgroundSunken: Palette.neutral.n6,
+    // Menus, toasts and notices that float over content: white in light, a raised grey in dark.
+    backgroundOverlay: Palette.white,
+    // The bottom bar: a white surface on the grey canvas in light mode, one step above black in dark.
+    navbar: Palette.white,
+    // Small orange text: the fill orange is 3.3:1 on white, short of AA (4.5), so text uses a deeper step.
+    accentText: Palette.orange.o25,
+    successText: Palette.green.g1,
+    warningText: Palette.yellow.y05,
+    dangerText: Palette.red.r2,
+    border: Palette.neutral.n5,
+    borderBold: Palette.neutral.n45,
   },
   dark: {
-    text: '#F7F7F8',
-    textSecondary: '#9BA1A6',
-    background: '#0B0B0C',
-    backgroundElement: '#1C1C1E',
-    backgroundSelected: '#3A3A3C',
-    border: '#2E2E30',
+    text: Palette.white,
+    textSecondary: Palette.neutral.n6,
+    textTertiary: Palette.neutral.n45,
+    placeholder: Palette.neutral.n4,
+    disabled: Palette.neutral.n3,
+    background: Palette.black,
+    backgroundElement: Palette.neutral.n05,
+    backgroundSelected: Palette.neutral.n1,
+    backgroundSunken: Palette.neutral.n1,
+    backgroundOverlay: Palette.neutral.n1,
+    navbar: Palette.neutral.n05,
+    accentText: Palette.orange.o3,
+    successText: Palette.green.g4,
+    warningText: Palette.yellow.y3,
+    dangerText: Palette.red.r5,
+    border: Palette.neutral.n2,
+    borderBold: Palette.neutral.n3,
   },
 } as const;
 
@@ -84,111 +118,51 @@ export const Fonts = Platform.select({
     rounded: 'normal',
     mono: 'monospace',
   },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
 });
 
-export const SIZES = {
-  icon: {
-    small: 16,
-    medium: 24,
-    large: 32,
-  },
-  button: {
-    minTouch: 44,
-    toolbar: 36,
-  },
-  padding: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-  },
-  radius: {
-    sm: 4,
-    md: 8,
-    lg: 12,
-    xl: 16,
-  },
+/** Icon sizes by role: header buttons carry 24dp glyphs on 48dp targets, row marks match body size. */
+export const IconSize = {
+  /** Icon-only identity marks: pill disc, streak flame, verified shield. */
+  badge: 16,
+  inline: 18,
+  action: 24,
+  /** Summary figures, paired with TypeScale.stat. */
+  stat: 32,
+  hero: 40,
 } as const;
 
+/** Touch targets. 48dp is the Android minimum; extend with hitSlop rather than shrink below it. */
+export const Touch = {
+  target: 48,
+  /** Comfortable list rows (the one-row minimum sits at 62dp). */
+  row: 64,
+} as const;
+
+/** 2pt-grid steps, named by ordinal: `twoHalf` and `threeHalf` sit between whole steps. */
 export const Spacing = {
   half: 2,
   one: 4,
   two: 8,
+  twoHalf: 12,
   three: 16,
+  threeHalf: 20,
   four: 24,
   five: 32,
   six: 64,
 } as const;
 
 export const BorderRadius = {
+  xxs: 2,
+  xs: 4,
   sm: 8,
   md: 12,
   lg: 16,
   xl: 24,
+  xxl: 32,
   full: 9999,
 } as const;
 
-export const Shadow = {
-  card: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  sm: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  lg: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-} as const;
-
-/** Shadow variants tuned for dark surfaces, where black shadows vanish. */
-export const ShadowDark = {
-  card: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  sm: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.22,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  lg: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-} as const;
-
-/**
- * Partial<Theme> for @ant-design/react-native's <Provider theme={...}>.
- * Token names come from the library's own theme shape, not ours -
- * see node_modules/@ant-design/react-native/lib/style/themes/default.js.
- */
+/** Partial<Theme> for the Ant Design `Provider`; token names follow the library's theme shape. */
 export function getAntTheme(scheme: 'light' | 'dark') {
   const c = Colors[scheme];
 

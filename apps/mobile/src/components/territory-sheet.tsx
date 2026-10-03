@@ -1,16 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { getCurrentUserId } from '@/constants/config';
 import { BorderRadius, Spacing } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
-import { useSocialStore } from '@/stores/socialStore';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useSocialUser } from '@/hooks/useSocialUser';
 import { formatArea, formatRelativeTime, getDisplayName } from '@/utils/format';
 
 export interface SelectedTerritory {
@@ -30,26 +32,22 @@ interface TerritorySheetProps {
 
 const SHEET_HEIGHT = 260;
 
-/** Reached by tapping a territory on the map: resolves the tapped polygon to
- * its owner (username when known, otherwise the short address), area and
- * strength, with a shortcut to the owner's profile. */
+/** Shows the owner, area and strength of a tapped map territory, with a shortcut to the owner's profile. */
 export function TerritorySheet({ territory, loading, onClose }: TerritorySheetProps) {
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const router = useRouter();
-  const getUserById = useSocialStore((s) => s.getUserById);
-
-  const ownerUser = getUserById(territory.owner);
-  const ownerLabel = useMemo(() => {
-    if (ownerUser) return getDisplayName(ownerUser);
-    return `${territory.owner.slice(0, 6)}…${territory.owner.slice(-4)}`;
-  }, [ownerUser, territory.owner]);
+  const ownerUser = useSocialUser(territory.owner);
+  const ownerLabel = ownerUser
+    ? getDisplayName(ownerUser)
+    : `${territory.owner.slice(0, 6)}…${territory.owner.slice(-4)}`;
 
   const heightState = useSharedValue(SHEET_HEIGHT);
   const animatedStyle = useAnimatedStyle(() => ({ height: heightState.value }));
 
   const openProfile = () => {
     onClose?.();
-    router.push(`/user-profile?id=${territory.owner}`);
+    router.push(`/athletes/${territory.owner}`);
   };
 
   const panGesture = useMemo(
@@ -64,13 +62,14 @@ export function TerritorySheet({ territory, loading, onClose }: TerritorySheetPr
     [onClose]
   );
 
-  const isOwn = getCurrentUserId() === territory.owner;
+  const isOwn = useCurrentUserId() === territory.owner;
 
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View
         style={[
           styles.container,
+          theme.shadows.sheet,
           animatedStyle,
           {
             backgroundColor: theme.backgroundElement,
@@ -78,7 +77,6 @@ export function TerritorySheet({ territory, loading, onClose }: TerritorySheetPr
           },
         ]}
       >
-        {/* Handle */}
         <View style={styles.handleRow}>
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
         </View>
@@ -98,28 +96,28 @@ export function TerritorySheet({ territory, loading, onClose }: TerritorySheetPr
                   {ownerLabel}
                   {isOwn ? ' (you)' : ''}
                 </ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                <ThemedText type="caption" themeColor="textSecondary">
                   Territory owner
                 </ThemedText>
               </ThemedView>
               {onClose && (
-                <TouchableOpacity
+                <Tappable
                   onPress={onClose}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel="Close territory details"
                 >
                   <Ionicons name="close" size={20} color={theme.textSecondary} />
-                </TouchableOpacity>
+                </Tappable>
               )}
             </View>
 
             <View style={styles.statsRow}>
               <View style={[styles.statItem, { backgroundColor: theme.background }]}>
                 <ThemedText style={[styles.statValue, { color: theme.text }]}>
-                  {formatArea(territory.areaSqm)}
+                  {formatArea(territory.areaSqm, unitSystem)}
                 </ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                <ThemedText type="caption" themeColor="textSecondary">
                   Area
                 </ThemedText>
               </View>
@@ -127,7 +125,7 @@ export function TerritorySheet({ territory, loading, onClose }: TerritorySheetPr
                 <ThemedText style={[styles.statValue, { color: theme.text }]}>
                   {territory.strength.toLocaleString()}
                 </ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                <ThemedText type="caption" themeColor="textSecondary">
                   Strength
                 </ThemedText>
               </View>
@@ -135,23 +133,23 @@ export function TerritorySheet({ territory, loading, onClose }: TerritorySheetPr
                 <ThemedText style={[styles.statValue, { color: theme.text }]}>
                   {formatRelativeTime(new Date(territory.capturedAt * 1000), true)}
                 </ThemedText>
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                <ThemedText type="caption" themeColor="textSecondary">
                   Captured
                 </ThemedText>
               </View>
             </View>
 
-            <TouchableOpacity
+            <Tappable
               style={[styles.profileBtn, { borderColor: theme.brand.primary }]}
               onPress={openProfile}
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel={`View ${ownerLabel}'s profile`}
             >
-              <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
+              <ThemedText type="smallBold" style={{ color: theme.accentText }}>
                 View profile
               </ThemedText>
-            </TouchableOpacity>
+            </Tappable>
           </View>
         )}
       </Animated.View>
@@ -170,11 +168,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
     overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
   },
   handleRow: {
     alignItems: 'center',
@@ -185,7 +178,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    borderRadius: 2,
+    borderRadius: BorderRadius.xxs,
   },
   centered: {
     flex: 1,
@@ -209,7 +202,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.half,
   },
   statsRow: {
     flexDirection: 'row',
@@ -218,13 +211,12 @@ const styles = StyleSheet.create({
   statItem: {
     flex: 1,
     alignItems: 'center',
-    gap: 2,
+    gap: Spacing.half,
     paddingVertical: Spacing.three,
     borderRadius: BorderRadius.lg,
   },
   statValue: {
-    fontSize: 15,
-    fontWeight: '700',
+    ...textStyle(TypeScale.calloutBold),
     textAlign: 'center',
   },
   profileBtn: {

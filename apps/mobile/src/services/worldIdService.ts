@@ -2,10 +2,11 @@ import * as Linking from 'expo-linking';
 import { AppState } from 'react-native';
 
 import { ENV } from '@/constants/config';
-import type { WorldIdEnvironment, WorldVerificationError } from '@/types/worldId';
+import type { WorldVerificationError } from '@/types/worldId';
+import { logger } from '@/utils/logger';
 
-export const WORLD_VERIFY_ACTION = 'stryde-verify-profile';
-export const WORLD_VERIFY_RETURN_TO = 'strydeexpo://verify';
+const WORLD_VERIFY_ACTION = 'stryde-verify-profile';
+const WORLD_VERIFY_RETURN_TO = 'stryde://verify';
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 180_000;
@@ -57,13 +58,25 @@ async function createServerSession(signal: string): Promise<SessionCreateRespons
 }
 
 async function pollServerSession(sessionId: string): Promise<PollStatus> {
-  const response = await fetch(`${ENV.API_URL}/api/world/session/${sessionId}/poll`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${ENV.API_URL}/api/world/session/${sessionId}/poll`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
+      },
+    });
+  } catch (error) {
+    // No response at all (the phone is often switching networks while the user
+    // is in the World app): keep waiting rather than ending the verification.
+    logger.warn('[WorldId] Poll request failed, will retry', error);
+    return { status: 'pending' };
+  }
+
+  // Rate limited or a server hiccup: wait for the next tick rather than abandon a
+  // verification in progress. A 4xx like "session gone" is final.
+  if (response.status === 429 || response.status >= 500) return { status: 'pending' };
 
   if (!response.ok) {
     throw new Error(await readApiError(response, 'World ID polling failed'));
@@ -133,6 +146,12 @@ export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult>
     );
   }
 
+  // The signal is the wallet the proof is bound to; the signed-out placeholder
+  // would verify no one onchain.
+  if (!/^0x[0-9a-fA-F]{40}$/.test(signal)) {
+    throw new Error('Sign in before verifying with World ID.');
+  }
+
   const { sessionId, connectorURI } = await createServerSession(signal);
 
   let pollNow = false;
@@ -142,14 +161,14 @@ export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult>
     }
   });
 
-  try {
-    await Linking.openURL(connectorURI);
-  } catch {
-    throw new Error('Cannot open World ID. Install the World ID Sandbox app, then try again.');
-  }
-
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   try {
+    try {
+      await Linking.openURL(connectorURI);
+    } catch {
+      throw new Error('Cannot open World ID. Install the World ID Sandbox app, then try again.');
+    }
+
     while (Date.now() < deadline) {
       if (!pollNow) {
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
@@ -182,16 +201,5 @@ export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult>
     throw mapIdKitError('timeout');
   } finally {
     appStateSub.remove();
-  }
-}
-
-export function getWorldEnvironmentLabel(environment: WorldIdEnvironment): string {
-  switch (environment) {
-    case 'sandbox':
-      return 'Sandbox';
-    case 'staging':
-      return 'Staging';
-    default:
-      return 'Production';
   }
 }

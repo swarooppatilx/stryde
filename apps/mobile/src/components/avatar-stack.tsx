@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
-import { useSocialStore } from '@/stores/socialStore';
+import { useUserResolver } from '@/hooks/useSocialUser';
 import { getDisplayName, getInitials } from '@/utils/format';
 
 interface AvatarStackProps {
@@ -18,9 +18,9 @@ export const AvatarStack = React.memo(function AvatarStack({
   size = 24,
 }: AvatarStackProps) {
   const theme = useTheme();
-  const getUserById = useSocialStore((s) => s.getUserById);
+  const getUserById = useUserResolver();
 
-  const visible = useMemo(() => userIds.slice(0, max), [userIds, max]);
+  const visible = userIds.slice(0, max);
   const remaining = userIds.length - max;
   const overlap = size * 0.35;
 

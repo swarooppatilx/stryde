@@ -1,5 +1,6 @@
-import { getInfoAsync, readAsStringAsync } from 'expo-file-system/legacy';
+import { services } from '@repo/shared';
 import { ENV } from '@/constants/config';
+import { getPlatform } from '@/platform';
 
 interface IpfsUploadResult {
   cid: string;
@@ -19,12 +20,16 @@ async function postUpload(body: Record<string, unknown>): Promise<IpfsUploadResu
 
   let response: Response;
   try {
-    response = await fetch(`${ENV.API_URL}/api/ipfs/upload`, {
-      method: 'POST',
-      headers: API_HEADERS,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    // The profile in force may answer the API on the device (Sandbox), which the shared config carries.
+    response = await (services.ipfs.getIpfsConfig()?.fetch ?? fetch)(
+      `${ENV.API_URL}/api/ipfs/upload`,
+      {
+        method: 'POST',
+        headers: API_HEADERS,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }
+    );
   } catch (err) {
     if (controller.signal.aborted) throw new Error('IPFS upload timed out');
     throw err;
@@ -44,30 +49,27 @@ async function postUpload(body: Record<string, unknown>): Promise<IpfsUploadResu
   return { cid: result.cid, size: result.size ?? 0 };
 }
 
-export function uploadToIpfs(
-  name: string,
-  content: Record<string, unknown>
-): Promise<IpfsUploadResult> {
-  return postUpload({ name, content });
-}
-
 export async function uploadImageToIpfs(name: string, imageUri: string): Promise<IpfsUploadResult> {
-  const fileInfo = await getInfoAsync(imageUri);
-  if (!fileInfo.exists) {
+  const { files } = getPlatform();
+  const fileSize = await files.size(imageUri);
+  if (fileSize === null) {
     throw new Error('Image file not found');
   }
-  const fileSize = fileInfo.size;
   if (fileSize > 10 * 1024 * 1024) {
     throw new Error('Image too large — maximum 10MB');
   }
 
-  const base64 = await readAsStringAsync(imageUri, {
-    encoding: 'base64',
-  });
+  const base64 = await files.readBase64(imageUri);
 
   return postUpload({ name, imageBase64: base64, mimeType: 'image/jpeg' });
 }
 
-export function ipfsToHttpUrl(cid: string): string {
-  return `https://gateway.pinata.cloud/ipfs/${cid}`;
-}
+import { ipfsToHttpUrl } from '@/utils/ipfsUrl';
+
+export { ipfsToHttpUrl };
+
+/** Uploads a photo to IPFS and resolves to its public link. */
+export const ipfsPhotoUploader = {
+  upload: async (name: string, uri: string): Promise<string> =>
+    ipfsToHttpUrl((await uploadImageToIpfs(name, uri)).cid),
+};

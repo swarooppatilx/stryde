@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { BorderRadius } from '@/constants/theme';
@@ -14,6 +15,8 @@ interface UserAvatarProps {
 }
 
 const SIZE_MAP = { sm: 32, md: 44, lg: 64 };
+/** The ring drawn when a `borderColor` is given (the selected You tab). */
+const RING_WIDTH = 2;
 
 export function UserAvatar({ uri, name, size = 'md', borderColor }: UserAvatarProps) {
   const theme = useTheme();
@@ -33,6 +36,7 @@ export function UserAvatar({ uri, name, size = 'md', borderColor }: UserAvatarPr
           borderRadius: BorderRadius.full,
           backgroundColor: theme.brand.primaryTint,
           borderColor: borderColor ?? 'transparent',
+          borderWidth: borderColor ? RING_WIDTH : 0,
         },
       ]}
     >
@@ -62,6 +66,7 @@ export function UserAvatar({ uri, name, size = 'md', borderColor }: UserAvatarPr
           />
         </>
       ) : (
+        // Initials scale with the avatar, so the size cannot come from the fixed type scale.
         <ThemedText
           type="smallBold"
           style={{ color: theme.brand.primary, fontSize: pixelSize * 0.38 }}

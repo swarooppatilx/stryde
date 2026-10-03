@@ -1,0 +1,56 @@
+import { START_GATE_COPY as C } from '@/constants/copy';
+import { getPlatform } from '@/platform';
+import { ensureForegroundLocation } from '@/services/locationPermission';
+import { Alert } from '@/utils/alert';
+import type { GpsLevel } from '@/utils/gpsSignal';
+import { readOrNull } from '@/utils/readiness';
+import { startGate } from '@/utils/startGate';
+
+/** Resolves true for Continue, false for the cancel button or a dismissal. */
+function askToContinue(title: string, message: string, cont: string, cancel: string) {
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: cancel, style: 'cancel', onPress: () => resolve(false) },
+        { text: cont, onPress: () => resolve(true) },
+      ],
+      { onDismiss: () => resolve(false) }
+    );
+  });
+}
+
+/** Whether recording may begin: explains whatever stands in the way and returns false, or asks about a missing GPS fix and lets the athlete start anyway. */
+export async function confirmStart(session: {
+  status: string;
+  signalLevel: GpsLevel;
+}): Promise<boolean> {
+  const { location } = getPlatform();
+  const [permission, servicesOn] = await Promise.all([
+    readOrNull(() => location.getPermission()),
+    readOrNull(() => location.servicesEnabled()),
+  ]);
+  const dialog = startGate({ ...session, permission, servicesOn: servicesOn ?? true });
+
+  switch (dialog) {
+    case null:
+      return true;
+    case 'inProgress':
+      Alert.alert(C.inProgressTitle, C.inProgressBody, [{ text: C.close }]);
+      return false;
+    case 'servicesOff':
+      if (
+        await askToContinue(C.servicesOffTitle, C.servicesOffBody, C.servicesOffAction, 'Cancel')
+      ) {
+        await location.openSettings();
+      }
+      return false;
+    case 'permissionDenied':
+    case 'approximate':
+      // That flow explains itself, asks when the phone still lets it, and offers the settings page.
+      return ensureForegroundLocation();
+    case 'noSignal':
+      return askToContinue(C.noSignalTitle, C.noSignalBody, C.noSignalContinue, C.noSignalWait);
+  }
+}

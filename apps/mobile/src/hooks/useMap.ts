@@ -1,24 +1,27 @@
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { services } from '@repo/shared';
-import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-
 import type { SportFilter } from '@/components/filter-chips';
-import { getCurrentUserId } from '@/constants/config';
-import { Brand } from '@/constants/theme';
+import { Palette } from '@/constants/palette';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { getPlatform } from '@/platform';
+import { ensureForegroundLocation } from '@/services/locationPermission';
 import { useActivityStore } from '@/stores/activityStore';
-import { useTerritoryStore } from '@/stores/territoryStore';
+import { hasActiveFilters, useMapPrefsStore } from '@/stores/mapPrefsStore';
+import { userPolygons as selectUserPolygons, useTerritoryStore } from '@/stores/territoryStore';
 import type { Ring } from '@/types';
+import { type DistanceFilter, inDistanceBand, routeLength } from '@/utils/distanceFilter';
+import { isLocationServicesOff } from '@/utils/errors';
 import { parsePolyline } from '@/utils/format';
-import {
-  heatmapPoints as buildHeatmap,
-  SPORT_ROUTE_COLORS,
-  territoryBoundsRing,
-} from '@/utils/mapData';
+import { logger } from '@/utils/logger';
+import { heatmapPoints as buildHeatmap, territoryBoundsRing } from '@/utils/mapData';
+import { routeColorFor, visibleRoutes } from '@/utils/mapRoutes';
+import { matchesSportFilter } from '@/utils/sportFilter';
+import { usePlaceSearch } from './usePlaceSearch';
 
 function locationErrorMessage(err: unknown): string {
-  if (err instanceof Error && err.message.includes('unsatisfied device settings')) {
+  if (isLocationServicesOff(err)) {
     return 'Turn on device location (GPS) to see the map.';
   }
   return err instanceof Error ? err.message : 'Unable to get your location.';
@@ -33,14 +36,12 @@ export interface MapActivityRoute {
   lineWidth?: number;
 }
 
+const TILT_DEGREES = 60;
+
 export type TimeFilter = 'all' | '7d' | '30d';
 
-export interface MapSearchResult {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-}
+export type { PlaceResult as MapSearchResult } from '@/services/placeSearch';
+export type { DistanceFilter };
 
 export interface SelectedTerritory {
   id: string;
@@ -51,7 +52,6 @@ export interface SelectedTerritory {
   lastReinforced: number;
 }
 
-/** Days in a UTC-second timestamp below which a route is filtered out. */
 function isValidRoute(
   timestampMs: number,
   sportFilter: SportFilter,
@@ -60,107 +60,109 @@ function isValidRoute(
 ): boolean {
   if (timeFilter === '7d' && timestampMs < Date.now() - 7 * 86400000) return false;
   if (timeFilter === '30d' && timestampMs < Date.now() - 30 * 86400000) return false;
-  if (sportFilter === 'all' || sportFilter === 'multi') return true;
-  return sport === sportFilter;
-}
-
-function routeColor(sport: string | undefined, own: boolean, themePrimary: string): string {
-  if (own) return themePrimary;
-  return (sport && SPORT_ROUTE_COLORS[sport as keyof typeof SPORT_ROUTE_COLORS]) ?? '#64748b';
+  return matchesSportFilter(sportFilter, sport);
 }
 
 export function useMap() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [followMode, setFollowMode] = useState<FollowMode>('default');
-  const [showRoutes, setShowRoutes] = useState(false);
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showOthers, setShowOthers] = useState(false);
-  const [sportFilter, setSportFilter] = useState<SportFilter>('all');
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const showRoutes = useMapPrefsStore((s) => s.showRoutes);
+  const showHeatmap = useMapPrefsStore((s) => s.showHeatmap);
+  const showOthers = useMapPrefsStore((s) => s.showOthers);
+  const sportFilter = useMapPrefsStore((s) => s.sport);
+  const timeFilter = useMapPrefsStore((s) => s.time);
+  const distanceFilter = useMapPrefsStore((s) => s.distance);
+  const setLayer = useMapPrefsStore((s) => s.setLayer);
+  const setSportFilter = useMapPrefsStore((s) => s.setSport);
+  const setTimeFilter = useMapPrefsStore((s) => s.setTime);
+  const setDistanceFilter = useMapPrefsStore((s) => s.setDistance);
+  const clearFilters = useMapPrefsStore((s) => s.clearFilters);
+  const filtersActive = hasActiveFilters({
+    sport: sportFilter,
+    time: timeFilter,
+    distance: distanceFilter,
+  });
   const [zoom, setZoom] = useState(15);
   const cameraRef = useRef<CameraRef>(null);
 
-  const getUserPolygons = useTerritoryStore((s) => s.getUserPolygons);
   const getTerritoryMetadata = useTerritoryStore((s) => s.getTerritoryMetadata);
-  const userId = getCurrentUserId();
-  const userPolygons: Ring[] = useMemo(() => getUserPolygons(userId), [getUserPolygons, userId]);
+  const userId = useCurrentUserId();
+  const userPolygons: Ring[] = useTerritoryStore((s) => selectUserPolygons(s, userId));
   const territoryIds = useMemo(
     () => userPolygons.map((p) => services.territory.computePolygonHash(p)),
     [userPolygons]
   );
   const activities = useActivityStore((s) => s.activities);
 
-  // --- cross-user data (others' routes + territory footprints), subgraph-gated
   const [othersRoutes, setOthersRoutes] = useState<
     Array<{ id: string; coordinates: [number, number][]; sport?: string; timestamp?: number }>
   >([]);
   const [othersTerritories, setOthersTerritories] = useState<{ id: string; ring: Ring }[]>([]);
   const [othersLoading, setOthersLoading] = useState(false);
 
-  // --- search
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<MapSearchResult[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [focusedPlace, setFocusedPlace] = useState<MapSearchResult | null>(null);
-
-  // --- tapped territory inspect
   const [selectedTerritory, setSelectedTerritory] = useState<SelectedTerritory | null>(null);
   const [territoryLoading, setTerritoryLoading] = useState(false);
 
+  // Set after the user declines the GPS prompt so returning from that dialog does not ask again.
+  const gpsRefusedRef = useRef(false);
+
   const loadLocation = useCallback(async () => {
     setErrorMsg(null);
+    gpsRefusedRef.current = false;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied');
+      if (!(await ensureForegroundLocation())) {
+        setErrorMsg('Location is needed to show the map around you');
         return;
       }
 
-      // A cached fix is faster and works even when the device (or an
-      // emulator's simulated GPS) can't get a fresh live fix in time.
-      const cached = await Location.getLastKnownPositionAsync();
+      // A cached fix is faster and works when the device cannot get a live fix in time.
+      const { location: source } = getPlatform();
+      const cached = await source.getLastKnown();
       if (cached) {
-        setLocation({ latitude: cached.coords.latitude, longitude: cached.coords.longitude });
+        setLocation({ latitude: cached.latitude, longitude: cached.longitude });
       }
 
       try {
-        const fresh = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        setLocation({ latitude: fresh.coords.latitude, longitude: fresh.coords.longitude });
+        const fresh = await source.getCurrent('balanced');
+        setLocation({ latitude: fresh.latitude, longitude: fresh.longitude });
       } catch (freshErr) {
-        // A cached fix already rendered the map - a failed live-fix refresh
-        // isn't worth surfacing as an error.
+        // A cached fix already rendered the map; a failed live refresh is not worth an error.
         if (!cached) throw freshErr;
       }
     } catch (err) {
+      gpsRefusedRef.current = isLocationServicesOff(err);
       setErrorMsg(locationErrorMessage(err));
     }
   }, []);
 
   useEffect(() => {
-    loadLocation();
+    void loadLocation();
   }, [loadLocation]);
 
-  // Granting permission or turning on GPS both send the app to the background
-  // (Android's own system dialogs for these) and back. Retry silently on
-  // return instead of leaving the user to tap "Try Again" as a third prompt
-  // on top of the two system ones they just handled.
+  // The map opens at the default view straight away; the first fix brings the camera to the athlete.
+  const centeredOnFix = useRef(false);
+  useEffect(() => {
+    if (!location || centeredOnFix.current) return;
+    centeredOnFix.current = true;
+    cameraRef.current?.easeTo({
+      center: [location.longitude, location.latitude],
+      zoom: 15,
+      duration: 600,
+    });
+  }, [location]);
+
+  // Granting permission or enabling GPS backgrounds the app via Android system dialogs; retry silently on return instead of adding a third prompt.
   const hasLocation = location !== null;
   useEffect(() => {
     if (hasLocation) return;
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') loadLocation();
+      if (state === 'active' && !gpsRefusedRef.current) void loadLocation();
     });
     return () => subscription.remove();
   }, [hasLocation, loadLocation]);
 
-  // Cross-user activity/territory data comes from the subgraph when one is
-  // deployed (indexed; no fromBlock:0 rescan). Without a subgraph these layers
-  // simply stay empty and the map keeps working with the user's own data.
-  // The per-metadata IPFS fetches are bounded and best-effort.
+  // Cross-user data comes from the subgraph when deployed (no fromBlock:0 rescan); without one the layers stay empty. Per-metadata IPFS fetches are bounded and best-effort.
   const loadOthers = useCallback(async () => {
     if (!showOthers) {
       setOthersRoutes([]);
@@ -210,7 +212,7 @@ export function useMap() {
           .map((t) => ({ id: t.id, ring: territoryBoundsRing(t.bounds) }))
       );
     } catch (err) {
-      console.warn('[Map] Failed to load others activity/territory data', err);
+      logger.warn('[Map] Failed to load others activity/territory data', err);
       setOthersRoutes([]);
       setOthersTerritories([]);
     } finally {
@@ -219,51 +221,61 @@ export function useMap() {
   }, [showOthers]);
 
   useEffect(() => {
-    loadOthers();
+    void loadOthers();
   }, [loadOthers]);
 
-  // --- derived routes
   const ownRoutes = useMemo(() => {
     if (!showRoutes) return [];
     return activities
       .filter((a) => a.polyline)
       .filter((a) => isValidRoute(a.createdAt.getTime(), sportFilter, timeFilter, a.activityType))
+      .filter((a) => inDistanceBand(distanceFilter, a.distance))
       .map((a) => ({
         id: a.id,
         coordinates: parsePolyline(a.polyline),
+        sport: a.activityType as string | undefined,
       }))
       .filter((r) => r.coordinates.length >= 2);
-  }, [activities, showRoutes, sportFilter, timeFilter]);
+  }, [activities, showRoutes, sportFilter, timeFilter, distanceFilter]);
 
   const filteredOthersRoutes = useMemo(() => {
-    if (!showRoutes || !showOthers) return [];
-    return othersRoutes.filter((r) =>
-      isValidRoute((r.timestamp ?? 0) * 1000, sportFilter, timeFilter, r.sport)
+    if (!showOthers) return [];
+    return othersRoutes.filter(
+      (r) =>
+        isValidRoute((r.timestamp ?? 0) * 1000, sportFilter, timeFilter, r.sport) &&
+        inDistanceBand(distanceFilter, routeLength(r.coordinates))
     );
-  }, [othersRoutes, showRoutes, showOthers, sportFilter, timeFilter]);
+  }, [othersRoutes, showOthers, sportFilter, timeFilter, distanceFilter]);
 
   const activityRoutes = useMemo<MapActivityRoute[]>(() => {
-    if (!showRoutes) return [];
     const own: MapActivityRoute[] = ownRoutes.map((r) => ({
-      ...r,
-      color: routeColor(undefined, true, Brand.primary),
+      id: r.id,
+      coordinates: r.coordinates,
+      color: routeColorFor(r.sport),
     }));
     const others: MapActivityRoute[] = filteredOthersRoutes.map((r) => ({
-      ...r,
-      color: routeColor(r.sport, false, Brand.primary),
+      id: r.id,
+      coordinates: r.coordinates,
+      color: routeColorFor(r.sport),
       lineWidth: 2,
     }));
-    return [...own, ...others];
-  }, [ownRoutes, filteredOthersRoutes, showRoutes]);
+    return visibleRoutes({ showRoutes, showOthers, own, others });
+  }, [ownRoutes, filteredOthersRoutes, showRoutes, showOthers]);
 
   const heatmapPoints = useMemo(() => {
     if (!showHeatmap) return [];
-    const sourceRoutes: Array<{ coordinates: [number, number][] }> = [
-      ...(showRoutes ? ownRoutes : []),
-      ...(showOthers ? filteredOthersRoutes : []),
-    ];
+    const sourceRoutes = visibleRoutes<{ coordinates: [number, number][] }>({
+      showRoutes,
+      showOthers,
+      own: ownRoutes,
+      others: filteredOthersRoutes,
+    });
     return buildHeatmap(
-      sourceRoutes.map((r, i) => ({ id: String(i), coordinates: r.coordinates, color: '#000' }))
+      sourceRoutes.map((r, i) => ({
+        id: String(i),
+        coordinates: r.coordinates,
+        color: Palette.black,
+      }))
     );
   }, [showHeatmap, showRoutes, showOthers, ownRoutes, filteredOthersRoutes]);
 
@@ -277,6 +289,18 @@ export function useMap() {
     }
   }, [location]);
 
+  const [tilted, setTilted] = useState(false);
+  const toggleTilt = useCallback(() => {
+    const next = !tilted;
+    setTilted(next);
+    // Only the tilt changes: the current zoom is passed back so the view does not jump out.
+    void cameraRef.current?.setStop({
+      pitch: next ? TILT_DEGREES : 0,
+      zoom,
+      duration: 500,
+    });
+  }, [tilted, zoom]);
+
   const toggleFollow = useCallback(() => {
     setFollowMode((prev) => {
       if (prev === null) return 'default';
@@ -285,120 +309,43 @@ export function useMap() {
     });
   }, []);
 
-  const toggleRoutes = useCallback(() => {
-    setShowRoutes((prev) => !prev);
+  const toggleRoutes = useCallback(
+    () => setLayer('routes', !useMapPrefsStore.getState().showRoutes),
+    [setLayer]
+  );
+  const toggleHeatmap = useCallback(
+    () => setLayer('heatmap', !useMapPrefsStore.getState().showHeatmap),
+    [setLayer]
+  );
+  const toggleOthers = useCallback(
+    () => setLayer('others', !useMapPrefsStore.getState().showOthers),
+    [setLayer]
+  );
+
+  // The camera is told to move outside the state update (an updater must stay pure).
+  const zoomRef = useRef(15);
+  const applyZoom = useCallback((next: number) => {
+    zoomRef.current = next;
+    setZoom(next);
+    cameraRef.current?.zoomTo(next, { duration: 250 });
   }, []);
+  const zoomIn = useCallback(() => applyZoom(Math.min(zoomRef.current + 1, 19)), [applyZoom]);
+  const zoomOut = useCallback(() => applyZoom(Math.max(zoomRef.current - 1, 3)), [applyZoom]);
 
-  const toggleHeatmap = useCallback(() => {
-    setShowHeatmap((prev) => !prev);
-  }, []);
-
-  const toggleOthers = useCallback(() => {
-    setShowOthers((prev) => !prev);
-  }, []);
-
-  const zoomIn = useCallback(() => {
-    setZoom((z) => {
-      const next = Math.min(z + 1, 19);
-      cameraRef.current?.zoomTo(next, { duration: 250 });
-      return next;
-    });
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setZoom((z) => {
-      const next = Math.max(z - 1, 3);
-      cameraRef.current?.zoomTo(next, { duration: 250 });
-      return next;
-    });
-  }, []);
-
-  const onMapZoomChanged = useCallback((zoom: number) => {
-    if (typeof zoom === 'number' && Number.isFinite(zoom)) setZoom(zoom);
-  }, []);
-
-  // --- search
-  const searchRef = useRef<{ timer: ReturnType<typeof setTimeout> | null }>({ timer: null });
-  useEffect(() => {
-    return () => {
-      if (searchRef.current.timer) clearTimeout(searchRef.current.timer);
-    };
-  }, []);
-
-  const searchPlaces = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (searchRef.current.timer) clearTimeout(searchRef.current.timer);
-
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setSearchResults([]);
-      setSearchError(null);
-      return;
+  const onMapZoomChanged = useCallback((next: number) => {
+    if (typeof next === 'number' && Number.isFinite(next)) {
+      zoomRef.current = next;
+      setZoom(next);
     }
-
-    searchRef.current.timer = setTimeout(async () => {
-      setSearchLoading(true);
-      setSearchError(null);
-      try {
-        const geocoded = await Location.geocodeAsync(trimmed);
-        const results: MapSearchResult[] = await Promise.all(
-          geocoded.slice(0, 6).map(async (r, i) => {
-            let name = '';
-            try {
-              const places = await Location.reverseGeocodeAsync({
-                latitude: r.latitude,
-                longitude: r.longitude,
-              });
-              const p = places[0];
-              if (p) {
-                name = [p.name, p.city, p.region, p.country].filter(Boolean).join(', ');
-              }
-            } catch {
-              // keep whatever we have
-            }
-            return {
-              id: `${r.latitude},${r.longitude}-${i}`,
-              name: name || `${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}`,
-              latitude: r.latitude,
-              longitude: r.longitude,
-            };
-          })
-        );
-        setSearchResults(results);
-      } catch (err) {
-        setSearchResults([]);
-        setSearchError(err instanceof Error ? err.message : 'Unable to search for this place');
-      } finally {
-        setSearchLoading(false);
-      }
-    }, 350);
   }, []);
 
-  const focusPlace = useCallback((result: MapSearchResult) => {
-    setFocusedPlace(result);
-    setSearchResults([]);
-    setSearchQuery(result.name);
-    cameraRef.current?.easeTo({
-      center: [result.longitude, result.latitude],
-      zoom: 14,
-      duration: 600,
-    });
-  }, []);
+  const search = usePlaceSearch(cameraRef);
 
-  const clearSearch = useCallback(() => {
-    setSearchQuery('');
-    setSearchResults([]);
-    setSearchError(null);
-    setFocusedPlace(null);
-  }, []);
-
-  // --- tapped territory → owner
   const handleTerritoryPress = useCallback(
     async (territoryId: string) => {
       setTerritoryLoading(true);
       try {
-        // Local (own) territories have their metadata in the store already —
-        // no contract read needed. Tapped others fall back to contract reads.
+        // Own territories have metadata in the store; others fall back to contract reads.
         const local = getTerritoryMetadata(territoryId);
         if (local) {
           setSelectedTerritory({
@@ -425,7 +372,7 @@ export function useMap() {
           lastReinforced: Number(territory.lastReinforced),
         });
       } catch (err) {
-        console.warn('[Map] Failed to load territory owner', err);
+        logger.warn('[Map] Failed to load territory owner', err);
         setSelectedTerritory(null);
       } finally {
         setTerritoryLoading(false);
@@ -433,6 +380,11 @@ export function useMap() {
     },
     [getTerritoryMetadata]
   );
+
+  /** The native map reports when the athlete drags away: stop following so it does not snap back. */
+  const onFollowChange = useCallback((following: boolean) => {
+    if (!following) setFollowMode(null);
+  }, []);
 
   const closeTerritory = useCallback(() => setSelectedTerritory(null), []);
 
@@ -446,6 +398,10 @@ export function useMap() {
     othersLoading,
     sportFilter,
     timeFilter,
+    distanceFilter,
+    clearFilters,
+    filtersActive,
+    setDistanceFilter,
     setSportFilter,
     setTimeFilter,
     zoom,
@@ -455,27 +411,22 @@ export function useMap() {
     activityRoutes,
     othersTerritories,
     heatmapPoints,
-    searchQuery,
-    searchResults,
-    searchLoading,
-    searchError,
-    focusedPlace,
-    setSearchQuery,
     selectedTerritory,
     territoryLoading,
     loadLocation,
     recenter,
     toggleFollow,
+    tilted,
+    toggleTilt,
+    onFollowChange,
     toggleRoutes,
     toggleHeatmap,
     toggleOthers,
     zoomIn,
     zoomOut,
     onMapZoomChanged,
-    searchPlaces,
-    focusPlace,
-    clearSearch,
     handleTerritoryPress,
     closeTerritory,
+    ...search,
   };
 }

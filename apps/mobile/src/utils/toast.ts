@@ -1,15 +1,11 @@
-import { useToastStore } from '@/stores/toastStore';
+import { type ToastKind, useToastStore } from '@/stores/toastStore';
 
 interface ShowOptions {
   content: string;
   duration?: number;
 }
 
-/** Drop-in themed replacement for `@ant-design/react-native`'s `Toast` —
- * same call shape as every existing call site (`Toast.show`, `.info`,
- * `.success`, `.fail`, `.loading` + `.remove(key)`), backed by our own
- * store/host instead of antd's icon font (which isn't registered in this
- * app, so antd's Toast icons render as missing-glyph boxes). */
+/** Themed drop-in for `@ant-design/react-native`'s `Toast` with the same call shape, backed by the app's own host because antd's icon font is not registered here and its icons render as missing-glyph boxes. */
 export const Toast = {
   show: (options: ShowOptions | string, duration = 2): number => {
     const content = typeof options === 'string' ? options : options.content;
@@ -25,4 +21,15 @@ export const Toast = {
   loading: (content: string, duration = 0): number =>
     useToastStore.getState().show(content, 'loading', duration),
   remove: (key: number): void => useToastStore.getState().remove(key),
+  /** Removes the toast shown under `id`, if any. */
+  removeStage: (id: string): void => useToastStore.getState().removeById(id),
+  /** Shows a toast under `id`; showing the same id again updates it in place. `duration` 0 stays until removed. */
+  stage: (
+    id: string,
+    content: string,
+    kind: ToastKind,
+    duration = 0,
+    options: { onPress?: () => void } = {}
+  ): number =>
+    useToastStore.getState().show(content, kind, duration, { id, onPress: options.onPress }),
 };

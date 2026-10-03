@@ -1,44 +1,58 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import type { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import {
-  Dimensions,
-  Image,
-  type LayoutChangeEvent,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import type Svg from 'react-native-svg';
+import { AchievementNotice } from '@/components/achievement-notice';
 import { AvatarStack } from '@/components/avatar-stack';
-import { RouteThumbnail } from '@/components/route-thumbnail';
-import { ShareRouteImage } from '@/components/share-route-image';
+import { FeedHeader } from '@/components/feed-header';
+import { FeedMedia } from '@/components/feed-media';
+import { PopupMenu, type PopupMenuItem } from '@/components/popup-menu';
+import { ReportSheet } from '@/components/report-sheet';
+import { OffscreenShareImage } from '@/components/share-route-image';
+import { SocialStrip } from '@/components/social-strip';
+import { StatRow } from '@/components/stat-row';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { SPORT_ICONS } from '@/constants/activity';
-import { getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { getSportLabel, SPORT_ICONS } from '@/constants/activity';
+import { DELIVERY_COPY } from '@/constants/copy';
+import { Feed } from '@/constants/feed';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useDoubleTap } from '@/hooks/useDoubleTap';
 import { useEnsName } from '@/hooks/useEnsName';
-import type { SocialActivity, SocialUser } from '@/stores/socialStore';
-import { useSocialStore } from '@/stores/socialStore';
-import {
-  formatDistance,
-  formatDuration,
-  formatRelativeTime,
-  getDisplayName,
-  getInitials,
-  parsePolyline,
-} from '@/utils/format';
-import { haptics, impactLight } from '@/utils/haptics';
+import { useHiddenAuthors } from '@/hooks/useHiddenAuthors';
+import { retryDeliveries, useDelivery, useDeliveryState } from '@/hooks/useOutbox';
+import { useReportSheet } from '@/hooks/useReport';
+import { useReportedHidden } from '@/hooks/useReportedHidden';
+import { useUserResolver } from '@/hooks/useSocialUser';
+import { useBlockStore } from '@/stores/blockStore';
+import { type SocialActivity, type SocialUser, useSocialStore } from '@/stores/socialStore';
+import type { Achievement } from '@/utils/achievements';
+import { activityStats } from '@/utils/activityStats';
+import { sameAddress } from '@/utils/address';
+import { confirmUnfollow } from '@/utils/confirmUnfollow';
+import { formatTimeOfDay, formatWeekdayDay } from '@/utils/dates';
+import { feedSubtext } from '@/utils/feedSubtext';
+import { getDisplayName, parsePolyline } from '@/utils/format';
+import { haptics } from '@/utils/haptics';
+import { logger } from '@/utils/logger';
+import { countOf } from '@/utils/plural';
+import type { Box } from '@/utils/popupPosition';
+import { canReport } from '@/utils/reporting';
 import { shareRouteImage } from '@/utils/share';
+import { activityKey } from '@/utils/socialFeed';
+import { Toast } from '@/utils/toast';
+import { visibleComments } from '@/utils/visibleComments';
 
 interface FeedCardProps {
   activity: SocialActivity;
@@ -48,206 +62,8 @@ interface FeedCardProps {
   onPress: () => void;
   onMapPress?: () => void;
   onUserPress?: () => void;
-}
-
-function formatElevation(meters: number): string {
-  return `${Math.round(meters)}m`;
-}
-
-function UserAvatar({
-  name,
-  avatarUrl,
-  size = 36,
-}: {
-  name: string;
-  avatarUrl?: string;
-  size?: number;
-}) {
-  const theme = useTheme();
-
-  if (avatarUrl) {
-    return (
-      <Image
-        source={{ uri: avatarUrl }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-      />
-    );
-  }
-
-  const initials = getInitials(name);
-
-  return (
-    <View
-      style={[
-        avatarStyles.container,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: theme.brand.primaryTint,
-        },
-      ]}
-    >
-      <ThemedText type="smallBold" style={{ color: theme.brand.primary, fontSize: size * 0.38 }}>
-        {initials}
-      </ThemedText>
-    </View>
-  );
-}
-
-const avatarStyles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});
-
-function MediaSection({
-  activity,
-  icon,
-  theme,
-  onPress,
-  onMapPress,
-}: {
-  activity: SocialActivity;
-  icon: keyof typeof Ionicons.glyphMap;
-  theme: ReturnType<typeof useTheme>;
-  onPress: () => void;
-  onMapPress?: () => void;
-}) {
-  const scrollRef = useRef<ScrollView>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  const images = activity.images ?? (activity.image ? [activity.image] : []);
-  const hasMap = !!activity.polyline;
-  const totalItems = images.length + (hasMap ? 1 : 0);
-
-  const onLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      const w = e.nativeEvent.layout.width;
-      if (w > 0 && w !== containerWidth) setContainerWidth(w);
-    },
-    [containerWidth]
-  );
-
-  const onScroll = useCallback(
-    (e: {
-      nativeEvent: { contentOffset: { x: number }; layoutMeasurement: { width: number } };
-    }) => {
-      const idx = Math.round(e.nativeEvent.contentOffset.x / e.nativeEvent.layoutMeasurement.width);
-      setActiveIndex(idx);
-    },
-    []
-  );
-
-  const carouselHeight = 200;
-
-  if (totalItems === 0) return null;
-
-  // Single image only — no carousel
-  if (totalItems === 1 && images.length === 1) {
-    return (
-      <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={styles.thumbnailContainer}>
-        <Image
-          source={{ uri: images[0] }}
-          style={[styles.activityImage, { backgroundColor: theme.background }]}
-          resizeMode="cover"
-        />
-      </TouchableOpacity>
-    );
-  }
-
-  // Single map only — no carousel
-  if (totalItems === 1 && hasMap) {
-    return (
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={onMapPress ?? onPress}
-        style={styles.thumbnailContainer}
-      >
-        <RouteThumbnail
-          polyline={activity.polyline}
-          territory={activity.territory}
-          height={carouselHeight}
-          fallback={
-            <View style={[styles.thumbnailFallback, { backgroundColor: theme.background }]}>
-              <Ionicons name={icon} size={32} color={theme.textSecondary} />
-            </View>
-          }
-        />
-      </TouchableOpacity>
-    );
-  }
-
-  // Carousel: images + optional map
-  const itemWidth = containerWidth || Dimensions.get('window').width;
-
-  return (
-    <View onLayout={onLayout}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        style={styles.carousel}
-      >
-        {images.map((uri, i) => (
-          <TouchableOpacity
-            key={`img-${i}`}
-            activeOpacity={0.7}
-            onPress={onPress}
-            style={[styles.carouselItem, { width: itemWidth, height: carouselHeight }]}
-          >
-            <Image
-              source={{ uri }}
-              style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        ))}
-        {hasMap && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={onMapPress ?? onPress}
-            style={[styles.carouselItem, { width: itemWidth, height: carouselHeight }]}
-          >
-            <RouteThumbnail
-              polyline={activity.polyline}
-              territory={activity.territory}
-              height={carouselHeight}
-              fallback={
-                <View
-                  style={[
-                    styles.thumbnailFallback,
-                    { backgroundColor: theme.background, height: carouselHeight },
-                  ]}
-                >
-                  <Ionicons name={icon} size={32} color={theme.textSecondary} />
-                </View>
-              }
-            />
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-      {/* Pagination dots */}
-      {totalItems > 1 && (
-        <View style={styles.pagination}>
-          {Array.from({ length: totalItems }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                { backgroundColor: i === activeIndex ? theme.brand.primary : theme.border },
-              ]}
-            />
-          ))}
-        </View>
-      )}
-    </View>
-  );
+  /** Badges this activity earned (only known for the viewer's own activities). */
+  earned?: readonly Achievement[];
 }
 
 export function FeedCard({
@@ -258,27 +74,68 @@ export function FeedCard({
   onPress,
   onMapPress,
   onUserPress,
+  earned,
 }: FeedCardProps) {
   const theme = useTheme();
+  const router = useRouter();
   const unitSystem = useUnitSystem();
-  const getUserById = useSocialStore((s) => s.getUserById);
+  const getUserById = useUserResolver();
   const ensName = useEnsName(user.wallet);
-  const hasKudoed = activity.kudos.some(
-    (id) => id.toLowerCase() === getCurrentUserId().toLowerCase()
+  const me = useCurrentUserId();
+  const stats = activityStats(activity, unitSystem).slice(0, 3);
+  const when = `${formatWeekdayDay(activity.createdAt)} at ${formatTimeOfDay(activity.createdAt)}`;
+  const subtext = feedSubtext({
+    when,
+    sport: getSportLabel(activity.activityType),
+    place: user.location,
+    manual: activity.isManual,
+  });
+  const hasKudoed = activity.kudos.some((id) => id.toLowerCase() === me.toLowerCase());
+  const reportedComments = useReportedHidden().comments;
+  const hiddenAuthors = useHiddenAuthors();
+  // Comments the athlete reported, or by someone they blocked or muted, are gone from the card as well as from the sheet.
+  const comments = useMemo(
+    () => visibleComments(activity.comments, reportedComments, hiddenAuthors),
+    [activity.comments, reportedComments, hiddenAuthors]
   );
+  const latestComment = comments.at(-1);
+  const [menuAnchor, setMenuAnchor] = useState<Box | null>(null);
+  const report = useReportSheet();
+  const toggleFollow = useSocialStore((s) => s.toggleFollow);
+  const isFollowing = useSocialStore((s) => s.following.has(user.id.toLowerCase()));
+  const mute = useBlockStore((s) => s.mute);
+  const hideFromHome = useBlockStore((s) => s.hideFromHome);
+  const reportTarget = { kind: 'activity', id: activity.id, ownerId: activity.userId } as const;
+  const reportable = canReport(reportTarget, me);
+  // The outbox files kudos under the store's own key, which for the athlete's own activities is
+  // the chain hash while `activity.id` is the local id.
+  const storeKey = useSocialStore((s) => activityKey(s.activities, activity.id));
+  const kudosKey = `kudos:${storeKey}`;
+  const commentKey = `comment:${latestComment?.id ?? ''}`;
+  const kudosDelivery = useDelivery(kudosKey);
+  const commentDelivery = useDeliveryState(commentKey);
+  const notSent = kudosDelivery === 'failed' || commentDelivery === 'failed';
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const cardRef = useRef<View>(null);
   const svgRef = useRef<Svg>(null);
+  // The 1080x1920 share image is built only while sharing, not for every card in the feed.
+  const [sharing, setSharing] = useState(false);
   const icon = (SPORT_ICONS[activity.activityType] || 'walk') as keyof typeof Ionicons.glyphMap;
   const routeCoordinates = useMemo(() => parsePolyline(activity.polyline), [activity.polyline]);
 
-  // Kudos animation
   const kudosScale = useSharedValue(1);
   const kudosAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: kudosScale.value }],
   }));
 
   const handleKudos = () => {
-    impactLight();
+    haptics.tap();
     kudosScale.value = withSequence(
       withTiming(1.3, { duration: 120 }),
       withTiming(1, { duration: 150 })
@@ -286,328 +143,261 @@ export function FeedCard({
     onKudos();
   };
 
+  // Two quick taps on the media give kudos (never take them back); one opens the activity.
+  const onMediaTap = useDoubleTap(onPress, () => {
+    if (!hasKudoed) handleKudos();
+  });
+
   const handleSharePress = () => {
+    if (sharing) return;
     haptics.tap();
-    shareRouteImage(svgRef, activity.id);
+    setSharing(true);
   };
+
+  // Effects run after the commit that mounted the off-screen card, so its ref is attached here.
+  useEffect(() => {
+    if (!sharing) return;
+    shareRouteImage(svgRef, activity.id)
+      .catch((error) => {
+        logger.warn('[FeedCard] Share failed', error);
+        Toast.fail("Couldn't share this activity", 2);
+      })
+      .finally(() => {
+        if (mounted.current) setSharing(false);
+      });
+  }, [sharing, activity.id]);
+
+  const description = activity.description?.trim();
+  const authorName = ensName || user.username;
+  const menuItems: PopupMenuItem[] = [
+    {
+      key: 'follow',
+      label: `${isFollowing ? 'Unfollow' : 'Follow'} ${authorName}`,
+      icon: isFollowing ? 'person-remove-outline' : 'person-add-outline',
+      onPress: () => {
+        const run = () => void toggleFollow(user.id);
+        if (isFollowing) confirmUnfollow(authorName, run);
+        else run();
+      },
+    },
+    {
+      key: 'mute',
+      label: `Mute ${authorName}`,
+      icon: 'volume-mute-outline',
+      onPress: () => {
+        mute(user.id);
+        Toast.success(`Muted ${authorName}`);
+      },
+    },
+    {
+      key: 'hide',
+      label: 'Hide from Home',
+      icon: 'eye-off-outline',
+      onPress: () => {
+        hideFromHome(activity.id);
+        Toast.success('Hidden from Home');
+      },
+    },
+    {
+      key: 'report',
+      label: 'Report',
+      icon: 'flag-outline',
+      onPress: () => report.ask(reportTarget),
+    },
+  ];
 
   return (
     <View>
       <View ref={cardRef} collapsable={false}>
-        <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-          {/* Header: user info */}
-          <TouchableOpacity
-            style={styles.header}
-            activeOpacity={0.7}
+        <ThemedView style={[styles.entry, { backgroundColor: theme.backgroundElement }]}>
+          <FeedHeader
+            name={authorName}
+            avatarUri={user.avatar}
+            verified={user.isVerified}
+            subtextIcon={icon}
+            subtext={subtext}
             onPress={onUserPress ?? onPress}
-            accessibilityRole="button"
-            accessibilityLabel={`${user.username}'s activity`}
-          >
-            <UserAvatar name={user.username} avatarUrl={user.avatar} />
-            <ThemedView style={styles.headerText}>
-              <View style={styles.usernameRow}>
-                <ThemedText type="smallBold" numberOfLines={1}>
-                  {ensName || user.username}
-                </ThemedText>
-                {user.isVerified && (
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={14}
-                    color={Brand.verified}
-                    accessibilityLabel="Verified account"
-                  />
-                )}
-              </View>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {formatRelativeTime(activity.createdAt, true)} ·{' '}
-                {activity.activityType.charAt(0).toUpperCase() + activity.activityType.slice(1)}
-                {user.location ? ` · ${user.location}` : ''}
-              </ThemedText>
-            </ThemedView>
-          </TouchableOpacity>
+            onMore={reportable ? setMenuAnchor : undefined}
+          />
 
-          {/* Activity title */}
-          <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
-            <ThemedText type="sectionTitle" numberOfLines={1} style={styles.title}>
+          <Tappable onPress={onPress} accessibilityRole="button" accessibilityLabel={activity.name}>
+            <ThemedText type="titleSmall" numberOfLines={2} style={styles.title}>
               {activity.name}
             </ThemedText>
-          </TouchableOpacity>
+          </Tappable>
 
-          {/* Stats row - hide for image-only posts */}
-          {(activity.distance > 0 || activity.duration > 0) && (
-            <ThemedView style={styles.statsRow}>
-              {activity.distance > 0 && (
-                <ThemedView style={styles.stat}>
-                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                    Distance
+          {description ? (
+            // Only activities that carry their own text show it; another athlete's text lives in IPFS metadata the feed does not fetch.
+            <ThemedText type="default" numberOfLines={3} style={styles.description}>
+              {description}
+            </ThemedText>
+          ) : null}
+
+          <StatRow stats={stats} />
+
+          <FeedMedia
+            activity={activity}
+            icon={icon}
+            theme={theme}
+            onPress={onMediaTap}
+            onMapPress={onMapPress}
+          />
+
+          {(activity.kudos.length > 0 || comments.length > 0) && (
+            <ThemedView style={styles.socialProof}>
+              {activity.kudos.length > 0 && (
+                <Tappable
+                  onPress={() => router.push(`/kudos?id=${activity.id}`)}
+                  hitSlop={8}
+                  style={styles.kudosInfo}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${countOf(activity.kudos.length, 'kudo', 'kudos')}. See who gave them`}
+                >
+                  <AvatarStack userIds={activity.kudos} max={3} size={22} />
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {countOf(activity.kudos.length, 'kudo', 'kudos')}
                   </ThemedText>
-                  <ThemedText type="smallBold">
-                    {formatDistance(activity.distance, unitSystem)}
-                  </ThemedText>
-                </ThemedView>
+                </Tappable>
               )}
-              {activity.duration > 0 && (
-                <ThemedView style={styles.stat}>
-                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                    Time
+              {comments.length > 0 && (
+                <Tappable
+                  onPress={() => {
+                    haptics.tap();
+                    onComment();
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${countOf(comments.length, 'comment', 'comments')}. Open comments`}
+                >
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {countOf(comments.length, 'comment', 'comments')}
                   </ThemedText>
-                  <ThemedText type="smallBold">{formatDuration(activity.duration)}</ThemedText>
-                </ThemedView>
-              )}
-              {activity.elevationGain != null && activity.elevationGain > 0 && (
-                <ThemedView style={styles.stat}>
-                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                    Elevation
-                  </ThemedText>
-                  <ThemedText type="smallBold">
-                    {formatElevation(activity.elevationGain)}
-                  </ThemedText>
-                </ThemedView>
+                </Tappable>
               )}
             </ThemedView>
           )}
 
-          {/* Media: image, route, or carousel */}
-          <MediaSection
-            activity={activity}
-            icon={icon}
-            theme={theme}
-            onPress={onPress}
-            onMapPress={onMapPress}
+          {earned && earned.length > 0 && (
+            <AchievementNotice
+              earned={earned}
+              onPress={(badge) => router.push(`/badges/${badge.id}`)}
+            />
+          )}
+
+          <SocialStrip
+            hasKudoed={hasKudoed}
+            kudosFailed={kudosDelivery === 'failed'}
+            commentCount={comments.length}
+            kudosStyle={kudosAnimatedStyle}
+            onKudos={handleKudos}
+            onSeeKudos={() => router.push(`/kudos?id=${activity.id}`)}
+            onComment={() => {
+              haptics.tap();
+              onComment();
+            }}
+            onShare={handleSharePress}
           />
 
-          {/* Kudos + comments count row */}
-          <ThemedView style={styles.socialProof}>
-            {activity.kudos.length > 0 && (
-              <ThemedView style={styles.kudosInfo}>
-                <AvatarStack userIds={activity.kudos} max={3} size={22} />
-                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                  {activity.kudos.length} {activity.kudos.length === 1 ? 'kudo' : 'kudos'}
-                </ThemedText>
-              </ThemedView>
-            )}
-            {activity.comments.length > 0 && (
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {activity.comments.length} {activity.comments.length === 1 ? 'comment' : 'comments'}
-              </ThemedText>
-            )}
-          </ThemedView>
-
-          {/* Divider */}
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-          {/* Three-column action bar */}
-          <ThemedView style={styles.actions}>
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={handleKudos}
-              activeOpacity={0.7}
+          {notSent && (
+            <Tappable
+              onPress={() => {
+                haptics.tap();
+                void retryDeliveries([kudosKey, commentKey]);
+              }}
               accessibilityRole="button"
-              accessibilityLabel={hasKudoed ? 'Remove kudos' : 'Give kudos'}
-              accessibilityState={{ selected: hasKudoed }}
+              accessibilityLabel="Your change was not sent. Try again"
+              style={styles.notSent}
             >
-              <Animated.View style={kudosAnimatedStyle}>
-                <Ionicons
-                  name={hasKudoed ? 'thumbs-up' : 'thumbs-up-outline'}
-                  size={20}
-                  color={hasKudoed ? theme.brand.primary : theme.textSecondary}
-                />
-              </Animated.View>
-              <ThemedText
-                type="small"
-                style={{ color: hasKudoed ? theme.brand.primary : theme.textSecondary }}
-              >
-                Kudos
+              <ThemedText type="caption" themeColor="dangerText">
+                Not sent. Tap to try again
               </ThemedText>
-            </TouchableOpacity>
+            </Tappable>
+          )}
 
-            <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
-
-            <TouchableOpacity
-              style={styles.actionBtn}
+          {latestComment && (
+            <Tappable
               onPress={() => {
                 haptics.tap();
                 onComment();
               }}
-              activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={`${activity.comments.length} comments`}
+              accessibilityLabel="Open comments"
+              style={[styles.commentPreview, { backgroundColor: theme.backgroundSunken }]}
             >
-              <Ionicons name="chatbubble-outline" size={20} color={theme.textSecondary} />
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Comment
-              </ThemedText>
-            </TouchableOpacity>
-
-            <View style={[styles.actionDivider, { backgroundColor: theme.border }]} />
-
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={handleSharePress}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Share activity"
-            >
-              <Ionicons name="arrow-redo-outline" size={20} color={theme.textSecondary} />
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                Share
-              </ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
-
-          {/* Latest comment preview */}
-          {activity.comments.length > 0 && (
-            <>
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
-              <ThemedView style={styles.commentPreview}>
-                <ThemedText type="small" numberOfLines={2}>
-                  <ThemedText type="smallBold">
-                    {getUserDisplayName(
-                      activity.comments[activity.comments.length - 1].userId,
-                      getUserById
-                    )}{' '}
-                  </ThemedText>
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    {activity.comments[activity.comments.length - 1].text}
-                  </ThemedText>
+              <ThemedText type="small" numberOfLines={2}>
+                <ThemedText type="smallBold">
+                  {getUserDisplayName(latestComment.userId, getUserById, me)}{' '}
                 </ThemedText>
-              </ThemedView>
-            </>
+                <ThemedText type="small">{latestComment.text}</ThemedText>
+                {commentDelivery && (
+                  <ThemedText
+                    type="caption"
+                    themeColor={commentDelivery === 'failed' ? 'dangerText' : 'textTertiary'}
+                  >
+                    {commentDelivery === 'failed'
+                      ? ' · Not sent'
+                      : ` · ${DELIVERY_COPY[commentDelivery]}`}
+                  </ThemedText>
+                )}
+              </ThemedText>
+              {comments.length > 1 && (
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.viewAll}>
+                  View all {comments.length} comments
+                </ThemedText>
+              )}
+            </Tappable>
           )}
         </ThemedView>
       </View>
 
-      {/* Off-screen 9:16 stat card, rendered for sharing — see handleSharePress */}
-      <View style={styles.shareCardContainer} pointerEvents="none">
-        <ShareRouteImage
+      <PopupMenu
+        anchor={menuAnchor}
+        items={menuItems}
+        width={248}
+        onClose={() => setMenuAnchor(null)}
+        accessibilityLabel="Activity options"
+      />
+      <ReportSheet {...report.props} />
+
+      {/* Off-screen 9:16 stat card, mounted only while sharing; the effect above shares once it is attached. */}
+      {sharing && (
+        <OffscreenShareImage
           ref={svgRef}
           coordinates={routeCoordinates}
           territory={activity.territory}
           territoryArea={activity.territoryArea}
           distance={activity.distance}
           duration={activity.duration}
-          height={1920}
+          activityType={activity.activityType}
         />
-      </View>
+      )}
     </View>
   );
 }
 
 function getUserDisplayName(
   userId: string,
-  getUserById: (id: string) => SocialUser | undefined
+  getUserById: (id: string) => SocialUser | undefined,
+  currentUserId: string
 ): string {
-  if (userId === getCurrentUserId()) return 'You';
+  if (sameAddress(userId, currentUserId)) return 'You';
   const user = getUserById(userId);
-  return user ? getDisplayName(user).split(' ')[0] : 'Unknown';
+  return user ? (getDisplayName(user).split(' ')[0] ?? 'Unknown') : 'Unknown';
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: BorderRadius.md,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    paddingBottom: 0,
-  },
-  headerText: { flex: 1, gap: 2 },
-  usernameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  title: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.one,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-  },
-  stat: { alignItems: 'center', gap: 2 },
-  thumbnailContainer: {
-    marginHorizontal: Spacing.three,
-    marginTop: Spacing.two,
-    borderRadius: BorderRadius.md,
-    overflow: 'hidden',
-  },
-  activityImage: {
-    width: '100%',
-    height: 200,
-  },
-  thumbnailFallback: {
-    height: 160,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  carousel: {
-    marginTop: Spacing.two,
-  },
-  carouselItem: {
-    borderRadius: BorderRadius.md,
-    overflow: 'hidden',
-  },
-  pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: Spacing.two,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
+  entry: { overflow: 'hidden' },
+  title: { paddingHorizontal: Feed.edge, paddingTop: Feed.edge },
+  description: { paddingHorizontal: Feed.edge, paddingTop: Spacing.one },
   socialProof: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
+    paddingHorizontal: Feed.edge,
+    paddingTop: Spacing.three,
   },
-  kudosInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  actions: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.one,
-    paddingVertical: Spacing.one,
-  },
-  actionDivider: {
-    width: StyleSheet.hairlineWidth,
-    marginVertical: Spacing.one,
-  },
-  shareCardContainer: {
-    position: 'absolute',
-    top: -10000,
-    left: 0,
-    width: 1080,
-    height: 1920,
-  },
-  commentPreview: {
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.three,
-    paddingTop: Spacing.one,
-  },
+  kudosInfo: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  commentPreview: { paddingHorizontal: Feed.edge, paddingVertical: Spacing.twoHalf },
+  viewAll: { marginTop: Spacing.one },
+  notSent: { paddingHorizontal: Feed.edge, paddingBottom: Spacing.two },
 });

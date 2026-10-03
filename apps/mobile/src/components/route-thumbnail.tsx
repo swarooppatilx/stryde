@@ -1,12 +1,15 @@
 import { StaticMapImageManager } from '@maplibre/maplibre-react-native';
-import { useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
+import { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { MAP_STYLES } from '@/constants/config';
+import { outdoorStyleFor } from '@/constants/outdoorMapStyle';
+import { Palette } from '@/constants/palette';
 import { useTheme } from '@/hooks/use-theme';
 import type { Ring } from '@/types';
 import { parsePolyline } from '@/utils/format';
+import { fitBoundsToAspect } from '@/utils/thumbnailBounds';
 
 interface RouteThumbnailProps {
   polyline: string;
@@ -18,6 +21,73 @@ interface RouteThumbnailProps {
 const IMG_W = 600;
 const IMG_H = 240;
 
+interface RouteShapes {
+  routePath: string | null;
+  routeDot: { cx: number; cy: number } | null;
+  start: { cx: number; cy: number } | null;
+  end: { cx: number; cy: number } | null;
+  territoryPath: string | null;
+  bounds: [number, number, number, number];
+}
+
+function routeShapes(
+  points: [number, number][],
+  territory: Ring | null | undefined
+): RouteShapes | null {
+  const all: [number, number][] = [...points, ...(territory ?? [])];
+  if (all.length === 0) return null;
+
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of all) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  if (maxLng - minLng < 1e-7) {
+    minLng -= 5e-4;
+    maxLng += 5e-4;
+  }
+  if (maxLat - minLat < 1e-7) {
+    minLat -= 5e-4;
+    maxLat += 5e-4;
+  }
+
+  // Pad bounds 30% so the route isn't flush with the edges.
+  const padLng = (maxLng - minLng) * 0.3;
+  const padLat = (maxLat - minLat) * 0.3;
+  // Then reshape to the picture's proportions in meters, so a loop is not stretched into an ellipse.
+  const [bMinLng, bMinLat, bMaxLng, bMaxLat] = fitBoundsToAspect(
+    [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat],
+    IMG_W / IMG_H
+  );
+
+  const lngSpan = bMaxLng - bMinLng;
+  const latSpan = bMaxLat - bMinLat;
+
+  const toX = (lng: number) => ((lng - bMinLng) / lngSpan) * IMG_W;
+  const toY = (lat: number) => ((bMaxLat - lat) / latSpan) * IMG_H;
+
+  const toPath = (pts: [number, number][]) =>
+    pts
+      .map(([lng, lat], i) => `${i === 0 ? 'M' : 'L'}${toX(lng).toFixed(1)},${toY(lat).toFixed(1)}`)
+      .join(' ');
+
+  const dot = (p: [number, number] | undefined) => (p ? { cx: toX(p[0]), cy: toY(p[1]) } : null);
+
+  return {
+    routePath: points.length > 1 ? toPath(points) : null,
+    routeDot: points.length === 1 ? dot(points[0]) : null,
+    start: points.length > 1 ? dot(points[0]) : null,
+    end: points.length > 1 ? dot(points.at(-1)) : null,
+    territoryPath: territory && territory.length > 2 ? toPath(territory) : null,
+    bounds: [bMinLng, bMinLat, bMaxLng, bMaxLat] as [number, number, number, number],
+  };
+}
+
 export function RouteThumbnail({
   polyline,
   territory,
@@ -25,64 +95,9 @@ export function RouteThumbnail({
   fallback,
 }: RouteThumbnailProps) {
   const theme = useTheme();
-  const points = useMemo(() => parsePolyline(polyline), [polyline]);
+  const points = parsePolyline(polyline);
 
-  const shapes = useMemo(() => {
-    const all: [number, number][] = [...points, ...(territory ?? [])];
-    if (all.length === 0) return null;
-
-    let minLng = Infinity;
-    let maxLng = -Infinity;
-    let minLat = Infinity;
-    let maxLat = -Infinity;
-    for (const [lng, lat] of all) {
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    }
-    if (maxLng - minLng < 1e-7) {
-      minLng -= 5e-4;
-      maxLng += 5e-4;
-    }
-    if (maxLat - minLat < 1e-7) {
-      minLat -= 5e-4;
-      maxLat += 5e-4;
-    }
-
-    // Pad bounds 30% so the route isn't flush with the edges.
-    const padLng = (maxLng - minLng) * 0.3;
-    const padLat = (maxLat - minLat) * 0.3;
-    const bMinLng = minLng - padLng;
-    const bMaxLng = maxLng + padLng;
-    const bMinLat = minLat - padLat;
-    const bMaxLat = maxLat + padLat;
-
-    const lngSpan = bMaxLng - bMinLng;
-    const latSpan = bMaxLat - bMinLat;
-
-    const toX = (lng: number) => ((lng - bMinLng) / lngSpan) * IMG_W;
-    const toY = (lat: number) => ((bMaxLat - lat) / latSpan) * IMG_H;
-
-    const toPath = (pts: [number, number][]) =>
-      pts
-        .map(
-          ([lng, lat], i) => `${i === 0 ? 'M' : 'L'}${toX(lng).toFixed(1)},${toY(lat).toFixed(1)}`
-        )
-        .join(' ');
-
-    return {
-      routePath: points.length > 1 ? toPath(points) : null,
-      routeDot: points.length === 1 ? { cx: toX(points[0][0]), cy: toY(points[0][1]) } : null,
-      start: points.length > 1 ? { cx: toX(points[0][0]), cy: toY(points[0][1]) } : null,
-      end:
-        points.length > 1
-          ? { cx: toX(points[points.length - 1][0]), cy: toY(points[points.length - 1][1]) }
-          : null,
-      territoryPath: territory && territory.length > 2 ? toPath(territory) : null,
-      bounds: [bMinLng, bMinLat, bMaxLng, bMaxLat] as [number, number, number, number],
-    };
-  }, [points, territory]);
+  const shapes = routeShapes(points, territory);
 
   const [mapUri, setMapUri] = useState<string | null>(null);
 
@@ -94,7 +109,7 @@ export function RouteThumbnail({
     let cancelled = false;
     StaticMapImageManager.createImage({
       bounds: shapes.bounds,
-      mapStyle: theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager,
+      mapStyle: outdoorStyleFor(theme.isDark),
       width: IMG_W,
       height: IMG_H,
       output: 'file',
@@ -123,8 +138,8 @@ export function RouteThumbnail({
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundElement, height }]}>
-      {hasMap && (
-        <Image source={{ uri: mapUri! }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      {mapUri && (
+        <Image source={{ uri: mapUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
       )}
       <Svg
         width="100%"
@@ -196,7 +211,7 @@ export function RouteThumbnail({
             cy={shapes.start.cy}
             r={6}
             fill={theme.brand.success}
-            stroke="#fff"
+            stroke={Palette.white}
             strokeWidth={2}
           />
         )}
@@ -206,7 +221,7 @@ export function RouteThumbnail({
             cy={shapes.end.cy}
             r={6}
             fill={theme.brand.primary}
-            stroke="#fff"
+            stroke={Palette.white}
             strokeWidth={2}
           />
         )}

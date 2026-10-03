@@ -1,129 +1,82 @@
-import { type SyncedComment, services } from '@repo/shared';
+import { services } from '@repo/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { getSportLabel } from '@/constants/activity';
-import { getCurrentUserId } from '@/constants/config';
-import { ipfsToHttpUrl } from '@/services/ipfsService';
-import { getActiveWallet, queuedWrite } from '@/services/wallet';
+import { getCurrentUserId } from '@/constants/currentUser';
 import { useActivityStore } from '@/stores/activityStore';
-import { useProfileStore } from '@/stores/profileStore';
-import type { Activity, User } from '@/types';
-import { mergeLocalActivities } from '@/utils/socialFeed';
+import { sameAddress } from '@/utils/address';
+import { ipfsToHttpUrl } from '@/utils/ipfsUrl';
+import { logger } from '@/utils/logger';
+import { activityKey, feedFromChain, mergeLocalActivities } from '@/utils/socialFeed';
+import { type SocialActivity, type SocialUser, visibleActivities } from '@/utils/socialSelectors';
+
+export {
+  resolveUser,
+  type SocialActivity,
+  type SocialComment,
+  type SocialUser,
+  searchActivities,
+  searchUsers,
+  visibleActivities,
+} from '@/utils/socialSelectors';
+// Re-exported so screens keep importing these from the store.
+export { activityKey };
+
+import { mergeAbout } from '@/utils/mergeAbout';
 import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
-import { Toast } from '@/utils/toast';
+import { createCommentLikeActions } from './socialCommentLikeActions';
+import { createFollowActions } from './socialFollowActions';
+import {
+  mergeSocialState,
+  migrateSocialState,
+  toActivityRecord,
+  toUserRecord,
+} from './socialPersistence';
+import { createPostActions } from './socialPostActions';
 
-function sameAddress(a: string | undefined, b: string | undefined): boolean {
-  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
-}
-
-function toUserRecord(users: SocialUser[]): Record<string, SocialUser> {
-  const record: Record<string, SocialUser> = {};
-  for (const user of users) {
-    record[user.id.toLowerCase()] = user;
-  }
-  return record;
-}
-
-function toActivityRecord(activities: SocialActivity[]): Record<string, SocialActivity> {
-  const record: Record<string, SocialActivity> = {};
-  for (const activity of activities) {
-    record[activity.id.toLowerCase()] = activity;
-  }
-  return record;
-}
-
-/** Feed items can carry either the chain key (lowercase activity hash) or a
- * local record's id, so resolve whichever form to the key the record is
- * actually stored under. */
-export function activityKey(activities: Record<string, SocialActivity>, id: string): string {
-  if (activities[id]) return id;
-  const lower = id.toLowerCase();
-  if (activities[lower]) return lower;
-  const match = Object.entries(activities).find(
-    ([, a]) => a.id === id || a.activityHash?.toLowerCase() === lower
-  );
-  return match ? match[0] : id;
-}
-
-function resolveOnchainActivityId(activity: SocialActivity): bigint | undefined {
-  if (activity.activityId != null) return BigInt(activity.activityId);
-  // A just-recorded activity isn't in the chain-synced feed yet; its id was
-  // stored on the local record when recordActivity confirmed.
-  const local = useActivityStore
-    .getState()
-    .activities.find((a) => a.id === activity.id || a.activityHash === activity.activityHash);
-  return local?.onchainActivityId ? BigInt(local.onchainActivityId) : undefined;
-}
-
-export interface SocialUser extends User {
-  bio?: string;
-  location?: string;
-  followers: number;
-  following: number;
-}
-
-export interface SocialActivity extends Activity {
-  name?: string;
-  /** On-chain id as a decimal string — persisted to JSON, which can't hold a bigint. */
-  activityId?: string;
-  kudos: string[];
-  comments: SocialComment[];
-}
-
-function isVisibleToViewer(
-  activity: SocialActivity,
-  viewerId: string,
-  following: ReadonlySet<string>
-): boolean {
-  if (sameAddress(activity.userId, viewerId)) return true;
-  switch (activity.privacy) {
-    case 'only_me':
-      return false;
-    case 'followers':
-      return following.has(activity.userId.toLowerCase());
-    default:
-      return true;
-  }
-}
-
-function visibleActivities(
-  activities: SocialActivity[],
-  viewerId: string,
-  following: ReadonlySet<string>
-): SocialActivity[] {
-  return activities
-    .filter((a) => isVisibleToViewer(a, viewerId, following))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
-
-export interface SocialComment {
-  id: string;
-  userId: string;
-  text: string;
-  createdAt: Date;
-  likedBy: string[];
-}
+/** The social API reads at most this many authors per request. */
+const ABOUT_BATCH = 100;
 
 interface SocialState {
   users: Record<string, SocialUser>;
   activities: Record<string, SocialActivity>;
   currentUserKudos: Set<string>;
   following: Set<string>;
+  /** How many athletes follow the viewer; known after syncFollowing. */
+  myFollowerCount: number;
+  followerEntries: { address: string; followedAt: number }[];
+  /** Bio and location the server has for athletes, so a refreshed athlete list can show them again. */
+  about: Record<string, { bio: string; location: string }>;
+  /** Epoch ms of the last time the inbox was opened. */
+  inboxSeenAt: number;
+  /** The first feed load: 'idle' until asked, then 'loading', 'ready' or 'error'. A failed refresh later stays 'ready'. */
+  feedStatus: 'idle' | 'loading' | 'ready' | 'error';
 
-  fetchUsers: () => Promise<void>;
-  fetchActivities: () => Promise<void>;
+  /** Marks everything up to `newestMs` (the newest item's own time) as seen; never moves backwards. */
+  markInboxSeen: (newestMs: number) => void;
+  /** Resolves false when the athlete list could not be loaded. */
+  fetchUsers: () => Promise<boolean>;
+  /** Refreshes the feed from the chain. Resolves false (feed untouched) when it couldn't. */
+  fetchActivities: () => Promise<boolean>;
   syncLocalActivities: () => void;
   toggleKudos: (activityId: string) => Promise<void>;
   addComment: (activityId: string, text: string) => Promise<void>;
-  toggleCommentLike: (activityId: string, commentId: string) => void;
+  /** Likes or unlikes a comment at once on screen, then records it; undoes it if that fails. */
+  toggleCommentLike: (activityId: string, commentId: string) => Promise<void>;
+  /** Replaces each comment's likes with what the likes service reports. */
+  loadCommentLikes: () => Promise<void>;
   updateActivity: (activityId: string, updates: Partial<SocialActivity>) => void;
-  toggleFollow: (userId: string) => void;
+  /** Drops a post from the feed by its hash and/or id (used when the user deletes an activity). */
+  removeActivity: (activityHash: string, activityId: string) => void;
+  /** Follows or unfollows at once on screen, then records it on the server; undoes it if that fails. */
+  toggleFollow: (userId: string) => Promise<void>;
+  /** Replaces the local follow set with the server's, and counts the viewer's followers. */
+  syncFollowing: (address: `0x${string}`) => Promise<void>;
+  /** Fills in another athlete's follower and following counts. */
+  loadFollowStats: (userId: `0x${string}`) => Promise<void>;
+  /** Fills in athletes' bios and locations from the social API; keeps what it has if that fails. */
+  loadAbout: (addresses: readonly string[]) => Promise<void>;
   isFollowing: (userId: string) => boolean;
   getFeed: () => SocialActivity[];
-  searchUsers: (query: string) => SocialUser[];
-  searchActivities: (query: string) => SocialActivity[];
-  getUserById: (id: string) => SocialUser | undefined;
-  getUserActivities: (userId: string) => SocialActivity[];
   getSuggestions: () => SocialUser[];
   reset: () => void;
 }
@@ -135,6 +88,14 @@ export const useSocialStore = create<SocialState>()(
       activities: {},
       currentUserKudos: new Set<string>(),
       following: new Set<string>(),
+      myFollowerCount: 0,
+      followerEntries: [],
+      about: {},
+      inboxSeenAt: 0,
+      feedStatus: 'idle',
+
+      markInboxSeen: (newestMs) =>
+        set((state) => ({ inboxSeenAt: Math.max(state.inboxSeenAt, newestMs) })),
 
       syncLocalActivities: () =>
         set((state) => ({
@@ -162,126 +123,38 @@ export const useSocialStore = create<SocialState>()(
             followers: 0,
             following: 0,
           }));
-          set({ users: toUserRecord(socialUsers) });
+          set((state) => ({ users: mergeAbout(toUserRecord(socialUsers), state.about) }));
+          return true;
         } catch (e) {
-          console.warn('[Social] Failed to fetch users:', e);
+          logger.warn('[Social] Failed to fetch users:', e);
+          return false;
         }
       },
 
       fetchActivities: async () => {
+        // Only the first load shows a loading or error state; a refresh keeps the feed that is there.
+        const first = get().feedStatus !== 'ready';
+        if (first) set({ feedStatus: 'loading' });
         try {
-          const chainActivities = await services.sync.syncAllActivitiesFromChain();
-          const localByHash = new Map(
-            useActivityStore
-              .getState()
-              .activities.filter((a) => a.activityHash)
-              .map((a) => [a.activityHash, a])
+          // Activities the user deleted here can't be erased from the chain; don't resurrect them.
+          const deleted = new Set(useActivityStore.getState().deletedHashes);
+          const chainActivities = (await services.sync.syncAllActivitiesFromChain()).filter(
+            (a) => !deleted.has(a.activityHash.toLowerCase())
           );
-
-          // Fetch social data (kudos + comments) from chain/subgraph
-          let socialData: {
-            kudos: { activityId: bigint; giver: string }[];
-            comments: SyncedComment[];
-          } = {
-            kudos: [],
-            comments: [],
-          };
+          let social: Parameters<typeof feedFromChain>[0]['social'] = { kudos: [], comments: [] };
           try {
-            socialData = await services.social.syncSocialFromChain();
+            social = await services.social.syncSocialFromChain();
           } catch (e) {
-            console.warn('[Social] Failed to sync social data:', e);
+            logger.warn('[Social] Failed to sync social data:', e);
           }
-
-          // Build kudos map: activityId -> giver[]
-          const kudosByActivityId = new Map<string, Set<string>>();
-          for (const k of socialData.kudos) {
-            const key = k.activityId.toString();
-            if (!kudosByActivityId.has(key)) kudosByActivityId.set(key, new Set());
-            kudosByActivityId.get(key)!.add(k.giver.toLowerCase());
-          }
-
-          // Build comments map: activityId -> SocialComment[]
-          const commentsByActivityId = new Map<string, SocialComment[]>();
-          for (const c of socialData.comments) {
-            const key = c.activityId.toString();
-            if (!commentsByActivityId.has(key)) commentsByActivityId.set(key, []);
-            commentsByActivityId.get(key)!.push({
-              id: c.id,
-              userId: c.author,
-              text: c.text ?? '',
-              createdAt: new Date(c.createdAt * 1000),
-              likedBy: [],
-            });
-          }
-
-          // Track current user's kudos for the Set
-          const currentUserId = getCurrentUserId().toLowerCase();
-          const userKudos = new Set<string>();
 
           set((state) => {
-            const existingByHash = new Map(
-              Object.values(state.activities).map((a) => [a.activityHash || a.id, a])
-            );
-
-            const socialActivities: SocialActivity[] = chainActivities.map((a) => {
-              const local = localByHash.get(a.activityHash);
-              const existing = existingByHash.get(a.activityHash);
-
-              // Map chain activityId (bigint) to kudos/comments
-              const activityIdStr = a.activityId.toString();
-              const chainKudos = kudosByActivityId.get(activityIdStr);
-              const chainComments = commentsByActivityId.get(activityIdStr);
-
-              const kudos: string[] = chainKudos ? Array.from(chainKudos) : [];
-              if (
-                !chainKudos &&
-                existing?.kudos.includes(currentUserId) &&
-                existing.kudos.length <= 1
-              ) {
-                kudos.push(currentUserId);
-              }
-
-              const comments: SocialComment[] = [];
-              const seenCommentIds = new Set<string>();
-              const pushUnique = (list: SocialComment[]) => {
-                for (const c of list) {
-                  if (!seenCommentIds.has(c.id)) {
-                    seenCommentIds.add(c.id);
-                    comments.push(c);
-                  }
-                }
-              };
-              if (chainComments) pushUnique(chainComments);
-              if (existing?.comments) pushUnique(existing.comments);
-
-              if (chainKudos?.has(currentUserId)) {
-                userKudos.add(a.activityHash);
-              }
-
-              return {
-                id: a.activityHash,
-                userId: a.owner,
-                name: local?.name ?? a.metadataName,
-                activityType: local?.activityType ?? a.activityType,
-                distance: local?.distance ?? a.distance,
-                duration: local?.duration ?? a.duration,
-                polyline: local?.polyline || a.metadataPolyline || '',
-                territory: local?.territory || a.metadataTerritory || null,
-                territoryArea: local?.territoryArea ?? a.territoryArea,
-                description: local?.description ?? a.metadataDescription,
-                feel: local?.feel,
-                privacy: local?.privacy,
-                image: local?.image ?? a.metadataPhotos?.[0],
-                images: local?.images ?? a.metadataPhotos,
-                isManual: local?.isManual,
-                activityHash: a.activityHash,
-                txHash: local?.txHash,
-                metadataCid: local?.metadataCid ?? a.metadataCid,
-                createdAt: local?.createdAt ?? new Date(a.timestamp * 1000),
-                activityId: a.activityId.toString(),
-                kudos,
-                comments,
-              };
+            const { activities: socialActivities, myKudos } = feedFromChain({
+              chain: chainActivities,
+              local: useActivityStore.getState().activities,
+              existing: state.activities,
+              social,
+              me: getCurrentUserId(),
             });
 
             const localKeys = new Set(
@@ -291,178 +164,26 @@ export const useSocialStore = create<SocialState>()(
               localKeys.has(a.activityHash || a.id)
             );
             return {
-              currentUserKudos: userKudos,
+              currentUserKudos: myKudos,
               activities: mergeLocalActivities(
                 toActivityRecord([...localSocial, ...socialActivities]),
                 useActivityStore.getState().activities
               ),
             };
           });
+          set({ feedStatus: 'ready' });
+          void get().loadCommentLikes();
+          return true;
         } catch (e) {
-          console.warn('[Social] Failed to fetch activities:', e);
+          logger.warn('[Social] Failed to fetch activities:', e);
+          if (first) set({ feedStatus: 'error' });
+          return false;
         }
       },
 
-      toggleKudos: async (activityId: string) => {
-        const state = get();
-        const key = activityKey(state.activities, activityId);
-        const currentUserId = getCurrentUserId();
-        const activity = state.activities[key];
-        const hasKudos = activity
-          ? activity.kudos.some((id) => id.toLowerCase() === currentUserId.toLowerCase())
-          : state.currentUserKudos.has(key);
+      ...createPostActions(set, get),
 
-        // Optimistic update
-        const updatedKudos = new Set(state.currentUserKudos);
-        if (hasKudos) {
-          updatedKudos.delete(key);
-        } else {
-          updatedKudos.add(key);
-        }
-
-        const updatedActivity = activity
-          ? {
-              ...activity,
-              kudos: hasKudos
-                ? activity.kudos.filter((id) => id.toLowerCase() !== currentUserId.toLowerCase())
-                : [...activity.kudos, currentUserId.toLowerCase()],
-            }
-          : undefined;
-
-        set({
-          currentUserKudos: updatedKudos,
-          ...(updatedActivity
-            ? { activities: { ...state.activities, [key]: updatedActivity } }
-            : {}),
-        });
-
-        // Send on-chain tx
-        const onchainId = activity ? resolveOnchainActivityId(activity) : undefined;
-
-        try {
-          if (!getActiveWallet() || onchainId === undefined) {
-            throw new Error('Activity is not on-chain yet');
-          }
-          await queuedWrite(async (w) => {
-            await services.social.toggleKudos(w, onchainId);
-          });
-        } catch (e) {
-          console.warn('[Social] Kudos tx failed, rolling back:', e);
-          Toast.fail("Couldn't save kudos", 2);
-          // Rollback
-          const rollbackKudos = new Set(get().currentUserKudos);
-          if (hasKudos) {
-            rollbackKudos.add(key);
-          } else {
-            rollbackKudos.delete(key);
-          }
-          const rollbackActivity = get().activities[key];
-          if (rollbackActivity) {
-            set({
-              currentUserKudos: rollbackKudos,
-              activities: {
-                ...get().activities,
-                [key]: {
-                  ...rollbackActivity,
-                  kudos: hasKudos
-                    ? [...rollbackActivity.kudos, currentUserId]
-                    : rollbackActivity.kudos.filter((id) => id !== currentUserId),
-                },
-              },
-            });
-          }
-        }
-      },
-
-      addComment: async (activityId: string, text: string) => {
-        const state = get();
-        const key = activityKey(state.activities, activityId);
-        const currentUserId = getCurrentUserId();
-        const activity = state.activities[key];
-        if (!activity) return;
-
-        // Build a stable comment ID
-        const commentIdBytes = services.social.computeCommentId(
-          resolveOnchainActivityId(activity) ?? 0n,
-          currentUserId as `0x${string}`,
-          text,
-          BigInt(Math.floor(Date.now() / 1000))
-        );
-
-        const comment: SocialComment = {
-          id: commentIdBytes,
-          userId: currentUserId,
-          text,
-          createdAt: new Date(),
-          likedBy: [],
-        };
-
-        // Optimistic update
-        set({
-          activities: {
-            ...state.activities,
-            [key]: { ...activity, comments: [...activity.comments, comment] },
-          },
-        });
-
-        // Upload to IPFS + on-chain
-        const onchainId = resolveOnchainActivityId(activity);
-
-        try {
-          if (!getActiveWallet() || onchainId === undefined) {
-            throw new Error('Activity is not on-chain yet');
-          }
-          const { cid } = await services.social.uploadCommentToIpfs({
-            activityHash: activity.activityHash ?? '',
-            commentId: commentIdBytes,
-            author: currentUserId,
-            text,
-            createdAt: new Date().toISOString(),
-          });
-
-          await queuedWrite(async (w) => {
-            await services.social.addComment(w, onchainId, commentIdBytes as `0x${string}`, cid);
-          });
-        } catch (e) {
-          console.warn('[Social] Comment tx failed, rolling back:', e);
-          Toast.fail("Couldn't post comment", 2);
-          // Rollback: remove the optimistic comment
-          const rollbackActivity = get().activities[key];
-          if (rollbackActivity) {
-            set({
-              activities: {
-                ...get().activities,
-                [key]: {
-                  ...rollbackActivity,
-                  comments: rollbackActivity.comments.filter((c) => c.id !== commentIdBytes),
-                },
-              },
-            });
-          }
-        }
-      },
-
-      toggleCommentLike: (activityId: string, commentId: string) =>
-        set((state) => {
-          const key = activityKey(state.activities, activityId);
-          const activity = state.activities[key];
-          if (!activity) return state;
-          const currentUserId = getCurrentUserId();
-          const updatedActivity = {
-            ...activity,
-            comments: activity.comments.map((c) => {
-              if (c.id !== commentId) return c;
-              const hasLiked = (c.likedBy ?? []).includes(currentUserId);
-              return {
-                ...c,
-                likedBy: hasLiked
-                  ? (c.likedBy ?? []).filter((id) => id !== currentUserId)
-                  : [...(c.likedBy ?? []), currentUserId],
-              };
-            }),
-          };
-          return { activities: { ...state.activities, [key]: updatedActivity } };
-        }),
+      ...createCommentLikeActions(set, get),
 
       updateActivity: (activityId: string, updates: Partial<SocialActivity>) =>
         set((state) => {
@@ -474,92 +195,49 @@ export const useSocialStore = create<SocialState>()(
           };
         }),
 
-      toggleFollow: (userId: string) =>
+      removeActivity: (activityHash: string, activityId: string) =>
         set((state) => {
-          const key = userId.toLowerCase();
-          const isCurrentlyFollowing = state.following.has(key);
-          const updatedFollowing = new Set(state.following);
-          if (isCurrentlyFollowing) {
-            updatedFollowing.delete(key);
-          } else {
-            updatedFollowing.add(key);
-          }
-
-          const existingUser = state.users[key];
-          if (!existingUser) return { following: updatedFollowing };
-
-          return {
-            following: updatedFollowing,
-            users: {
-              ...state.users,
-              [key]: {
-                ...existingUser,
-                followers: isCurrentlyFollowing
-                  ? existingUser.followers - 1
-                  : existingUser.followers + 1,
-              },
-            },
-          };
+          const hash = activityHash.toLowerCase();
+          const kept = Object.fromEntries(
+            Object.entries(state.activities).filter(
+              ([key, a]) =>
+                key.toLowerCase() !== hash &&
+                a.id !== activityId &&
+                (a.activityHash ?? '').toLowerCase() !== hash
+            )
+          );
+          return { activities: kept };
         }),
 
-      isFollowing: (userId: string) => get().following.has(userId.toLowerCase()),
+      ...createFollowActions(set, get),
+
+      loadAbout: async (addresses) => {
+        const wanted = [...new Set(addresses.map((a) => a.toLowerCase()))];
+        const batches: string[][] = [];
+        for (let i = 0; i < wanted.length; i += ABOUT_BATCH)
+          batches.push(wanted.slice(i, i + ABOUT_BATCH));
+        try {
+          const found = await Promise.all(
+            batches.map((batch) => services.profileAbout.getAbout(batch as `0x${string}`[]))
+          );
+          const fetched = Object.assign({}, ...found) as SocialState['about'];
+          // Anyone asked about but not returned has no bio (or removed theirs): say so, don't keep a stale one.
+          const answered = Object.fromEntries(
+            wanted.map((address) => [address, fetched[address] ?? { bio: '', location: '' }])
+          );
+          set((state) => ({
+            about: { ...state.about, ...answered },
+            users: mergeAbout(state.users, answered),
+          }));
+        } catch (e) {
+          logger.warn('[Social] Failed to load bios:', e);
+        }
+      },
 
       getFeed: () => {
         const viewerId = getCurrentUserId();
         const { activities, following } = get();
         return visibleActivities(Object.values(activities), viewerId, following);
-      },
-
-      searchUsers: (query: string) => {
-        const { users } = get();
-        const q = query.toLowerCase();
-        return Object.values(users).filter(
-          (u) => u.username.toLowerCase().includes(q) || u.id.toLowerCase().includes(q)
-        );
-      },
-
-      searchActivities: (query: string) => {
-        const { activities, following } = get();
-        const viewerId = getCurrentUserId();
-        const q = query.toLowerCase();
-        return Object.values(activities).filter(
-          (a) =>
-            (a.name || getSportLabel(a.activityType)).toLowerCase().includes(q) &&
-            isVisibleToViewer(a, viewerId, following)
-        );
-      },
-
-      getUserById: (id: string) => {
-        const { users } = get();
-        const user = users[id.toLowerCase()];
-        if (sameAddress(id, getCurrentUserId())) {
-          const profile = useProfileStore.getState();
-          return {
-            ...user,
-            id,
-            username: profile.username || user?.username || 'You',
-            firstName: profile.firstName,
-            lastName: profile.lastName,
-            gender: profile.gender,
-            birthday: profile.birthday,
-            wallet: profile.wallet || id,
-            avatar: profile.avatar || undefined,
-            createdAt: new Date(profile.createdAt ?? 0),
-            followers: user?.followers ?? 0,
-            following: get().following.size,
-          };
-        }
-        return user;
-      },
-
-      getUserActivities: (userId: string) => {
-        const { activities, following } = get();
-        const viewerId = getCurrentUserId();
-        return visibleActivities(
-          Object.values(activities).filter((a) => sameAddress(a.userId, userId)),
-          viewerId,
-          following
-        );
       },
 
       getSuggestions: () => {
@@ -623,6 +301,11 @@ export const useSocialStore = create<SocialState>()(
           activities: {},
           currentUserKudos: new Set(),
           following: new Set(),
+          myFollowerCount: 0,
+          followerEntries: [],
+          about: {},
+          inboxSeenAt: 0,
+          feedStatus: 'idle',
         }),
     }),
     {
@@ -634,65 +317,10 @@ export const useSocialStore = create<SocialState>()(
         activities: state.activities,
         currentUserKudos: [...state.currentUserKudos],
         following: [...state.following],
+        inboxSeenAt: state.inboxSeenAt,
       }),
-      merge: (persistedState: unknown, currentState: SocialState) => {
-        const state = (persistedState as Record<string, unknown>) ?? {};
-        return {
-          ...currentState,
-          ...state,
-          following: Array.isArray(state.following)
-            ? new Set(state.following.map((a: string) => a.toLowerCase()))
-            : currentState.following,
-          currentUserKudos: Array.isArray(state.currentUserKudos)
-            ? new Set(state.currentUserKudos)
-            : currentState.currentUserKudos,
-        };
-      },
-      migrate: (persistedState: unknown, version: number) => {
-        if (version < 4) {
-          const state = persistedState as Record<string, unknown>;
-          return {
-            users: {} as Record<string, SocialUser>,
-            activities: {} as Record<string, SocialActivity>,
-            following: [] as string[],
-            currentUserKudos: [] as string[],
-            blockedUsers: (state.blockedUsers as `0x${string}`[]) ?? [],
-          };
-        }
-        if (version < 5) {
-          const state = persistedState as Record<string, unknown>;
-          return {
-            ...state,
-            users: Array.isArray(state.users)
-              ? toUserRecord(state.users as SocialUser[])
-              : ((state.users as Record<string, SocialUser>) ?? {}),
-            activities: Array.isArray(state.activities)
-              ? toActivityRecord(state.activities as SocialActivity[])
-              : ((state.activities as Record<string, SocialActivity>) ?? {}),
-            following: Array.isArray(state.following)
-              ? new Set(state.following.map((a: string) => a.toLowerCase()))
-              : (state.following ?? []),
-            currentUserKudos: Array.isArray(state.currentUserKudos)
-              ? new Set(state.currentUserKudos)
-              : (state.currentUserKudos ?? []),
-          };
-        }
-        if (version < 6) {
-          // v6: kudos/comments now synced from chain. Keep persisted data as offline cache;
-          // fresh from chain will merge on top during fetchActivities.
-          const state = persistedState as Record<string, unknown>;
-          return {
-            ...state,
-            following: Array.isArray(state.following)
-              ? new Set(state.following.map((a: string) => a.toLowerCase()))
-              : (state.following ?? []),
-            currentUserKudos: Array.isArray(state.currentUserKudos)
-              ? new Set(state.currentUserKudos)
-              : (state.currentUserKudos ?? []),
-          };
-        }
-        return persistedState;
-      },
+      merge: mergeSocialState,
+      migrate: migrateSocialState,
     }
   )
 );

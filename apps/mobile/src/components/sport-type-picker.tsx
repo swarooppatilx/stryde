@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-
+import { StyleSheet, View } from 'react-native';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { SPORT_TYPES } from '@/constants/activity';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
@@ -30,18 +30,14 @@ export function SportTypePicker({ selected, onSelect }: SportTypePickerProps) {
         if (items.length === 0) return null;
         return (
           <View key={cat.key} style={styles.category}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               {cat.label}
             </ThemedText>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.row}
-            >
+            <View style={styles.row}>
               {items.map((sport) => {
                 const isSelected = sport.type === selected;
                 return (
-                  <TouchableOpacity
+                  <Tappable
                     key={sport.type}
                     style={[
                       styles.chip,
@@ -72,10 +68,10 @@ export function SportTypePicker({ selected, onSelect }: SportTypePickerProps) {
                     >
                       {sport.label}
                     </ThemedText>
-                  </TouchableOpacity>
+                  </Tappable>
                 );
               })}
-            </ScrollView>
+            </View>
           </View>
         );
       })}
@@ -91,6 +87,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   chip: {

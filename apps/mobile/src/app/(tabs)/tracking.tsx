@@ -1,939 +1,651 @@
-import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
-import { useNavigation, useRouter } from 'expo-router';
+import type { CameraRef } from '@maplibre/maplibre-react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AppState,
-  type LayoutChangeEvent,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useShallow } from 'zustand/shallow';
-import { type MapMarker, MapRoute } from '@/components/map-route';
-import { NumberFlow } from '@/components/number-flow';
+import { BackHandler, type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LocateButton } from '@/components/locate-button';
+import { MapLayersSheet } from '@/components/map-layers-sheet';
+import { type CameraMove, type MapMarker, MapRoute } from '@/components/map-route';
+import { LapCompleteCard, PausedBar } from '@/components/record-banners';
+import { RecordControls } from '@/components/record-controls';
+import { RecordFlyout } from '@/components/record-flyout';
+import { RecordIsland } from '@/components/record-island';
+import { RecordLockOverlay } from '@/components/record-lock-overlay';
+import { RecordMapControls } from '@/components/record-map-controls';
+import { RecordPreRun } from '@/components/record-prerun';
+import { RecordSheet, SheetHandle } from '@/components/record-sheet';
+import { RecordStatsView } from '@/components/record-stats-view';
+import { StartCountdownOverlay } from '@/components/start-countdown-overlay';
 import { ThemedText } from '@/components/themed-text';
+import { ZoomControls } from '@/components/zoom-controls';
 import { SPORT_TYPES } from '@/constants/activity';
-import { DEFAULT_CENTER, MAP_STYLES } from '@/constants/config';
-import { BorderRadius, Brand, Shadow, ShadowDark, Spacing, tint } from '@/constants/theme';
+import { DEFAULT_CENTER } from '@/constants/config';
+import { Palette } from '@/constants/palette';
+import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import {
-  clearBackgroundPoints,
-  peekBackgroundPoints,
-  startBackgroundLocation,
-  stopBackgroundLocation,
-} from '@/services/backgroundLocationService';
-import { motionSensorService } from '@/services/motionSensorService';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useFollowCamera, useSmoothedHeading } from '@/hooks/useFollowCamera';
+import { useGpsPreview } from '@/hooks/useGpsPreview';
+import { useHideTabBar } from '@/hooks/useHideTabBar';
+import { useLapCard } from '@/hooks/useLapCard';
+import { useLocationServices } from '@/hooks/useLocationServices';
+import { useNow } from '@/hooks/useNow';
+import { usePreRunReadiness } from '@/hooks/usePreRunReadiness';
+import type { RecoveryChoice } from '@/hooks/useRecoveredRun';
+import { useStartCountdown } from '@/hooks/useStartCountdown';
+import { useTrackingSession } from '@/hooks/useTrackingSession';
+import { useVerticalSwipe } from '@/hooks/useVerticalSwipe';
+import { getPlatform } from '@/platform';
+import { confirmStart } from '@/services/startChecks';
 import { territoryService } from '@/services/territoryService';
-import { trackingService } from '@/services/trackingService';
-import { ACCURACY_MODE_CONFIG, useSettingsStore } from '@/stores/settingsStore';
-import type { ActivityType, Location as LocationType, Ring } from '@/types';
+import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
+import { useRecordUiStore } from '@/stores/recordUiStore';
+import type { ActivityType, Ring } from '@/types';
 import { Alert } from '@/utils/alert';
-import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
-import { haptics, impactHeavy, impactMedium, notificationSuccess } from '@/utils/haptics';
+import { colorSegments } from '@/utils/colorSegments';
+import { MAX_ZOOM, MIN_ZOOM, TILT_DEGREES } from '@/utils/followCamera';
+import { formatDistance, METERS_PER_MILE } from '@/utils/format';
+import { describeGpsSignal } from '@/utils/gpsSignal';
+import { haptics } from '@/utils/haptics';
+import { livePaceStops } from '@/utils/livePace';
+import type { LiveStatData } from '@/utils/liveStats';
+import { logger } from '@/utils/logger';
+import { isTooShort } from '@/utils/minimumRun';
+import { backWhileRecording } from '@/utils/recordBack';
+import { type FollowAction, type FollowState, followZoom, nextFollow } from '@/utils/recordCamera';
+import { stashRecordedRun } from '@/utils/recordedRunHandoff';
+import { recordedRunParams } from '@/utils/recordedRunParams';
+import { flyoutRows } from '@/utils/recordIsland';
+import { recoverAction } from '@/utils/recoverAction';
+import { splitMarkers as splitPins } from '@/utils/splitMarkers';
+import { Toast } from '@/utils/toast';
 
-const ACTIVITY_TYPES = SPORT_TYPES;
-
-const SPEED_LIMITS_KMH: Record<ActivityType, number> = {
-  run: 25,
-  walk: 10,
-  hike: 15,
-  ride: 50,
-  swim: 8,
-  yoga: 5,
-  workout: 10,
-  hiit: 15,
-  dance: 15,
-  climb: 10,
-  skate: 20,
-  row: 15,
-};
-
-const SHEET_SPRING = { damping: 22, stiffness: 200 };
-
-const ROUTE_SYNC_INTERVAL_MS = 1000;
-const MAX_ROUTE_POINTS = 2000;
+const ZOOM_RANGE = { min: MIN_ZOOM, max: MAX_ZOOM };
+/** Slow to fast along the live trail, as on a saved run's map. */
+const PACE_COLORS = [Palette.blue.b4, Palette.yellow.y3, Palette.orange.o3];
 
 export default function TrackingScreen() {
-  const [isTracking, setIsTracking] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [distance, setDistance] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [location, setLocation] = useState<LocationType | null>(null);
-  const [activityType, setActivityType] = useState<ActivityType>('run');
-  const [showTypePicker, setShowTypePicker] = useState(true);
-  const [expanded, setExpanded] = useState(false);
-  const [secondaryStatsHeight, setSecondaryStatsHeight] = useState(0);
-  const expandProgress = useSharedValue(0);
-  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
-  const routeCoordsRef = useRef<[number, number][]>([]);
-  const lastRouteSyncRef = useRef(0);
-  const [routePointCount, setRoutePointCount] = useState(0);
-  const [trackedPolygon, setTrackedPolygon] = useState<Ring | null>(null);
-  const [startLocation, setStartLocation] = useState<[number, number] | null>(null);
-  const { useGyroscopeAssist, sensorUpdateRate, autoPause, accuracyMode } = useSettingsStore(
-    useShallow((s) => ({
-      useGyroscopeAssist: s.useGyroscopeAssist,
-      sensorUpdateRate: s.sensorUpdateRate,
-      autoPause: s.autoPause,
-      accuracyMode: s.accuracyMode,
-    }))
-  );
+  const { snapshot, restoreSettled, start, pause, resume, finish, lap } = useTrackingSession();
+  const {
+    status,
+    distance,
+    duration,
+    lastFix: location,
+    route: routeCoordinates,
+    polygon: trackedPolygon,
+    startLocation,
+    autoPaused,
+  } = snapshot;
+  const isTracking = status === 'tracking';
+  const isPaused = status === 'paused';
+  const isSessionActive = status !== 'idle';
+  const routePointCount = routeCoordinates.length;
+
+  const [pickedType, setActivityType] = useState<ActivityType>('run');
+  // A run picked back up after a restart shows the sport it was started with.
+  const activityType = snapshot.activityType ?? pickedType;
+  const activeType = SPORT_TYPES.find((t) => t.type === activityType);
+  const activityLabel = activeType?.label ?? activityType;
+
+  // The session and the preview only emit when something changes, so age the GPS fix on a clock.
+  const previewFix = useGpsPreview(!isSessionActive);
+  // Always ticking: while no fix has arrived yet, the clock is what lets a slow first fix say so.
+  const now = useNow(isSessionActive ? 1000 : 2000, true);
+  // The wait for a first fix starts when the screen does; a slow one then says what to check.
+  const waitingSince = useRef(Date.now());
+  const { servicesOn, permitted } = useLocationServices(true);
+  const readinessRows = usePreRunReadiness(!isSessionActive);
+  const signal = describeGpsSignal(isSessionActive ? location : previewFix, now, {
+    waitingSince: waitingSince.current,
+    servicesOn,
+    // An active recording already has its permission; only the wait before Start can lack it.
+    permitted: isSessionActive || permitted,
+  });
+
   const router = useRouter();
-  const navigation = useNavigation();
   const theme = useTheme();
-  const wasLoopClosedRef = useRef(false);
-
-  const syncRouteToState = useCallback(() => {
-    lastRouteSyncRef.current = Date.now();
-    const coords = routeCoordsRef.current;
-    if (coords.length > MAX_ROUTE_POINTS) {
-      const stride = Math.ceil(coords.length / MAX_ROUTE_POINTS);
-      const downsampled: [number, number][] = [];
-      for (let i = 0; i < coords.length; i += stride) {
-        downsampled.push(coords[i]);
-      }
-      const last = coords[coords.length - 1];
-      if (downsampled[downsampled.length - 1] !== last) {
-        downsampled.push(last);
-      }
-      routeCoordsRef.current = downsampled;
-      setRoutePointCount(downsampled.length);
-      setRouteCoordinates(downsampled);
-    } else {
-      setRouteCoordinates(coords);
-    }
-  }, []);
-
-  const pushRoutePoint = useCallback(
-    (lng: number, lat: number) => {
-      routeCoordsRef.current.push([lng, lat]);
-      setRoutePointCount(routeCoordsRef.current.length);
-      if (Date.now() - lastRouteSyncRef.current >= ROUTE_SYNC_INTERVAL_MS) {
-        syncRouteToState();
-      }
-    },
-    [syncRouteToState]
+  const insets = useSafeAreaInsets();
+  const unitSystem = useUnitSystem();
+  const [locked, setLocked] = useState(false);
+  // The big-number stats view; it opens once when a run starts and the athlete can shrink it.
+  const [fullStats, setFullStats] = useState(false);
+  // Whether the map follows the athlete, and north-up or heading-up. Dragging the map away stops it;
+  // the locate button brings it back, and swaps the mode when it is already following.
+  const savedMode = useMapPrefsStore((s) => s.recordFollowMode);
+  const setSavedMode = useMapPrefsStore((s) => s.setRecordFollowMode);
+  const [follow, setFollow] = useState<FollowState>({ following: true, mode: savedMode });
+  const cameraRef = useRef<CameraRef>(null);
+  const [mapHeight, setMapHeight] = useState(0);
+  const [tilted, setTilted] = useState(false);
+  const [bearing, setBearing] = useState(0);
+  const [islandHeight, setIslandHeight] = useState(0);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const trackLaps = useRecordUiStore((s) => s.trackLaps);
+  const setTrackLaps = useRecordUiStore((s) => s.setTrackLaps);
+  const mapStyle = useMapPrefsStore((s) => s.style);
+  const showPoi = useMapPrefsStore((s) => s.showPoi);
+  const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
+  const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
+  const onMapLayout = (event: LayoutChangeEvent) => setMapHeight(event.nativeEvent.layout.height);
+  const steer = (action: FollowAction) => {
+    const next = nextFollow(follow, action);
+    setFollow(next);
+    if (next.mode !== follow.mode) setSavedMode(next.mode);
+  };
+  const fix = isSessionActive ? location : previewFix;
+  const heading = useSmoothedHeading(fix);
+  const { onCameraMove, zoomBy } = useFollowCamera({
+    cameraRef,
+    fix,
+    heading,
+    follow,
+    active: isSessionActive,
+    mapHeight,
+    initialZoom: followZoom('idle'),
+    // Once recording the map runs under the sheet, so the puck is kept above it.
+    bottomInset: isSessionActive && !fullStats ? sheetHeight : 0,
+    tilted,
+    onUserMoved: () => steer('dragged'),
+  });
+  const optionsSwipe = useVerticalSwipe((direction) => setFlyoutOpen(direction === 'up'), {
+    distance: 15,
+    velocity: 400,
+  });
+  const handleCameraMove = (move: CameraMove) => {
+    setBearing(Math.round(move.bearing));
+    onCameraMove(move);
+  };
+  const toggleTilt = () => {
+    const next = !tilted;
+    setTilted(next);
+    // Following re-aims the camera itself; otherwise only the lean changes.
+    if (!follow.following)
+      void cameraRef.current?.setStop({ pitch: next ? TILT_DEGREES : 0, duration: 500 });
+  };
+  const turnNorth = () => {
+    if (follow.following && follow.mode === 'heading') steer('locate');
+    else void cameraRef.current?.setStop({ bearing: 0, duration: 500 });
+  };
+  const puck = useMemo(
+    () =>
+      fix
+        ? {
+            coordinate: [fix.longitude, fix.latitude] as [number, number],
+            accuracy: fix.accuracy,
+            heading,
+          }
+        : null,
+    [fix, heading]
   );
-
-  const isSessionActive = isTracking || isPaused;
-
+  // Auto-pause is silent otherwise: a phone in a pocket should say when it stops or restarts.
+  const wasAutoPaused = useRef(false);
   useEffect(() => {
-    expandProgress.value = withSpring(expanded ? 1 : 0, SHEET_SPRING);
-  }, [expanded, expandProgress]);
-
-  const secondaryStatsStyle = useAnimatedStyle(() => ({
-    height: secondaryStatsHeight * expandProgress.value,
-    opacity: expandProgress.value,
-  }));
-
-  const onSecondaryStatsLayout = useCallback((event: LayoutChangeEvent) => {
-    setSecondaryStatsHeight(event.nativeEvent.layout.height);
-  }, []);
-
-  const setSheetExpanded = useCallback((next: boolean) => {
-    haptics.tap();
-    setExpanded(next);
-  }, []);
-
-  const sheetPanGesture = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .onEnd((event) => {
-      if (event.translationY < -15 || event.velocityY < -400) {
-        runOnJS(setSheetExpanded)(true);
-      } else if (event.translationY > 15 || event.velocityY > 400) {
-        runOnJS(setSheetExpanded)(false);
-      }
-    });
-
-  // Recording is meant to feel immersive and full-screen, like a dedicated
-  // stopwatch - the tab bar competing for space (and being one accidental
-  // tap away) undermines that while a session is live.
+    if (autoPaused === wasAutoPaused.current) return;
+    wasAutoPaused.current = autoPaused;
+    if (autoPaused) haptics.warning();
+    else if (isTracking) haptics.tap();
+  }, [autoPaused, isTracking]);
+  // A finished or discarded recording leaves nothing to lock.
   useEffect(() => {
-    navigation.setOptions({
-      tabBarStyle: isSessionActive
-        ? { display: 'none' }
-        : { backgroundColor: theme.background, borderTopColor: theme.border },
-    });
-    return () => {
-      navigation.setOptions({
-        tabBarStyle: { backgroundColor: theme.background, borderTopColor: theme.border },
-      });
-    };
-  }, [isSessionActive, navigation, theme.background, theme.border]);
-
-  useEffect(() => {
-    trackingService.restoreSession().then(async () => {
-      const wasTracking = trackingService.getIsTracking();
-      if (wasTracking) {
-        // Merge any fixes the background task buffered while we were away.
-        const buffered = await peekBackgroundPoints();
-        if (buffered.length > 0) {
-          for (const p of buffered) {
-            const loc: LocationType = {
-              latitude: p.latitude,
-              longitude: p.longitude,
-              timestamp: p.timestamp,
-              accuracy: p.accuracy,
-            };
-            trackingService.addLocation(loc);
-            pushRoutePoint(loc.longitude, loc.latitude);
-          }
-          await clearBackgroundPoints();
-        }
-      }
-      setIsTracking(wasTracking);
-      setIsPaused(trackingService.getIsAutoPaused());
-      setDistance(trackingService.getDistance());
-      setDuration(trackingService.getDuration());
-      if (wasTracking) {
-        setShowTypePicker(false);
-        const locs = trackingService.getLocations();
-        const route: [number, number][] = locs.map((l) => [l.longitude, l.latitude]);
-        routeCoordsRef.current = route;
-        lastRouteSyncRef.current = Date.now();
-        setRoutePointCount(route.length);
-        setRouteCoordinates(route);
-        if (locs.length > 0) {
-          setStartLocation([locs[0].longitude, locs[0].latitude]);
-          wasLoopClosedRef.current = territoryService.isClosedLoop(locs);
-          setTrackedPolygon(territoryService.getEnclosedPolygon(locs));
-        }
-      }
-    });
-  }, [pushRoutePoint]);
-
-  // When the app returns to the foreground mid-session, pull in whatever the
-  // background task buffered while it was away.
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', async (next) => {
-      if (next !== 'active') return;
-      if (!trackingService.getIsTracking()) return;
-      const buffered = await peekBackgroundPoints();
-      if (buffered.length === 0) return;
-      for (const p of buffered) {
-        const loc: LocationType = {
-          latitude: p.latitude,
-          longitude: p.longitude,
-          timestamp: p.timestamp,
-          accuracy: p.accuracy,
-        };
-        trackingService.addLocation(loc);
-        pushRoutePoint(loc.longitude, loc.latitude);
-      }
-      await clearBackgroundPoints();
-      setDistance(
-        useGyroscopeAssist
-          ? trackingService.getInterpolatedDistance()
-          : trackingService.getDistance()
-      );
-      setDuration(trackingService.getDuration());
-      const locs = trackingService.getLocations();
-      wasLoopClosedRef.current = territoryService.isClosedLoop(locs);
-      setTrackedPolygon(territoryService.getEnclosedPolygon(locs));
-    });
-    return () => sub.remove();
-  }, [pushRoutePoint, useGyroscopeAssist]);
-
-  useEffect(() => {
-    let locationSubscription: Location.LocationSubscription | null = null;
-
-    const startLocationUpdates = async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert(
-            'Location Required',
-            'Please enable location access to track your activities.',
-            [{ text: 'OK' }]
-          );
-          setIsTracking(false);
-          return;
-        }
-
-        const accuracyByMode = {
-          best: Location.Accuracy.BestForNavigation,
-          balanced: Location.Accuracy.Balanced,
-          power: Location.Accuracy.Low,
-        } as const;
-
-        locationSubscription = await Location.watchPositionAsync(
-          {
-            accuracy: accuracyByMode[accuracyMode],
-            timeInterval: ACCURACY_MODE_CONFIG[accuracyMode].timeInterval,
-            distanceInterval: 1,
-          },
-          (newLocation) => {
-            const loc: LocationType = {
-              latitude: newLocation.coords.latitude,
-              longitude: newLocation.coords.longitude,
-              timestamp: newLocation.timestamp,
-              accuracy: newLocation.coords.accuracy || 0,
-            };
-            setLocation(loc);
-            trackingService.addLocation(loc);
-            pushRoutePoint(loc.longitude, loc.latitude);
-
-            const locs = trackingService.getLocations();
-            const isClosed = territoryService.isClosedLoop(locs);
-            wasLoopClosedRef.current = isClosed;
-            setTrackedPolygon(territoryService.getEnclosedPolygon(locs));
-          }
-        );
-      } catch (err) {
-        const message =
-          err instanceof Error && err.message.includes('unsatisfied device settings')
-            ? 'Turn on device location (GPS) to track this activity.'
-            : 'Unable to access your location.';
-        Alert.alert('Location Error', message, [{ text: 'OK' }]);
-        setIsTracking(false);
-      }
-    };
-
-    if (isTracking) {
-      startLocationUpdates();
+    if (!isSessionActive) {
+      setLocked(false);
+      setFullStats(false);
+      setFlyoutOpen(false);
+      setTilted(false);
+      setFollow((current) => nextFollow(current, 'reset'));
     }
+  }, [isSessionActive]);
 
-    return () => {
-      if (locationSubscription) {
-        locationSubscription.remove();
-      }
-    };
-  }, [isTracking, pushRoutePoint, accuracyMode]);
+  // Hide the tab bar during a session so it takes no space and cannot be tapped by accident.
+  useHideTabBar(isSessionActive);
 
-  useEffect(() => {
-    if (isTracking && useGyroscopeAssist) {
-      trackingService.setUseGyroscope(true);
-      motionSensorService.start({
-        rate: sensorUpdateRate,
-      });
-    } else {
-      trackingService.setUseGyroscope(false);
-      motionSensorService.stop();
+  const showStartFailure = (message: string | undefined) =>
+    Alert.alert('Location Error', message ?? 'Unable to access your location.', [{ text: 'OK' }]);
+
+  // Waiting for the first GPS answer can take seconds; the button says so instead of looking dead.
+  const [starting, setStarting] = useState(false);
+  const handleStart = async (type: ActivityType) => {
+    setStarting(true);
+    try {
+      const result = await start(type, SPORT_TYPES.find((t) => t.type === type)?.label ?? type);
+      // 'permission': the permission prompt already explained itself; 'busy': a double tap.
+      if (!result.ok && result.reason === 'gps') showStartFailure(result.message);
+      if (result.ok) setFullStats(true);
+    } finally {
+      setStarting(false);
     }
-
-    return () => {
-      motionSensorService.stop();
-    };
-  }, [isTracking, useGyroscopeAssist, sensorUpdateRate]);
-
-  useEffect(() => {
-    if (!isTracking || !useGyroscopeAssist) return;
-
-    const interpolationInterval = setInterval(() => {
-      const interpolatedPoint = trackingService.generateInterpolatedPoint();
-      if (interpolatedPoint) {
-        pushRoutePoint(interpolatedPoint.longitude, interpolatedPoint.latitude);
-      }
-    }, 500);
-
-    return () => clearInterval(interpolationInterval);
-  }, [isTracking, useGyroscopeAssist, pushRoutePoint]);
-
-  useEffect(() => {
-    trackingService.setAutoPauseEnabled(autoPause);
-  }, [autoPause]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (trackingService.getIsAutoPaused()) {
-        setIsPaused(true);
-        setIsTracking(false);
-      }
-      if (isTracking) {
-        const newDistance = useGyroscopeAssist
-          ? trackingService.getInterpolatedDistance()
-          : trackingService.getDistance();
-        setDistance(newDistance);
-        setDuration(trackingService.getDuration());
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isTracking, useGyroscopeAssist]);
-
-  const handleStart = async () => {
-    trackingService.setMaxSpeed(SPEED_LIMITS_KMH[activityType]);
-    await trackingService.startTracking();
-    setIsTracking(true);
-    setIsPaused(false);
-    setShowTypePicker(false);
-    wasLoopClosedRef.current = false;
-    routeCoordsRef.current = [];
-    lastRouteSyncRef.current = 0;
-    setRoutePointCount(0);
-    setRouteCoordinates([]);
-    if (location) {
-      setStartLocation([location.longitude, location.latitude]);
-    }
-    startBackgroundLocation(accuracyMode, activeType?.label ?? activityType);
   };
 
-  const handlePause = async () => {
-    impactMedium();
-    await trackingService.pauseTracking();
-    stopBackgroundLocation();
-    setIsTracking(false);
-    setIsPaused(true);
-    motionSensorService.stop();
-  };
+  const countdown = useStartCountdown(handleStart);
 
   const handleResume = async () => {
-    impactMedium();
-    await trackingService.resumeTracking();
-    setIsTracking(true);
-    setIsPaused(false);
-    startBackgroundLocation(accuracyMode, activeType?.label ?? activityType);
+    const result = await resume();
+    if (!result.ok && result.reason === 'gps') showStartFailure(result.message);
   };
 
-  const handleStop = () => {
-    Alert.alert('Finish Activity?', "You'll be able to review it before it's saved.", [
-      { text: 'Keep Going', style: 'cancel' },
-      { text: 'Finish', style: 'destructive', onPress: finishActivity },
+  // Pressing Lap shows how that lap went for a few seconds.
+  const lastLap = snapshot.lastLap;
+  const lapCard = useLapCard(snapshot.lapCount, lastLap);
+
+  const wasPaused = useRef(false);
+  useEffect(() => {
+    if (isTracking && wasPaused.current) Toast.show('Recording resumed', 2);
+    wasPaused.current = isPaused;
+  }, [isTracking, isPaused]);
+
+  // A second tap while the first is still closing the run would find nothing to finish.
+  const finishing = useRef(false);
+  const finishActivity = async () => {
+    if (finishing.current) return;
+    if (isTooShort(activityType, distance)) {
+      // Ask before anything is torn down: finishing a run this short throws it away.
+      Alert.alert(
+        'Too short to save',
+        `You have moved ${formatDistance(distance, unitSystem)}. Keep going, or discard this activity.`,
+        [
+          { text: 'Keep recording', style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: async () => {
+              finishing.current = true;
+              try {
+                await finish();
+              } finally {
+                finishing.current = false;
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+    finishing.current = true;
+    try {
+      const result = await finish();
+      if (!result.ok) {
+        Alert.alert('Could not finish', result.error);
+        return;
+      }
+      router.push({
+        pathname: '/create-activity',
+        params: { run: stashRecordedRun(recordedRunParams(result.summary, activityType)) },
+      });
+    } catch (error) {
+      logger.error('[Record] Finish failed', error);
+      Alert.alert('Could not finish', 'Please try again.');
+    } finally {
+      finishing.current = false;
+    }
+  };
+
+  // Throwing a run away cannot be undone, so ask first, whatever its length.
+  const confirmDiscardRun = () => {
+    if (finishing.current) return;
+    Alert.alert('Discard this activity?', 'What you have recorded so far will be deleted.', [
+      { text: 'Keep recording', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: async () => {
+          finishing.current = true;
+          try {
+            await finish();
+          } finally {
+            finishing.current = false;
+          }
+        },
+      },
     ]);
   };
 
-  const finishActivity = async () => {
-    notificationSuccess();
-    stopBackgroundLocation();
-    motionSensorService.stop();
-
-    // Fold in whatever the background task captured since the last live fix
-    // (app was backgrounded) so distance/route/territory stay complete.
-    const buffered = await peekBackgroundPoints();
-    if (buffered.length > 0) {
-      for (const p of buffered) {
-        trackingService.addLocation({
-          latitude: p.latitude,
-          longitude: p.longitude,
-          timestamp: p.timestamp,
-          accuracy: p.accuracy,
-        });
-      }
-      await clearBackgroundPoints();
-    }
-
-    const locations = trackingService.getLocations();
-    const finalDistance = useGyroscopeAssist
-      ? trackingService.getInterpolatedDistance()
-      : trackingService.getDistance();
-    const finalDuration = trackingService.getDuration();
-    const polyline = useGyroscopeAssist
-      ? trackingService.generateInterpolatedPolyline()
-      : trackingService.generatePolyline();
-    const territory = territoryService.getEnclosedPolygon(locations);
-    const territoryArea = territory ? territoryService.getPolygonArea(territory) : 0;
-
-    const result = await trackingService.stopTracking();
-    if (!result.success) {
-      Alert.alert('Activity Too Short', result.error ?? 'Please try again.');
-      setIsTracking(false);
-      setIsPaused(false);
-      return;
-    }
-    setIsTracking(false);
-    setIsPaused(false);
-    setExpanded(false);
-
-    const goToCreateActivity = () => {
-      router.push({
-        pathname: '/create-activity',
-        params: {
-          polyline,
-          distance: String(finalDistance),
-          duration: String(finalDuration),
-          territoryArea: String(territoryArea),
-          activityType,
-          ...(territory ? { territory: JSON.stringify(territory) } : {}),
-        },
-      });
-    };
-
-    if (territory) {
-      goToCreateActivity();
-    } else {
-      Alert.alert(
-        'No Territory Captured',
-        'Your route needs to loop back to where you started to claim the ground you covered.',
-        [{ text: 'OK', onPress: goToCreateActivity }]
-      );
-    }
-  };
-
-  const mapCenter: [number, number] = useMemo(
-    () => (location ? [location.longitude, location.latitude] : DEFAULT_CENTER),
-    [location]
+  // Save or Discard chosen on the recovery prompt: once the run is back in the session, take the
+  // same path as pressing Finish or Discard here.
+  const { recover } = useLocalSearchParams<{ recover?: RecoveryChoice }>();
+  const recoverHandled = useRef(false);
+  const action = recoverAction(recover, status, restoreSettled);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per prompt answer, with the handlers of that moment
+  useEffect(() => {
+    if (action === 'none') recoverHandled.current = false;
+    if (action === 'none' || action === 'wait' || recoverHandled.current) return;
+    recoverHandled.current = true;
+    router.setParams({ recover: undefined });
+    if (action === 'save') void finishActivity();
+    else if (action === 'discard') confirmDiscardRun();
+  }, [action]);
+  // An answer left over from a visit that never used it must not meet a later run.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        router.setParams({ recover: undefined });
+      },
+      [router]
+    )
   );
 
-  const activeType = ACTIVITY_TYPES.find((t) => t.type === activityType);
-  const territoryArea = trackedPolygon ? territoryService.getPolygonArea(trackedPolygon) : 0;
+  // The handler below outlives renders, so it reads the latest finish through a ref.
+  const finishRef = useRef(finishActivity);
+  finishRef.current = finishActivity;
+  // Back on a live recording asks instead of leaving: the tab bar is hidden then, so Back was the way out.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isSessionActive) return undefined;
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (backWhileRecording({ locked, finishing: finishing.current }) === 'ask') {
+          Alert.alert('Leave the recording?', 'It keeps recording until you finish it.', [
+            { text: 'Keep recording', style: 'cancel' },
+            { text: 'Finish and save', onPress: () => void finishRef.current() },
+          ]);
+        }
+        return true;
+      });
+      return () => subscription.remove();
+    }, [isSessionActive, locked])
+  );
+
+  // The camera follows from here on; this is only where the map is first drawn.
+  const [initialCenter] = useState<[number, number]>(() =>
+    fix ? [fix.longitude, fix.latitude] : DEFAULT_CENTER
+  );
+  const territoryArea = trackedPolygon ? territoryService.getPolygonArea(trackedPolygon) : null;
+  const { recent, lapCount, splits, elevationGain, laps, lapStart } = snapshot;
+  const fixAgeMs = location ? Math.max(0, now - location.timestamp) : null;
+  const altitude = location?.altitude ?? null;
+  const liveData = useMemo<LiveStatData>(
+    () => ({
+      distance,
+      duration,
+      recent,
+      territoryArea,
+      elevationGain,
+      lapCount,
+      lastLap,
+      laps,
+      splits,
+      fixAgeMs,
+      altitude,
+      currentLap: {
+        distance: Math.max(0, distance - lapStart.distance),
+        duration: Math.max(0, duration - lapStart.duration),
+      },
+    }),
+    [
+      distance,
+      duration,
+      recent,
+      territoryArea,
+      elevationGain,
+      lapCount,
+      lastLap,
+      laps,
+      splits,
+      fixAgeMs,
+      altitude,
+      lapStart,
+    ]
+  );
 
   const markers: MapMarker[] = useMemo(() => {
     const next: MapMarker[] = [];
     if (startLocation && (isTracking || duration > 0)) {
-      next.push({
-        id: 'start',
-        coordinate: startLocation,
-        color: Brand.success,
-        icon: 'play',
-      });
-    }
-    if (location && isTracking && routePointCount > 1) {
-      next.push({
-        id: 'current',
-        coordinate: [location.longitude, location.latitude],
-        color: Brand.primary,
-        icon: 'walk',
-      });
+      next.push({ id: 'start', coordinate: startLocation, color: Brand.success, icon: 'play' });
     }
     return next;
-  }, [startLocation, location, isTracking, duration, routePointCount]);
+  }, [startLocation, isTracking, duration]);
+
+  const lastRoutePoint = routeCoordinates.at(-1);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a fix replaces the route array; its length and last point say whether the line changed
+  const paceSegments = useMemo(() => {
+    const stops = livePaceStops(splits, distance, PACE_COLORS);
+    return stops ? colorSegments(routeCoordinates, stops) : undefined;
+  }, [splits, distance, routePointCount, lastRoutePoint?.[0], lastRoutePoint?.[1]]);
+  const splitSize = unitSystem === 'imperial' ? METERS_PER_MILE : 1000;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pins only move when a split finishes or the line is cut differently
+  const splitMarkers = useMemo(
+    () => splitPins(routeCoordinates, splitSize, distance),
+    [splitSize, splits.length, routePointCount]
+  );
 
   const territoryPolygons = useMemo<Ring[]>(
     () => (trackedPolygon ? [trackedPolygon] : []),
     [trackedPolygon]
   );
 
-  if (showTypePicker && !isTracking && duration === 0) {
+  // One map element for the whole screen, so starting a run never rebuilds the map under the athlete.
+  const mapView = (
+    <View style={isSessionActive ? styles.mapFull : styles.map} onLayout={onMapLayout}>
+      <MapRoute
+        coordinates={routeCoordinates.length > 1 ? routeCoordinates : undefined}
+        territoryPolygons={territoryPolygons}
+        territoryColor={Brand.success}
+        territoryOpacity={0.22}
+        markers={markers}
+        position={puck}
+        paceSegments={paceSegments}
+        splitMarkers={splitMarkers}
+        initialCenter={initialCenter}
+        initialZoom={followZoom('idle')}
+        zoomRange={ZOOM_RANGE}
+        cameraRef={cameraRef}
+        onCameraMove={handleCameraMove}
+        dark={resolveMapStyle(mapStyle, theme.isDark) === 'dark'}
+        poi={showPoi}
+        bikeLanes={showBikeLanes}
+      />
+      {fix && !isSessionActive && (
+        <LocateButton
+          follow={follow}
+          onPress={() => steer('locate')}
+          style={{ top: insets.top + Spacing.three, backgroundColor: theme.backgroundElement }}
+          iconColor={theme.text}
+        />
+      )}
+      {fix && !locked && !isSessionActive && (
+        <ZoomControls
+          onZoomIn={() => zoomBy(1)}
+          onZoomOut={() => zoomBy(-1)}
+          style={{ bottom: Spacing.three, backgroundColor: theme.backgroundElement }}
+          iconColor={theme.text}
+          dividerColor={theme.border}
+        />
+      )}
+    </View>
+  );
+
+  if (!isSessionActive) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.mapContainer}>
-          <MapRoute
-            initialCenter={mapCenter}
-            initialZoom={15}
-            mapStyleUrl={theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager}
-            showUserLocation
-          />
-        </View>
-
-        <SafeAreaView edges={['bottom']} style={styles.sheetSafeArea}>
-          <View
-            style={[
-              styles.bottomSheet,
-              { backgroundColor: theme.backgroundElement },
-              theme.isDark ? ShadowDark.lg : Shadow.lg,
-            ]}
-          >
-            <View style={[styles.sheetHandle, { backgroundColor: theme.backgroundSelected }]} />
-            <ThemedText type="small" style={[styles.pickerLabel, { color: theme.textSecondary }]}>
-              Choose an activity
-            </ThemedText>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.sportRow}
-            >
-              {ACTIVITY_TYPES.map((item) => {
-                const active = activityType === item.type;
-                return (
-                  <TouchableOpacity
-                    key={item.type}
-                    onPress={() => {
-                      haptics.selection();
-                      setActivityType(item.type);
-                    }}
-                    style={styles.sportItem}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityLabel={item.label}
-                    accessibilityState={{ selected: active }}
-                  >
-                    <View
-                      style={[
-                        styles.sportIconCircle,
-                        {
-                          backgroundColor: active ? Brand.primary : theme.backgroundSelected,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name={item.icon}
-                        size={22}
-                        color={active ? Brand.white : theme.textSecondary}
-                      />
-                    </View>
-                    <ThemedText
-                      type="small"
-                      style={{
-                        color: active ? Brand.primary : theme.textSecondary,
-                        fontWeight: active ? '700' : '500',
-                      }}
-                    >
-                      {item.label}
-                    </ThemedText>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.startButton}
-              onPress={() => {
-                impactHeavy();
-                handleStart();
-              }}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={`Start ${activeType?.label}`}
-            >
-              <Ionicons name="play" size={22} color={Brand.white} />
-              <ThemedText type="default" style={styles.startButtonLabel}>
-                Start {activeType?.label}
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+        {mapView}
+        <RecordPreRun
+          signal={signal}
+          starting={starting}
+          onOpenSettings={() => router.push('/recording-settings')}
+          onOpenLocationSettings={() => void getPlatform().location.openSettings()}
+          readiness={readinessRows}
+          onReadinessAction={(kind) => {
+            const { location, readiness } = getPlatform();
+            void (kind === 'openLocationSettings'
+              ? location.openSettings()
+              : readiness.openAppSettings());
+          }}
+          onStart={async (type) => {
+            setActivityType(type);
+            // Ask first: a dialog in the middle of "3, 2, 1" ruins the count-in.
+            if (!(await confirmStart({ status, signalLevel: signal.level }))) return;
+            countdown.begin(type);
+          }}
+        />
+        {countdown.counting !== null && (
+          <StartCountdownOverlay remaining={countdown.counting} onCancel={countdown.cancel} />
+        )}
       </View>
     );
   }
 
+  const controls = (
+    <RecordControls
+      recording={isTracking}
+      lapCount={snapshot.lapCount}
+      showLap={trackLaps}
+      onPause={() => void pause()}
+      onResume={handleResume}
+      onLap={lap}
+      onFinish={finishActivity}
+      onDiscard={confirmDiscardRun}
+    />
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.mapContainer}>
-        <MapRoute
-          coordinates={routeCoordinates.length > 1 ? routeCoordinates : undefined}
-          territoryPolygons={territoryPolygons}
-          territoryColor={Brand.success}
-          territoryOpacity={0.22}
-          markers={markers}
-          followUser={isTracking ? 'default' : undefined}
-          initialCenter={mapCenter}
-          initialZoom={15}
-          mapStyleUrl={theme.isDark ? MAP_STYLES.darkMatter : MAP_STYLES.voyager}
-        />
-      </View>
+      {mapView}
 
-      <SafeAreaView edges={['bottom']} style={styles.sheetSafeArea}>
-        <View
-          style={[
-            styles.bottomSheet,
-            { backgroundColor: theme.backgroundElement },
-            theme.isDark ? ShadowDark.lg : Shadow.lg,
-          ]}
-        >
-          <GestureDetector gesture={sheetPanGesture}>
-            <View>
-              <View style={[styles.sheetHandle, { backgroundColor: theme.backgroundSelected }]} />
-
-              <View style={styles.sheetHeader}>
-                <View style={styles.sheetHeaderLeft}>
-                  <View
-                    style={[
-                      styles.activityIconCircle,
-                      { backgroundColor: tint(Brand.primary, 0.15) },
-                    ]}
-                  >
-                    <Ionicons name={activeType?.icon || 'walk'} size={16} color={Brand.primary} />
-                  </View>
-                  <ThemedText type="default" style={[styles.sheetTitle, { color: theme.text }]}>
-                    {activeType?.label}
-                  </ThemedText>
-                  {isPaused && (
-                    <View style={styles.pausedBadge}>
-                      <ThemedText type="small" style={styles.pausedBadgeText}>
-                        Paused
-                      </ThemedText>
-                    </View>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={styles.expandButton}
-                  onPress={() => setSheetExpanded(!expanded)}
+      {!fullStats && (
+        <>
+          <View
+            pointerEvents="box-none"
+            style={[styles.islandSlot, { top: insets.top + Spacing.three }]}
+          >
+            <RecordIsland
+              activityType={activityType}
+              unitSystem={unitSystem}
+              data={liveData}
+              sportIcon={activeType?.icon ?? 'walk'}
+              sportLabel={activityLabel}
+              badge={
+                !isPaused && signal.level !== 'good' ? (
+                  <StatusPill label={signal.label} searching={signal.level === 'searching'} />
+                ) : undefined
+              }
+              onLock={() => setLocked(true)}
+              onExpand={() => setFullStats(true)}
+              onLayout={(event) => setIslandHeight(event.nativeEvent.layout.height)}
+            >
+              {snapshot.backgroundOff && !isPaused && (
+                <Pressable
+                  style={styles.backgroundNote}
+                  onPress={() => void getPlatform().background.requestPermission()}
                   accessibilityRole="button"
-                  accessibilityLabel={expanded ? 'Show fewer stats' : 'Show more stats'}
+                  accessibilityLabel="Recording stops when the screen locks. Allow location all the time."
                 >
-                  <Ionicons
-                    name={expanded ? 'contract' : 'expand'}
-                    size={18}
-                    color={theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </GestureDetector>
-
-          <View style={styles.sheetContent}>
-            <View style={styles.statsRow}>
-              <View style={styles.stat}>
-                <ThemedText type="default" style={[styles.statValue, { color: theme.text }]}>
-                  {formatDurationLong(duration)}
-                </ThemedText>
-                <ThemedText type="small" style={[styles.statLabel, { color: theme.textSecondary }]}>
-                  Time
-                </ThemedText>
-              </View>
-              <View style={styles.stat}>
-                <ThemedText type="default" style={[styles.statValue, { color: theme.text }]}>
-                  {formatPace(distance, duration)}
-                </ThemedText>
-                <ThemedText type="small" style={[styles.statLabel, { color: theme.textSecondary }]}>
-                  Pace /km
-                </ThemedText>
-              </View>
-              <View style={styles.stat}>
-                <ThemedText type="default" style={[styles.statValue, { color: theme.text }]}>
-                  {formatDistance(distance)}
-                </ThemedText>
-                <ThemedText type="small" style={[styles.statLabel, { color: theme.textSecondary }]}>
-                  Distance
-                </ThemedText>
-              </View>
-            </View>
-
-            <Animated.View style={[styles.statsRowSecondary, secondaryStatsStyle]}>
-              <View
-                style={[styles.statsRowSecondaryInner, { borderTopColor: theme.border }]}
-                onLayout={onSecondaryStatsLayout}
-              >
-                <View style={styles.stat}>
-                  <Ionicons
-                    name="shield-checkmark"
-                    size={16}
-                    color={trackedPolygon ? Brand.success : theme.textSecondary}
-                  />
-                  <ThemedText
-                    type="default"
-                    style={[
-                      styles.statValueSmall,
-                      { color: trackedPolygon ? Brand.success : theme.text },
-                    ]}
-                  >
-                    {trackedPolygon ? formatArea(territoryArea) : '—'}
+                  <ThemedText type="caption" themeColor="warningText" style={styles.pillText}>
+                    Recording stops when the screen locks. Tap to allow location "all the time".
                   </ThemedText>
-                  <ThemedText
-                    type="small"
-                    style={[styles.statLabel, { color: theme.textSecondary }]}
-                  >
-                    Territory
-                  </ThemedText>
-                </View>
-                <View style={styles.stat}>
-                  <Ionicons name="location" size={16} color={theme.textSecondary} />
-                  <NumberFlow
-                    value={routePointCount}
-                    fontSize={15}
-                    fontWeight="700"
-                    color={theme.text}
-                  />
-                  <ThemedText
-                    type="small"
-                    style={[styles.statLabel, { color: theme.textSecondary }]}
-                  >
-                    GPS points
-                  </ThemedText>
-                </View>
-              </View>
-            </Animated.View>
-
-            <View style={styles.controls}>
-              {isTracking ? (
-                <View style={styles.controlRow}>
-                  <TouchableOpacity
-                    style={[styles.controlButton, { backgroundColor: theme.background }]}
-                    onPress={handlePause}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Pause activity"
-                  >
-                    <Ionicons name="pause" size={26} color={theme.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.controlButton, styles.stopButton]}
-                    onPress={handleStop}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Finish activity"
-                  >
-                    <Ionicons name="square" size={22} color={Brand.white} />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.controlRow}>
-                  <TouchableOpacity
-                    style={[styles.controlButton, { backgroundColor: theme.background }]}
-                    onPress={handleResume}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Resume activity"
-                  >
-                    <Ionicons name="play" size={26} color={theme.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.controlButton, styles.stopButton]}
-                    onPress={handleStop}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Finish activity"
-                  >
-                    <Ionicons name="square" size={22} color={Brand.white} />
-                  </TouchableOpacity>
-                </View>
+                </Pressable>
               )}
-            </View>
+              {isPaused && <PausedBar autoPaused={autoPaused} />}
+              {lapCard && (
+                <LapCompleteCard
+                  lap={lapCard}
+                  activityType={activityType}
+                  unitSystem={unitSystem}
+                />
+              )}
+            </RecordIsland>
           </View>
-        </View>
-      </SafeAreaView>
+          {fix && !locked && (
+            <RecordMapControls
+              follow={follow}
+              tilted={tilted}
+              bearing={bearing}
+              top={insets.top + Spacing.three + islandHeight + Spacing.two}
+              layersBadge={layersBadge}
+              onLayers={() => setLayersOpen(true)}
+              onToggleTilt={toggleTilt}
+              onLocate={() => steer('locate')}
+              onCompass={turnNorth}
+            >
+              <ZoomControls
+                onZoomIn={() => zoomBy(1)}
+                onZoomOut={() => zoomBy(-1)}
+                style={[styles.inlineZoom, { backgroundColor: theme.backgroundElement }]}
+                iconColor={theme.text}
+                dividerColor={theme.border}
+              />
+            </RecordMapControls>
+          )}
+          <View style={styles.sheetSlot}>
+            <RecordSheet onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
+              <GestureDetector gesture={optionsSwipe}>
+                <Pressable
+                  onPress={() => setFlyoutOpen(!flyoutOpen)}
+                  accessibilityRole="button"
+                  accessibilityLabel={flyoutOpen ? 'Close options' : 'Open options'}
+                >
+                  <SheetHandle />
+                </Pressable>
+              </GestureDetector>
+              {flyoutOpen && (
+                <RecordFlyout
+                  rows={flyoutRows({ trackLaps, mapStyle })}
+                  trackLaps={trackLaps}
+                  onToggleLaps={setTrackLaps}
+                  onOpen={(id) => {
+                    setFlyoutOpen(false);
+                    if (id === 'settings') router.push('/recording-settings');
+                    else setLayersOpen(true);
+                  }}
+                />
+              )}
+              <View style={styles.content}>{controls}</View>
+            </RecordSheet>
+          </View>
+        </>
+      )}
+      {fullStats && (
+        <RecordStatsView
+          activityType={activityType}
+          unitSystem={unitSystem}
+          data={liveData}
+          paused={isPaused ? { auto: autoPaused } : null}
+          lapCard={lapCard}
+          onShrink={() => setFullStats(false)}
+          controls={controls}
+        />
+      )}
+      <MapLayersSheet
+        visible={layersOpen}
+        onClose={() => setLayersOpen(false)}
+        layers={['poi', 'bikeLanes']}
+      />
+      {locked && <RecordLockOverlay onUnlock={() => setLocked(false)} />}
+    </View>
+  );
+}
+
+function StatusPill({ label, searching = false }: { label: string; searching?: boolean }) {
+  return (
+    <View style={[styles.pill, searching && styles.pillSearching]}>
+      <ThemedText type="caption" themeColor="warningText" numberOfLines={1} style={styles.pillText}>
+        {label}
+      </ThemedText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  mapContainer: {
-    flex: 1,
-  },
-  sheetSafeArea: {
-    backgroundColor: 'transparent',
-  },
-  pickerLabel: {
-    textAlign: 'center',
-    marginBottom: Spacing.three,
-  },
-  sportRow: {
-    flexDirection: 'row',
-    gap: Spacing.four,
-    paddingHorizontal: Spacing.four,
-    marginBottom: Spacing.four,
-  },
-  sportItem: {
-    alignItems: 'center',
-    gap: Spacing.one,
-    minWidth: 64,
-  },
-  sportIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Brand.primary,
-    borderRadius: BorderRadius.full,
-    paddingVertical: Spacing.three,
-    marginHorizontal: Spacing.four,
-    gap: Spacing.two,
-  },
-  startButtonLabel: {
-    color: Brand.white,
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  bottomSheet: {
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    paddingBottom: Spacing.four,
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  sheetContent: {
-    paddingHorizontal: Spacing.four,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    marginBottom: Spacing.three,
-  },
-  sheetHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
+  container: { flex: 1 },
+  map: { flex: 1 },
+  mapFull: StyleSheet.absoluteFill,
+  inlineZoom: { position: 'relative', right: 0 },
+  islandSlot: { position: 'absolute', left: Spacing.three, right: Spacing.three },
+  sheetSlot: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  pill: {
     flexShrink: 1,
-  },
-  sheetTitle: {
-    fontWeight: '700',
-    fontSize: 17,
-  },
-  activityIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pausedBadge: {
     backgroundColor: tint(Brand.warning, 0.18),
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.two,
-    paddingVertical: 2,
+    paddingVertical: Spacing.half,
   },
-  pausedBadgeText: {
-    color: Brand.warning,
-    fontWeight: '700',
-    fontSize: 11,
+  pillSearching: { backgroundColor: tint(Brand.primary, 0.15) },
+  pillText: { fontWeight: '700' },
+  backgroundNote: {
+    backgroundColor: tint(Brand.warning, 0.18),
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
   },
-  expandButton: {
-    padding: Spacing.two,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  statsRowSecondary: {
-    overflow: 'hidden',
-  },
-  statsRowSecondaryInner: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.two,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  stat: {
-    alignItems: 'center',
-    gap: Spacing.half,
-  },
-  statValue: {
-    fontWeight: '700',
-    fontSize: 30,
-    fontVariant: ['tabular-nums'],
-  },
-  statValueSmall: {
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  statLabel: {},
-  controls: {
-    alignItems: 'center',
-    paddingTop: Spacing.two,
-  },
-  controlRow: {
-    flexDirection: 'row',
-    gap: Spacing.four,
-  },
-  controlButton: {
-    width: 68,
-    height: 68,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stopButton: {
-    backgroundColor: Brand.danger,
-  },
+  content: { paddingHorizontal: Spacing.four, gap: Spacing.two },
 });

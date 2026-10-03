@@ -1,5 +1,5 @@
-import { ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
-
+import { ScrollView, type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -17,25 +17,34 @@ export const SPORT_LABELS: Record<SportFilter, string> = {
   multi: 'Multi',
 };
 
-interface FilterChipsProps {
-  value: SportFilter;
-  onChange: (filter: SportFilter) => void;
+interface ChipRowProps<T extends string> {
+  options: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+  /** Extra padding for the scrolling content, such as a side inset. */
+  contentStyle?: StyleProp<ViewStyle>;
 }
 
-export function FilterChips({ value, onChange }: FilterChipsProps) {
+/** A horizontally scrolling row of pill buttons, one selected. */
+export function ChipRow<T extends string>({
+  options,
+  value,
+  onChange,
+  contentStyle,
+}: ChipRowProps<T>) {
   const theme = useTheme();
 
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
+      contentContainerStyle={[styles.row, contentStyle]}
     >
-      {SPORT_FILTERS.map((filter) => {
-        const active = value === filter;
+      {options.map((option) => {
+        const active = value === option.value;
         return (
-          <TouchableOpacity
-            key={filter}
+          <Tappable
+            key={option.value}
             style={[
               styles.chip,
               {
@@ -45,25 +54,36 @@ export function FilterChips({ value, onChange }: FilterChipsProps) {
             ]}
             onPress={() => {
               haptics.selection();
-              onChange(filter);
+              onChange(option.value);
             }}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
-            accessibilityLabel={SPORT_LABELS[filter]}
+            accessibilityLabel={option.label}
           >
             <ThemedText
               type="caption"
               numberOfLines={1}
               style={{ color: active ? Brand.white : theme.text, fontWeight: '600' }}
             >
-              {SPORT_LABELS[filter]}
+              {option.label}
             </ThemedText>
-          </TouchableOpacity>
+          </Tappable>
         );
       })}
     </ScrollView>
   );
+}
+
+const SPORT_OPTIONS = SPORT_FILTERS.map((value) => ({ value, label: SPORT_LABELS[value] }));
+
+interface FilterChipsProps {
+  value: SportFilter;
+  onChange: (filter: SportFilter) => void;
+}
+
+export function FilterChips({ value, onChange }: FilterChipsProps) {
+  return <ChipRow options={SPORT_OPTIONS} value={value} onChange={onChange} />;
 }
 
 const styles = StyleSheet.create({

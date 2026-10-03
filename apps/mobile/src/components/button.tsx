@@ -1,11 +1,12 @@
-import { Button as AntButton } from '@ant-design/react-native';
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
-import { Brand, Spacing } from '@/constants/theme';
+import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { type ButtonVariant, buttonAppearance } from '@/utils/buttonAppearance';
+import { ThemedText } from './themed-text';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type { ButtonVariant };
 
 interface AppButtonProps {
   children: string;
@@ -15,20 +16,16 @@ interface AppButtonProps {
   loading?: boolean;
   disabled?: boolean;
   icon?: ReactNode;
+  /** What a screen reader says, when the visible label is shorter than it should be ("Start" for "Start Run"). */
+  accessibilityLabel?: string;
   fullWidth?: boolean;
   style?: ViewStyle;
 }
 
-const ANT_TYPE: Record<ButtonVariant, 'primary' | 'ghost' | 'warning' | undefined> = {
-  primary: 'primary',
-  secondary: undefined,
-  ghost: 'ghost',
-  danger: 'warning',
-};
-
 export function AppButton({
   children,
   icon,
+  accessibilityLabel,
   onPress,
   variant = 'primary',
   size = 'large',
@@ -38,53 +35,60 @@ export function AppButton({
   style,
 }: AppButtonProps) {
   const theme = useTheme();
-
-  const textColor =
-    variant === 'primary' || variant === 'danger'
-      ? Brand.white
-      : variant === 'ghost'
-        ? Brand.primary
-        : theme.text;
+  const inactive = disabled || loading;
 
   return (
-    <AntButton
-      type={ANT_TYPE[variant]}
-      size={size}
-      loading={loading}
-      disabled={disabled}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? children}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
       onPress={onPress}
-      // The press highlight underlay is a full-bleed child View; on iOS the
-      // Pressable does not clip it to the button's borderRadius, so the
-      // highlight bleeds past rounded corners. Clip it here.
-      styles={{ wrapperStyle: { overflow: 'hidden' } }}
-      style={StyleSheet.flatten([fullWidth && styles.fullWidth, style])}
+      style={({ pressed }) => {
+        const look = buttonAppearance(variant, theme, { pressed, disabled });
+        return [
+          styles.base,
+          size === 'small' ? styles.small : styles.large,
+          fullWidth && styles.fullWidth,
+          { backgroundColor: look.background, borderColor: look.border },
+          style,
+        ];
+      }}
     >
-      <View style={styles.content}>
-        {icon}
-        <Text style={[styles.label, size === 'small' && styles.labelSmall, { color: textColor }]}>
-          {children}
-        </Text>
-      </View>
-    </AntButton>
+      {({ pressed }) => {
+        const { label } = buttonAppearance(variant, theme, { pressed, disabled });
+        return (
+          <View style={styles.content}>
+            {loading ? <ActivityIndicator size="small" color={label} /> : icon}
+            <ThemedText
+              type={size === 'small' ? 'smallBold' : 'button'}
+              style={{ color: label }}
+              numberOfLines={1}
+            >
+              {children}
+            </ThemedText>
+          </View>
+        );
+      }}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  fullWidth: {
-    width: '100%',
+  base: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.full,
+    borderWidth: 1.5,
+    paddingHorizontal: Spacing.three,
   },
+  large: { minHeight: 52 },
+  small: { minHeight: 44 },
+  fullWidth: { width: '100%' },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-  },
-  label: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  labelSmall: {
-    fontSize: 14,
-    fontWeight: '600',
   },
 });

@@ -1,9 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, type LayoutChangeEvent, type LayoutRectangle, View } from 'react-native';
 import { Easing } from 'react-native-reanimated';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { SHIMMER_PRESETS } from './const';
-import type { IShimmerEffect, IShimmerGroup } from './Shimmer.types';
+import type { IShimmerEffect } from './Shimmer.types';
 
 export const ShimmerEffect: React.FC<IShimmerEffect> & React.FunctionComponent<IShimmerEffect> =
   memo<IShimmerEffect>(
@@ -11,20 +13,20 @@ export const ShimmerEffect: React.FC<IShimmerEffect> & React.FunctionComponent<I
       isLoading = true,
       shimmerColors,
       duration = 1500,
-      className,
       style,
       variant = 'shimmer',
       direction = 'leftToRight',
-      preset = 'dark',
+      preset = 'onDark',
       opacity = 1,
       children,
     }: IShimmerEffect): (React.ReactNode & React.JSX.Element & React.ReactElement) | null => {
+      const reduceMotion = useReduceMotion();
       const [layout, setLayout] = useState<LayoutRectangle | null>(null);
       const shimmerAnim = useRef<Animated.Value>(new Animated.Value(0)).current;
       const pulseAnim = useRef<Animated.Value>(new Animated.Value(0.3)).current;
       const fadeAnim = useRef<Animated.Value>(new Animated.Value(0)).current;
 
-      const theme = SHIMMER_PRESETS[preset] ?? SHIMMER_PRESETS.dark;
+      const theme = SHIMMER_PRESETS[preset] ?? SHIMMER_PRESETS.onDark;
 
       const themeColors = shimmerColors && shimmerColors.length >= 2 ? shimmerColors : theme.colors;
 
@@ -36,6 +38,8 @@ export const ShimmerEffect: React.FC<IShimmerEffect> & React.FunctionComponent<I
 
       useEffect(() => {
         if (!layout) return;
+        // A skeleton that does not move still says "loading"; one that loops for ever is hard on some people.
+        if (reduceMotion) return;
 
         if (isLoading) {
           fadeAnim.setValue(0);
@@ -86,7 +90,7 @@ export const ShimmerEffect: React.FC<IShimmerEffect> & React.FunctionComponent<I
           shimmerAnim.stopAnimation();
           pulseAnim.stopAnimation();
         };
-      }, [layout, isLoading, duration, variant, shimmerAnim, pulseAnim, fadeAnim]);
+      }, [layout, isLoading, duration, variant, shimmerAnim, pulseAnim, fadeAnim, reduceMotion]);
 
       const getWaveWidth = () => {
         if (!layout) return 0;
@@ -158,7 +162,6 @@ export const ShimmerEffect: React.FC<IShimmerEffect> & React.FunctionComponent<I
       return (
         <View
           onLayout={onLayout}
-          className={className}
           style={[
             style,
             {
@@ -239,51 +242,6 @@ export const ShimmerEffect: React.FC<IShimmerEffect> & React.FunctionComponent<I
     }
   );
 
-export const ShimmerGroup: React.FC<IShimmerGroup> & React.FunctionComponent<IShimmerGroup> =
-  memo<IShimmerGroup>(
-    ({
-      isLoading = true,
-      children,
-      preset = 'dark',
-      shimmerColors,
-      duration = 1500,
-      direction = 'leftToRight',
-      variant = 'shimmer',
-      opacity = 1,
-    }: IShimmerGroup): (React.JSX.Element & React.ReactNode & React.ReactElement) | null => {
-      const propagateProps = (children: React.ReactNode): React.ReactNode => {
-        return React.Children.map(children, (child) => {
-          if (!React.isValidElement(child)) {
-            return child;
-          }
-
-          const element = child as React.ReactElement<any>;
-
-          if (element.type === Shimmer || element.type === ShimmerEffect) {
-            return React.cloneElement(element, {
-              isLoading,
-              preset: element.props.preset || preset,
-              shimmerColors: element.props.shimmerColors || shimmerColors,
-              duration: element.props.duration || duration,
-              direction: element.props.direction || direction,
-              variant: element.props.variant || variant,
-              opacity: element.props.opacity ?? opacity,
-            });
-          }
-
-          if (element.props && element.props.children) {
-            return React.cloneElement(element, {
-              children: propagateProps(element.props.children),
-            });
-          }
-
-          return child;
-        });
-      };
-
-      return <>{propagateProps(children)}</>;
-    }
-  );
 export const Shimmer: React.FC<IShimmerEffect> & React.FunctionComponent<IShimmerEffect> =
   memo<IShimmerEffect>(
     (props: IShimmerEffect): (React.ReactNode & React.JSX.Element & React.ReactElement) | null => {

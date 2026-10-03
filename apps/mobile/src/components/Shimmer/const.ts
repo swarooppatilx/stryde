@@ -1,7 +1,7 @@
 import type { IShimmerColorTheme, ShimmerPreset } from './Shimmer.types';
 
 const SHIMMER_PRESETS: Record<ShimmerPreset, IShimmerColorTheme> = {
-  dark: {
+  onDark: {
     colors: [
       'rgba(28, 28, 28, 1)',
       'rgba(38, 38, 38, 1)',
@@ -11,15 +11,11 @@ const SHIMMER_PRESETS: Record<ShimmerPreset, IShimmerColorTheme> = {
     ],
     backgroundColor: 'rgba(28, 28, 28, 1)',
   },
-  light: {
-    colors: [
-      'transparent',
-      'rgba(255,255,255,0.3)',
-      'rgba(255,255,255,1)',
-      'rgba(255,255,255,0.2)',
-      'transparent',
-    ],
-    backgroundColor: 'rgb(59 59 59)',
+  // A light-grey placeholder with a slightly lighter band sweeping over it. (This slot used to be a
+  // charcoal base with a white sweep under the name "light", so every light-mode skeleton was a dark block.)
+  onLight: {
+    colors: ['rgb(232, 232, 229)', 'rgb(246, 246, 244)', 'rgb(232, 232, 229)'],
+    backgroundColor: 'rgb(232, 232, 229)',
   },
   twitter: {
     colors: ['rgba(47, 51, 54, 1)', 'rgba(71, 75, 78, 1)', 'rgba(47, 51, 54, 1)'],
@@ -34,4 +30,9 @@ const SHIMMER_PRESETS: Record<ShimmerPreset, IShimmerColorTheme> = {
   },
 };
 
-export { SHIMMER_PRESETS };
+/** The placeholder preset for the theme the skeleton sits on. */
+function shimmerPresetFor(isDark: boolean): ShimmerPreset {
+  return isDark ? 'onDark' : 'onLight';
+}
+
+export { SHIMMER_PRESETS, shimmerPresetFor };

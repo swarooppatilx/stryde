@@ -1,4 +1,4 @@
-import type { Location } from '../types';
+import type { Location } from '@/types';
 
 /** Great-circle distance between two coordinates, in meters. */
 export function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -31,59 +31,87 @@ function speedBetween(a: Location, b: Location): number {
   return haversineDistance(a.latitude, a.longitude, b.latitude, b.longitude) / dt;
 }
 
-/**
- * Reject GPS outliers based on accuracy and speed sanity.
- *
- * - Drops fixes with reported accuracy > 30 m (low-confidence).
- * - Drops fixes that imply impossible speed (> 25 km/h for a runner).
- */
-export function rejectOutliers(locations: Location[]): Location[] {
-  const MAX_ACCURACY = 30;
-  const MAX_SPEED_MS = 25 / 3.6; // 25 km/h → m/s
+/** Matches the default activity (a run): faster activities pass their own limit. */
+const DEFAULT_MAX_SPEED_MS = 25 / 3.6;
 
-  return locations.filter((loc, i) => {
-    if (loc.accuracy > MAX_ACCURACY) return false;
-    if (i > 0) {
-      const speed = speedBetween(locations[i - 1], loc);
-      if (speed > MAX_SPEED_MS) return false;
-    }
-    return true;
-  });
+/** After this many fixes in a row are rejected, the next one becomes the new reference. */
+const MAX_CONSECUTIVE_REJECTS = 3;
+
+export interface OutlierOptions {
+  /** Fastest plausible speed for the activity, in m/s. */
+  maxSpeedMs?: number;
+  /** Fixes reporting worse accuracy than this (m) are dropped. */
+  maxAccuracyM?: number;
+}
+
+/** Drops fixes with accuracy worse than `maxAccuracyM` (default 30 m) or implying a speed above `maxSpeedMs` from the last kept fix. Comparing to the previous raw fix would discard the good fix after each glitch. Repeated rejections mean the track genuinely moved on, so the next fix becomes the new reference. */
+export function rejectOutliers(
+  locations: Location[],
+  { maxSpeedMs = DEFAULT_MAX_SPEED_MS, maxAccuracyM = 30 }: OutlierOptions = {}
+): Location[] {
+  const filter = new OutlierFilter(maxSpeedMs, maxAccuracyM);
+  return locations.filter((loc) => filter.accept(loc));
 }
 
 /**
- * Accuracy-weighted moving average over a sliding window.
- *
- * Each point's weight is `1 / accuracy` (in meters). Low-accuracy fixes
- * contribute less to the smoothed position. Window size is 5 points.
+ * The outlier rule as a filter that remembers its state, so a track can be cleaned one fix at a
+ * time (what `rejectOutliers` does over a whole array, and what a live recording needs).
  */
-export function smoothLocations(locations: Location[]): Location[] {
-  if (locations.length < 3) return locations;
+export class OutlierFilter {
+  private anchor: Location | undefined;
+  private consecutiveRejects = 0;
 
-  const WINDOW = 5;
-  const smoothed: Location[] = [];
+  constructor(
+    private readonly maxSpeedMs: number = DEFAULT_MAX_SPEED_MS,
+    private readonly maxAccuracyM: number = 30
+  ) {}
 
-  for (let i = 0; i < locations.length; i++) {
-    const start = Math.max(0, i - Math.floor(WINDOW / 2));
-    const end = Math.min(locations.length - 1, i + Math.floor(WINDOW / 2));
-    let weightSum = 0;
-    let lngSum = 0;
-    let latSum = 0;
+  /** Whether to keep this fix; a kept fix becomes the baseline for the next one. */
+  accept(loc: Location): boolean {
+    if (loc.accuracy > this.maxAccuracyM) return false;
 
-    for (let j = start; j <= end; j++) {
-      const w = locations[j].accuracy > 0 ? 1 / locations[j].accuracy : 1;
-      weightSum += w;
-      lngSum += locations[j].longitude * w;
-      latSum += locations[j].latitude * w;
+    const implausible =
+      this.anchor !== undefined && speedBetween(this.anchor, loc) > this.maxSpeedMs;
+    if (implausible && this.consecutiveRejects < MAX_CONSECUTIVE_REJECTS) {
+      this.consecutiveRejects++;
+      return false;
     }
 
-    smoothed.push({
-      latitude: latSum / weightSum,
-      longitude: lngSum / weightSum,
-      timestamp: locations[i].timestamp,
-      accuracy: locations[i].accuracy,
-    });
+    this.consecutiveRejects = 0;
+    this.anchor = loc;
+    return true;
+  }
+}
+
+/** Points either side of a point that its smoothed position draws on. */
+export const SMOOTHING_HALF_WINDOW = 2;
+
+/** The smoothed version of `locations[i]`: points in the window around it weighted by `1 / accuracy` (m). */
+export function smoothAt(locations: readonly Location[], i: number): Location {
+  const location = locations[i] as Location;
+  let weightSum = 0;
+  let lngSum = 0;
+  let latSum = 0;
+
+  const from = Math.max(0, i - SMOOTHING_HALF_WINDOW);
+  const to = Math.min(locations.length, i + SMOOTHING_HALF_WINDOW + 1);
+  for (let n = from; n < to; n++) {
+    const neighbour = locations[n] as Location;
+    const w = neighbour.accuracy > 0 ? 1 / neighbour.accuracy : 1;
+    weightSum += w;
+    lngSum += neighbour.longitude * w;
+    latSum += neighbour.latitude * w;
   }
 
-  return smoothed;
+  return {
+    latitude: latSum / weightSum,
+    longitude: lngSum / weightSum,
+    timestamp: location.timestamp,
+    accuracy: location.accuracy,
+  };
+}
+
+export function smoothLocations(locations: Location[]): Location[] {
+  if (locations.length < 3) return locations;
+  return locations.map((_, i) => smoothAt(locations, i));
 }

@@ -1,21 +1,19 @@
 import { Input } from '@ant-design/react-native';
-import { forwardRef } from 'react';
+import type { Ref } from 'react';
 import { StyleSheet, TextInput, type TextInputProps, View } from 'react-native';
 
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
-
 import { ThemedText } from './themed-text';
 
 interface TextFieldProps extends Omit<TextInputProps, 'style'> {
   error?: string | null;
   label?: string;
+  ref?: Ref<TextInput>;
 }
 
-export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
-  { error, label, multiline, ...rest },
-  ref
-) {
+export function TextField({ error, label, multiline, ref, ...rest }: TextFieldProps) {
   const theme = useTheme();
   const borderColor = error ? Brand.danger : theme.border;
 
@@ -31,7 +29,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           ref={ref}
           multiline
           style={[styles.input, styles.multilineInput, { borderColor, color: theme.text }]}
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.placeholder}
           {...rest}
         />
       ) : (
@@ -39,14 +37,14 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           ref={ref}
           inputStyle={[styles.input, { borderColor, color: theme.text }]}
           status={error ? 'error' : undefined}
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.placeholder}
           {...rest}
         />
       )}
       {error ? (
         <ThemedText
           type="small"
-          style={{ color: Brand.danger }}
+          themeColor="dangerText"
           accessibilityLiveRegion="polite"
           accessibilityRole="alert"
         >
@@ -55,7 +53,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
       ) : null}
     </View>
   );
-});
+}
 
 const styles = StyleSheet.create({
   wrapper: {
@@ -65,11 +63,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   input: {
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
     borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-    fontSize: 16,
+    borderWidth: 1,
+    ...textStyle(TypeScale.body),
   },
   multilineInput: {
     minHeight: 80,
