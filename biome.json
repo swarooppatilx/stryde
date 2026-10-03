@@ -8,17 +8,25 @@
       "!**/.turbo",
       "!**/dist",
       "!**/build",
+      "!**/target",
       "!**/coverage",
       "!**/.expo",
       "!**/android",
       "!**/ios",
       "!**/*.lock",
       "!**/public/**/*.svg",
-      "!**/lib",
+      "!packages/contracts/lib",
+      "!packages/contracts/out",
+      "!packages/contracts/broadcast",
       "!**/cache",
       "!**/next-env.d.ts",
       "!packages/subgraph/src",
-      "!packages/shared/src/abis.ts"
+      "!packages/subgraph/generated",
+      "!packages/shared/src/abis.ts",
+      "!.agents",
+      "!agent",
+      "!.claude",
+      "!.codex"
     ]
   },
   "formatter": {
@@ -32,19 +40,47 @@
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "noUnusedImports": "warn",
-        "noUnusedVariables": "warn"
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "useExhaustiveDependencies": "warn"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "error",
+        "useImportType": "warn",
+        "noNestedTernary": "error",
+        "noParameterAssign": "error",
+        "noUselessElse": "error",
+        "useCollapsedElseIf": "error",
+        "noNegationElse": "error",
+        "useConst": "error"
       },
       "suspicious": {
-        "noExplicitAny": "error"
+        "noExplicitAny": "error",
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["warn", "error", "info"]
+          }
+        },
+        "noImportCycles": "warn"
       },
       "a11y": {
         "useAltText": "warn",
         "useButtonType": "warn",
         "useValidAriaRole": "error"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": {
+          "level": "error",
+          "options": {
+            "maxAllowedComplexity": 30
+          }
+        },
+        "noUselessTernary": "error",
+        "noExtraBooleanCast": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error"
       }
     }
   },
@@ -59,5 +95,23 @@
     "formatter": {
       "trailingCommas": "none"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/scripts/**",
+        "**/*.mjs",
+        "packages/api/src/dev.ts",
+        "**/__tests__/**",
+        "**/*.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
 }

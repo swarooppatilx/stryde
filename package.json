@@ -9,13 +9,14 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check-types": "turbo run check-types",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "dev:local": "bash packages/contracts/scripts/dev-local.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
+    "@biomejs/biome": "catalog:",
     "lefthook": "^2.1.12",
     "turbo": "^2.10.12",
-    "typescript": "7.0.2",
+    "typescript": "catalog:",
     "vite": "^6.0.0"
   },
   "engines": {
@@ -24,5 +25,10 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependenciesMeta": {
+    "@shopify/react-native-skia": {
+      "built": true
+    }
+  }
 }

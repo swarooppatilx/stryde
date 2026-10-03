@@ -1,5 +1,6 @@
 {
   "root": false,
+  "extends": "//",
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": {
     "enabled": true,
@@ -7,52 +8,51 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**", "*.ts", "*.tsx", "*.js", "!.expo", "!android", "!ios"]
-  },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2,
-    "lineWidth": 100
-  },
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "single",
-      "semicolons": "always",
-      "trailingCommas": "es5"
-    }
+    "includes": ["src/**", "*.ts", "*.tsx", "*.js", "!.expo", "!android", "!ios", "!expo-env.d.ts"]
   },
   "linter": {
-    "enabled": true,
     "rules": {
-      "preset": "recommended",
       "complexity": {
-        "useArrowFunction": "off"
-      },
-      "correctness": {
-        "useExhaustiveDependencies": "warn",
-        "noUnusedVariables": {
-          "level": "warn",
-          "options": {}
-        }
-      },
-      "style": {
-        "noNonNullAssertion": "off",
-        "useImportType": "warn"
+        "useArrowFunction": "off",
+        "noExcessiveCognitiveComplexity": "warn"
       },
       "suspicious": {
-        "noExplicitAny": "error",
         "noArrayIndexKey": "off"
       },
-      "a11y": {
-        "useAltText": "warn",
-        "useButtonType": "warn",
-        "useValidAriaRole": "error"
+      "style": {
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "react-native": {
+                "importNames": ["Alert"],
+                "message": "Use the themed alert in @/utils/alert."
+              }
+            },
+            "patterns": [
+              {
+                "group": ["../*", "../../*", "../../../*"],
+                "message": "Import through the @/ alias instead of climbing directories."
+              }
+            ]
+          }
+        }
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/utils/alert.ts", "**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
-    "enabled": true,
     "actions": {
       "source": {
         "organizeImports": "on"
