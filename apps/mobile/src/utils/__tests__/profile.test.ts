@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Activity } from '../../types';
-import { computePersonalRecords, computeStreak } from '../profile';
+import type { Activity } from '@/types';
+import { computePersonalRecords, computeStreak, filterBySport } from '@/utils/profile';
 
 function makeActivity(overrides: Partial<Activity> & Pick<Activity, 'id' | 'createdAt'>): Activity {
   return {
@@ -67,6 +67,22 @@ describe('computeStreak', () => {
   });
 });
 
+describe('filterBySport', () => {
+  const run = makeActivity({ id: 'r', createdAt: new Date(), activityType: 'run' });
+  const ride = makeActivity({ id: 'b', createdAt: new Date(), activityType: 'ride' });
+
+  it('keeps everything for "all"', () => {
+    expect(filterBySport([run, ride], 'all')).toEqual([run, ride]);
+  });
+
+  it('keeps only the chosen sport, in the same order', () => {
+    const run2 = makeActivity({ id: 'r2', createdAt: new Date(), activityType: 'run' });
+
+    expect(filterBySport([run, ride, run2], 'run')).toEqual([run, run2]);
+    expect(filterBySport([run, ride], 'swim')).toEqual([]);
+  });
+});
+
 describe('computePersonalRecords', () => {
   it('returns all nulls for empty array', () => {
     const result = computePersonalRecords([]);
@@ -111,6 +127,91 @@ describe('computePersonalRecords', () => {
     expect(result.longestDistance).toBe(a2);
     expect(result.largestTerritory).toBe(a3);
     expect(result.longestDuration).toBe(a2);
+  });
+
+  it('does not let a bike ride, a typed-in entry or a sprint set the pace record', () => {
+    const run = makeActivity({
+      id: 'run',
+      createdAt: new Date(),
+      distance: 5000,
+      duration: 1_500_000,
+    }); // 5:00/km
+    const ride = makeActivity({
+      id: 'ride',
+      createdAt: new Date(),
+      activityType: 'ride',
+      distance: 20_000,
+      duration: 3_000_000, // 2:30/km
+    });
+    const typedIn = makeActivity({
+      id: 'typed',
+      createdAt: new Date(),
+      distance: 10_000,
+      duration: 1_200_000, // 2:00/km, typed by hand
+      isManual: true,
+    });
+    const sprint = makeActivity({
+      id: 'sprint',
+      createdAt: new Date(),
+      distance: 200,
+      duration: 30_000,
+    });
+
+    expect(computePersonalRecords([ride, typedIn, sprint, run]).fastestPace).toBe(run);
+  });
+
+  it('has no pace record when nothing qualifies, rather than the first activity', () => {
+    const ride = makeActivity({ id: 'ride', createdAt: new Date(), activityType: 'ride' });
+
+    expect(computePersonalRecords([ride]).fastestPace).toBeNull();
+  });
+
+  it('keeps the quickest time ever recorded for each standard distance', () => {
+    const early = makeActivity({
+      id: 'early',
+      createdAt: new Date(),
+      bestEfforts: [
+        { distance: 1000, movingTime: 280_000 },
+        { distance: 5000, movingTime: 1_500_000 },
+      ],
+    });
+    const later = makeActivity({
+      id: 'later',
+      createdAt: new Date(),
+      distance: 10_000,
+      bestEfforts: [
+        { distance: 1000, movingTime: 260_000 },
+        { distance: 10_000, movingTime: 3_200_000 },
+      ],
+    });
+    const noEfforts = makeActivity({ id: 'plain', createdAt: new Date() });
+
+    expect(computePersonalRecords([early, later, noEfforts]).bestEfforts).toEqual([
+      { distance: 1000, movingTime: 260_000 },
+      { distance: 5000, movingTime: 1_500_000 },
+      { distance: 10_000, movingTime: 3_200_000 },
+    ]);
+  });
+
+  it('has no best-effort records before any run has them', () => {
+    expect(computePersonalRecords([]).bestEfforts).toEqual([]);
+    expect(
+      computePersonalRecords([makeActivity({ id: '1', createdAt: new Date() })]).bestEfforts
+    ).toEqual([]);
+  });
+
+  it('does not include impossible efforts from short activities in profile records', () => {
+    const result = computePersonalRecords([
+      makeActivity({
+        id: 'short-walk',
+        createdAt: new Date(),
+        activityType: 'walk',
+        distance: 425,
+        bestEfforts: [{ distance: 1000, movingTime: 206_000 }],
+      }),
+    ]);
+
+    expect(result.bestEfforts).toEqual([]);
   });
 
   it('picks fastest pace correctly', () => {
