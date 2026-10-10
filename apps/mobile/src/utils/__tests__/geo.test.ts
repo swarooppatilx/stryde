@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Location } from '../../types';
-import { haversineDistance, rejectOutliers, smoothLocations } from '../geo';
+import type { Location } from '@/types';
+import { haversineDistance, rejectOutliers, smoothLocations } from '@/utils/geo';
 
 function loc(overrides: Partial<Location> & Pick<Location, 'latitude' | 'longitude'>): Location {
   return {
@@ -55,8 +55,8 @@ describe('rejectOutliers', () => {
     ];
     const result = rejectOutliers(points);
     expect(result).toHaveLength(2);
-    expect(result[0].latitude).toBe(0);
-    expect(result[1].latitude).toBe(0.0002);
+    expect(result[0]?.latitude).toBe(0);
+    expect(result[1]?.latitude).toBe(0.0002);
   });
 
   it('drops first point if its accuracy > 30 m', () => {
@@ -72,7 +72,49 @@ describe('rejectOutliers', () => {
     ];
     const result = rejectOutliers(points);
     expect(result).toHaveLength(1);
-    expect(result[0].latitude).toBe(0);
+    expect(result[0]?.latitude).toBe(0);
+  });
+});
+
+describe('rejectOutliers against the last kept point', () => {
+  const METERS_PER_DEG = 111_320;
+  // 2 m/s northward walk, one fix every 10 s
+  const walk = (i: number): Location =>
+    loc({ latitude: (i * 20) / METERS_PER_DEG, longitude: 0, timestamp: i * 10_000 });
+
+  it('drops only the glitched fix, not the good fix after it', () => {
+    const points = [
+      walk(0),
+      walk(1),
+      // one wild fix 2 km east, then the walk carries on
+      loc({ latitude: walk(2).latitude, longitude: 0.018, timestamp: 20_000 }),
+      walk(3),
+      walk(4),
+    ];
+
+    const kept = rejectOutliers(points);
+
+    expect(kept.map((p) => p.timestamp)).toEqual([0, 10_000, 30_000, 40_000]);
+  });
+
+  it('honors a per-activity speed limit instead of a fixed 25 km/h', () => {
+    // 10 m/s = 36 km/h: a cyclist, impossible for a runner
+    const ride = [0, 1, 2, 3].map((i) =>
+      loc({ latitude: (i * 100) / METERS_PER_DEG, longitude: 0, timestamp: i * 10_000 })
+    );
+
+    expect(rejectOutliers(ride)).toHaveLength(1);
+    expect(rejectOutliers(ride, { maxSpeedMs: 50 / 3.6 })).toHaveLength(4);
+  });
+
+  it('re-anchors after repeated rejections so a bad first fix cannot erase the whole track', () => {
+    const badFirst = loc({ latitude: 0.5, longitude: 0, timestamp: 0 });
+    const real = [1, 2, 3, 4, 5].map((i) => walk(i));
+
+    const kept = rejectOutliers([badFirst, ...real]);
+
+    expect(kept.length).toBeGreaterThanOrEqual(3);
+    expect(kept[kept.length - 1]?.timestamp).toBe(50_000);
   });
 });
 
@@ -100,8 +142,8 @@ describe('smoothLocations', () => {
     const smoothed = smoothLocations(points);
     expect(smoothed).toHaveLength(5);
     // Middle points should be pulled toward neighbors
-    expect(smoothed[2].latitude).toBeGreaterThan(0);
-    expect(smoothed[2].latitude).toBeLessThan(1);
+    expect(smoothed[2]?.latitude).toBeGreaterThan(0);
+    expect(smoothed[2]?.latitude).toBeLessThan(1);
   });
 
   it('preserves timestamps from original locations', () => {
@@ -111,9 +153,9 @@ describe('smoothLocations', () => {
       loc({ latitude: 2, longitude: 2, timestamp: 300, accuracy: 5 }),
     ];
     const smoothed = smoothLocations(points);
-    expect(smoothed[0].timestamp).toBe(100);
-    expect(smoothed[1].timestamp).toBe(200);
-    expect(smoothed[2].timestamp).toBe(300);
+    expect(smoothed[0]?.timestamp).toBe(100);
+    expect(smoothed[1]?.timestamp).toBe(200);
+    expect(smoothed[2]?.timestamp).toBe(300);
   });
 
   it('weights higher-accuracy points more heavily', () => {
@@ -124,6 +166,6 @@ describe('smoothLocations', () => {
     ];
     const smoothed = smoothLocations(points);
     // Middle point should be pulled closer to the accurate neighbors
-    expect(smoothed[1].latitude).toBeLessThan(2);
+    expect(smoothed[1]?.latitude).toBeLessThan(2);
   });
 });
