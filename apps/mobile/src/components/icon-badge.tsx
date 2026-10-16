@@ -5,12 +5,12 @@ import { BorderRadius } from '@/constants/theme';
 
 interface IconBadgeProps {
   backgroundColor?: string;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   children: ReactElement;
   style?: ViewStyle;
 }
 
-const SIZES = { sm: 32, md: 40 } as const;
+const SIZES = { sm: 32, md: 40, lg: 72 } as const;
 
 export function IconBadge({ backgroundColor, size = 'sm', children, style }: IconBadgeProps) {
   const dimension = SIZES[size];

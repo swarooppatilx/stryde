@@ -1,6 +1,5 @@
-import React from 'react';
 import { Animated, ImageBackground, StyleSheet, useWindowDimensions, View } from 'react-native';
-import type { AnimatedHeaderProps } from '../types';
+import type { AnimatedHeaderProps } from '@/components/parallax-header/types';
 
 export const AnimatedHeader = ({
   HeaderComponent,
@@ -26,53 +25,55 @@ export const AnimatedHeader = ({
     extrapolate: 'clamp',
   });
 
-  return (
-    <View
-      style={[
-        styles.imgContainer,
-        {
-          marginTop: -imageHeight * 4,
-          paddingTop: imageHeight * 4,
-        },
-      ]}
-    >
-      {HeaderComponent ? (
-        <>
-          {headerImage ? (
-            <AnimatedImageBackground
-              source={headerImage}
-              style={[
-                { height: imageHeight, width: width * 1.2 },
-                {
-                  transform: [
-                    { scale: scale },
-                    { translateY: translateYUp },
-                    { translateY: translateYDown },
-                  ],
-                },
-                imageStyle,
-              ]}
-            >
-              {HeaderComponent}
-            </AnimatedImageBackground>
-          ) : (
-            <>
-              <Animated.View
-                style={[
-                  { height: imageHeight, width },
-                  {
-                    transform: [
-                      { scale },
-                      { translateY: translateYUp },
-                      { translateY: translateYDown },
-                    ],
-                    opacity: headerOpacity,
-                  },
-                ]}
-              >
-                {HeaderComponent}
+  const renderHeader = () => {
+    if (!HeaderComponent) {
+      return (
+        <Animated.Image
+          source={headerImage}
+          style={[
+            { height: imageHeight, width: width * 1.2 },
+            {
+              transform: [{ scale }, { translateY: translateYUp }, { translateY: translateYDown }],
+            },
+            imageStyle,
+          ]}
+        />
+      );
+    }
+    if (headerImage) {
+      return (
+        <AnimatedImageBackground
+          source={headerImage}
+          style={[
+            { height: imageHeight, width: width * 1.2 },
+            {
+              transform: [
+                { scale: scale },
+                { translateY: translateYUp },
+                { translateY: translateYDown },
+              ],
+            },
+            imageStyle,
+          ]}
+        >
+          {HeaderComponent}
+        </AnimatedImageBackground>
+      );
+    }
+    return (
+      <>
+        <Animated.View
+          style={[
+            { height: imageHeight, width },
+            {
+              transform: [{ scale }, { translateY: translateYUp }, { translateY: translateYDown }],
+              opacity: headerOpacity,
+            },
+          ]}
+        >
+          {HeaderComponent}
 
-                {/*
+          {/*
                    <Animated.View
             style={[
               {
@@ -85,43 +86,43 @@ export const AnimatedHeader = ({
           >
             <Animated.View style={[{}]}>{OverlayHeaderContent}</Animated.View>
           </Animated.View> */}
-              </Animated.View>
+        </Animated.View>
 
-              <Animated.View
-                style={[
-                  {
-                    position: 'absolute',
-                    bottom: 0,
-
-                    width: '100%',
-                  },
-                ]}
-              >
-                <Animated.View
-                  style={[
-                    {
-                      opacity,
-                    },
-                  ]}
-                >
-                  {OverlayHeaderContent}
-                </Animated.View>
-              </Animated.View>
-            </>
-          )}
-        </>
-      ) : (
-        <Animated.Image
-          source={headerImage}
+        <Animated.View
           style={[
-            { height: imageHeight, width: width * 1.2 },
             {
-              transform: [{ scale }, { translateY: translateYUp }, { translateY: translateYDown }],
+              position: 'absolute',
+              bottom: 0,
+
+              width: '100%',
             },
-            imageStyle,
           ]}
-        />
-      )}
+        >
+          <Animated.View
+            style={[
+              {
+                opacity,
+              },
+            ]}
+          >
+            {OverlayHeaderContent}
+          </Animated.View>
+        </Animated.View>
+      </>
+    );
+  };
+
+  return (
+    <View
+      style={[
+        styles.imgContainer,
+        {
+          marginTop: -imageHeight * 4,
+          paddingTop: imageHeight * 4,
+        },
+      ]}
+    >
+      {renderHeader()}
     </View>
   );
 };

@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect } from 'react';
 import { Text } from 'react-native';
 import Animated, {
   type SharedValue,
@@ -40,10 +40,7 @@ const Digit = memo(({ value, place, active, enter, fontSize, color, fontWeight }
     const p = Math.min(1, Math.max(0, presence.value));
     return { width: fullWidth * p, opacity: p };
   });
-  const textStyle = useMemo(
-    () => ({ fontSize, color, fontWeight, lineHeight: height }),
-    [fontSize, color, fontWeight, height]
-  );
+  const textStyle = { fontSize, color, fontWeight, lineHeight: height };
 
   return (
     <Animated.View style={[styles.digit, { height }, cellStyle]}>

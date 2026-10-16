@@ -1,6 +1,6 @@
 import type React from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import type { AnimatedScrollViewTitleProps } from '../types';
+import type { AnimatedScrollViewTitleProps } from '@/components/parallax-header/types';
 
 export const AnimatedScrollViewTitle: React.FC<AnimatedScrollViewTitleProps> = ({
   children,
