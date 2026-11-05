@@ -6,6 +6,7 @@ import {
   EventLeft,
 } from '../../generated/EventRegistry/EventRegistry';
 import { Event, EventParticipant } from '../../generated/schema';
+import { getOrCreateProfile } from '../helpers';
 
 function participantId(eventId: string, participant: string): string {
   return eventId.concat('-').concat(participant);
@@ -15,7 +16,7 @@ export function handleEventCreated(event: EventCreated): void {
   const eventId = event.params.eventId.toString();
 
   const evt = new Event(eventId);
-  evt.host = event.params.host;
+  evt.host = getOrCreateProfile(event.params.host).id;
   evt.title = event.params.title;
   evt.description = event.params.description;
   evt.sportType = event.params.sportType;
@@ -31,7 +32,7 @@ export function handleEventCreated(event: EventCreated): void {
 
   const participant = new EventParticipant(participantId(eventId, event.params.host.toHexString()));
   participant.event = eventId;
-  participant.user = event.params.host;
+  participant.user = getOrCreateProfile(event.params.host).id;
   participant.joinedAt = event.params.createdAt;
   participant.active = true;
   participant.save();
@@ -50,7 +51,7 @@ export function handleEventJoined(event: EventJoined): void {
   if (!participant) {
     participant = new EventParticipant(id);
     participant.event = eventId;
-    participant.user = event.params.participant;
+    participant.user = getOrCreateProfile(event.params.participant).id;
   }
   participant.joinedAt = event.block.timestamp;
   participant.active = true;

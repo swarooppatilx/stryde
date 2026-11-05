@@ -1,5 +1,6 @@
-import { type ChainMode, DEFAULT_CHAIN_MODE, getChainConfig } from '@repo/shared';
+import { type ChainMode, DEFAULT_CHAIN_MODE } from '@repo/shared';
 import { Platform } from 'react-native';
+import { activeChainMode } from '@/backends/activeProfile';
 import type { WorldIdEnvironment } from '@/types/worldId';
 
 export const ENV = {
@@ -10,15 +11,8 @@ export const ENV = {
   SUBGRAPH_URL: process.env.EXPO_PUBLIC_SUBGRAPH_URL || '',
   API_URL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
   API_KEY: process.env.EXPO_PUBLIC_API_KEY || '',
-  MAP_STYLE_URL:
-    process.env.EXPO_PUBLIC_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty',
   CHAIN_MODE: (process.env.EXPO_PUBLIC_CHAIN_MODE || DEFAULT_CHAIN_MODE) as ChainMode,
-  // Use a Privy smart account (gasless, sponsored via the paymaster policy
-  // configured in the Privy Dashboard) instead of the raw embedded wallet
-  // for on-chain writes. Only applies in remote (sepolia) modes — no
-  // ERC-4337 bundler/paymaster infra exists on local Anvil. On by default so
-  // new users aren't blocked by an empty embedded wallet needing gas — set
-  // this env var to 'false' to opt back out to the raw embedded wallet.
+  // Privy smart account (gasless, paymaster-sponsored) for on-chain writes. Remote modes only: local Anvil has no ERC-4337 infra. Set to 'false' to use the raw embedded wallet.
   USE_SMART_WALLET: process.env.EXPO_PUBLIC_USE_SMART_WALLET !== 'false',
   WORLD_APP_ID: process.env.EXPO_PUBLIC_WORLD_APP_ID || '',
   WORLD_RP_ID: process.env.EXPO_PUBLIC_WORLD_RP_ID || '',
@@ -30,23 +24,9 @@ export function getLocalRpcUrl(): string {
   return 'http://127.0.0.1:8545';
 }
 
-export function getChainEnv() {
-  return getChainConfig(ENV.CHAIN_MODE);
-}
-
 export const DEFAULT_CENTER: [number, number] = [73.851074, 18.524209];
 
-export const MAP_STYLES = {
-  voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
-  darkMatter: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-} as const;
+// Separate file so stores can import it without pulling in react-native, which keeps them testable.
+export { clearCurrentUserId, getCurrentUserId, setCurrentUserId } from './currentUser';
 
-let _currentUserId = 'current';
-
-export function setCurrentUserId(id: string): void {
-  _currentUserId = id;
-}
-
-export function getCurrentUserId(): string {
-  return _currentUserId;
-}
+export const getChainMode = (): ChainMode => activeChainMode(ENV.CHAIN_MODE);

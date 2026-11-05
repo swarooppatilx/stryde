@@ -25,6 +25,7 @@ contract ChallengeRegistryTest is Test {
     event ChallengeSettled(uint256 indexed challengeId, address indexed winner, address indexed loser, uint256 payout);
     event ChallengeCancelled(uint256 indexed challengeId, address indexed canceller);
     event ChallengeWithdrawn(uint256 indexed challengeId, address indexed withdrawer, uint256 amount);
+    event SettlerUpdated(address indexed newSettler);
 
     function setUp() public {
         registry = new ChallengeRegistry();
@@ -47,6 +48,12 @@ contract ChallengeRegistryTest is Test {
         vm.prank(bob);
         registry.acceptChallenge{value: 0.1 ether}(id);
         return id;
+    }
+
+    /// @dev The settler (this test contract, as deployer) names the winner once the deadline has passed.
+    function _settle(uint256 id, address winner) internal {
+        vm.warp(block.timestamp + 8 days);
+        registry.settleChallenge(id, winner);
     }
 
     // ─── Create ─────────────────────────────────────────────────────
@@ -151,11 +158,11 @@ contract ChallengeRegistryTest is Test {
 
     function test_SettleChallenge() public {
         uint256 id = _createAndAccept();
+        vm.warp(block.timestamp + 8 days);
 
         vm.expectEmit(true, true, true, false);
         emit ChallengeSettled(id, alice, bob, 0.2 ether);
 
-        vm.prank(alice);
         registry.settleChallenge(id, alice);
 
         IChallengeRegistry.Challenge memory c = registry.getChallenge(id);
@@ -166,55 +173,97 @@ contract ChallengeRegistryTest is Test {
     function test_SettleChallenge_RevertNotAccepted() public {
         uint256 id = _createChallenge();
 
-        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.NotSettled.selector);
         registry.settleChallenge(id, alice);
     }
 
     function test_SettleChallenge_RevertNonParticipantWinner() public {
         uint256 id = _createAndAccept();
+        vm.warp(block.timestamp + 8 days);
 
-        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.NotParticipant.selector);
         registry.settleChallenge(id, carol);
     }
 
-    function test_SettleChallenge_RevertNonParticipantCaller() public {
-        uint256 id = _createAndAccept();
-
-        vm.prank(carol);
-        vm.expectRevert(IChallengeRegistry.NotParticipant.selector);
-        registry.settleChallenge(id, alice);
-    }
-
     function test_SettleChallenge_RevertDoubleSettle() public {
         uint256 id = _createAndAccept();
+        _settle(id, alice);
 
-        vm.prank(alice);
-        registry.settleChallenge(id, alice);
-
-        vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.AlreadySettled.selector);
         registry.settleChallenge(id, alice);
     }
 
-    function test_SettleChallenge_RevertAfterDeadline() public {
+    function test_SettleChallenge_RevertBeforeDeadline() public {
         uint256 id = _createAndAccept();
 
+        vm.expectRevert(IChallengeRegistry.DeadlineNotPassed.selector);
+        registry.settleChallenge(id, alice);
+    }
+
+    function test_SettleChallenge_RevertAfterSettleWindow() public {
+        uint256 id = _createAndAccept();
+
+        vm.warp(block.timestamp + 7 days + registry.SETTLE_WINDOW() + 1);
+
+        vm.expectRevert(IChallengeRegistry.SettleWindowClosed.selector);
+        registry.settleChallenge(id, alice);
+    }
+
+    // ─── Settlement authority (F1) ──────────────────────────────────
+
+    function test_Exploit_ParticipantCannotSettleForThemselves() public {
+        uint256 id = _createAndAccept();
+
+        // Straight after both staked, the challenger names themselves winner and would take 2x the stake.
+        vm.prank(alice);
+        vm.expectRevert(IChallengeRegistry.NotSettler.selector);
+        registry.settleChallenge(id, alice);
+    }
+
+    function test_SettleChallenge_RevertNotSettler_EvenAfterDeadline() public {
+        uint256 id = _createAndAccept();
         vm.warp(block.timestamp + 8 days);
 
-        vm.prank(alice);
-        vm.expectRevert(IChallengeRegistry.DeadlinePassed.selector);
+        address[3] memory callers = [alice, bob, carol];
+        for (uint256 i = 0; i < callers.length; i++) {
+            vm.prank(callers[i]);
+            vm.expectRevert(IChallengeRegistry.NotSettler.selector);
+            registry.settleChallenge(id, callers[i] == carol ? alice : callers[i]);
+        }
+    }
+
+    function test_Settler_DefaultsToDeployerAndOwnerCanChangeIt() public {
+        assertEq(registry.settler(), address(this));
+
+        address oracle = makeAddr("oracle");
+        vm.expectEmit(true, false, false, false);
+        emit SettlerUpdated(oracle);
+        registry.setSettler(oracle);
+        assertEq(registry.settler(), oracle);
+
+        // The old settler (the owner) can no longer settle; the new one can.
+        uint256 id = _createAndAccept();
+        vm.warp(block.timestamp + 8 days);
+        vm.expectRevert(IChallengeRegistry.NotSettler.selector);
         registry.settleChallenge(id, alice);
+        vm.prank(oracle);
+        registry.settleChallenge(id, bob);
+    }
+
+    function test_SetSettler_RevertNotOwnerOrZero() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.setSettler(alice);
+
+        vm.expectRevert(IChallengeRegistry.ZeroAddress.selector);
+        registry.setSettler(address(0));
     }
 
     // ─── Withdraw ───────────────────────────────────────────────────
 
     function test_WithdrawWinnerGetsStake() public {
         uint256 id = _createAndAccept();
-
-        vm.prank(alice);
-        registry.settleChallenge(id, alice);
+        _settle(id, alice);
 
         uint256 aliceBalanceBefore = alice.balance;
         vm.prank(alice);
@@ -225,9 +274,7 @@ contract ChallengeRegistryTest is Test {
 
     function test_WithdrawLoserGetsNothing() public {
         uint256 id = _createAndAccept();
-
-        vm.prank(alice);
-        registry.settleChallenge(id, alice);
+        _settle(id, alice);
 
         // Loser (bob) can't withdraw
         vm.prank(bob);
@@ -250,8 +297,7 @@ contract ChallengeRegistryTest is Test {
 
     function test_Withdraw_RevertDoubleWithdraw() public {
         uint256 id = _createAndAccept();
-        vm.prank(alice);
-        registry.settleChallenge(id, alice);
+        _settle(id, alice);
 
         vm.prank(alice);
         registry.withdrawStake(id);
@@ -314,15 +360,11 @@ contract ChallengeRegistryTest is Test {
         registry.withdrawStake(id);
     }
 
-    function test_Withdraw_AfterDeadlineAccepted_BothPartiesReclaimOwnStake() public {
+    function test_Withdraw_AfterSettleWindow_BothPartiesReclaimOwnStake() public {
         uint256 id = _createAndAccept();
 
-        // Both staked, deadline passes, nobody calls settleChallenge.
-        vm.warp(block.timestamp + 8 days);
-
-        vm.prank(alice);
-        vm.expectRevert(IChallengeRegistry.DeadlinePassed.selector);
-        registry.settleChallenge(id, alice);
+        // Both staked, and the settler never named a winner within the window.
+        vm.warp(block.timestamp + 7 days + registry.SETTLE_WINDOW() + 1);
 
         uint256 aliceBalanceBefore = alice.balance;
         vm.prank(alice);
@@ -335,9 +377,31 @@ contract ChallengeRegistryTest is Test {
         assertEq(bob.balance, bobBalanceBefore + 0.1 ether);
     }
 
-    function test_Withdraw_AfterDeadlineAccepted_RevertDoubleWithdraw() public {
+    function test_Withdraw_NoRefundWhileTheSettlerMayStillSettle() public {
         uint256 id = _createAndAccept();
+
+        // Deadline passed but the settle window is open: a loser must not refund first.
         vm.warp(block.timestamp + 8 days);
+
+        vm.prank(bob);
+        vm.expectRevert(IChallengeRegistry.NotSettled.selector);
+        registry.withdrawStake(id);
+    }
+
+    function test_Withdraw_Solvent_WinnerStillPaidInFull() public {
+        uint256 id = _createAndAccept();
+        _settle(id, alice);
+
+        // The contract holds exactly both stakes; the winner takes both and nothing is left owed.
+        assertEq(address(registry).balance, 0.2 ether);
+        vm.prank(alice);
+        registry.withdrawStake(id);
+        assertEq(address(registry).balance, 0);
+    }
+
+    function test_Withdraw_AfterSettleWindow_RevertDoubleWithdraw() public {
+        uint256 id = _createAndAccept();
+        vm.warp(block.timestamp + 7 days + registry.SETTLE_WINDOW() + 1);
 
         vm.prank(alice);
         registry.withdrawStake(id);
@@ -347,9 +411,9 @@ contract ChallengeRegistryTest is Test {
         registry.withdrawStake(id);
     }
 
-    function test_Withdraw_AfterDeadlineAccepted_RevertNonParticipant() public {
+    function test_Withdraw_AfterSettleWindow_RevertNonParticipant() public {
         uint256 id = _createAndAccept();
-        vm.warp(block.timestamp + 8 days);
+        vm.warp(block.timestamp + 7 days + registry.SETTLE_WINDOW() + 1);
 
         vm.prank(carol);
         vm.expectRevert(IChallengeRegistry.NotParticipant.selector);
@@ -359,7 +423,7 @@ contract ChallengeRegistryTest is Test {
     function test_Withdraw_AfterDeadlineAccepted_RevertBeforeDeadline() public {
         uint256 id = _createAndAccept();
 
-        // Still within the deadline: Accepted-but-unsettled withdraw path
+        // Still within the deadline: the Accepted-but-unsettled withdraw path
         // must not be reachable early.
         vm.prank(alice);
         vm.expectRevert(IChallengeRegistry.NotSettled.selector);

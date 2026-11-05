@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IEventRegistry} from "./interfaces/IEventRegistry.sol";
 
-contract EventRegistry is IEventRegistry, Ownable, Pausable {
+contract EventRegistry is IEventRegistry, Ownable2Step, Pausable {
     uint256 private _nextEventId = 1;
 
     mapping(uint256 => StrydeEvent) private _events;
@@ -15,6 +16,9 @@ contract EventRegistry is IEventRegistry, Ownable, Pausable {
     // GroupRegistry's _userGroups/_userGroupIndex).
     mapping(address => uint256[]) private _userEvents;
     mapping(address => mapping(uint256 => uint256)) private _userEventIndex;
+
+    uint256 public constant MAX_TITLE_LENGTH = 100;
+    uint256 public constant MAX_DESCRIPTION_LENGTH = 1000;
 
     constructor() Ownable(msg.sender) {}
 
@@ -29,6 +33,8 @@ contract EventRegistry is IEventRegistry, Ownable, Pausable {
         int32 startLng
     ) external override whenNotPaused returns (uint256 eventId) {
         if (bytes(title).length == 0) revert EmptyTitle();
+        if (bytes(title).length > MAX_TITLE_LENGTH) revert TitleTooLong();
+        if (bytes(description).length > MAX_DESCRIPTION_LENGTH) revert DescriptionTooLong();
         if (endTime <= startTime) revert InvalidTimeRange();
 
         unchecked {
@@ -81,7 +87,13 @@ contract EventRegistry is IEventRegistry, Ownable, Pausable {
 
     function leaveEvent(uint256 eventId) external override whenNotPaused {
         StrydeEvent storage e = _events[eventId];
-        if (!e.active) revert EventNotFound();
+        if (!e.active) {
+            // Cancelled: the host ended it for everyone, so a participant may only clear their own record.
+            if (!_isParticipant[eventId][msg.sender]) revert EventNotFound();
+            _removeParticipant(eventId, msg.sender);
+            emit EventLeft(eventId, msg.sender, 0);
+            return;
+        }
         if (!_isParticipant[eventId][msg.sender]) revert NotParticipant();
 
         // The host can't "leave" while others remain — they should call
@@ -123,7 +135,8 @@ contract EventRegistry is IEventRegistry, Ownable, Pausable {
     }
 
     function isJoined(uint256 eventId, address user) external view override returns (bool) {
-        return _isParticipant[eventId][user];
+        // A cancelled event ended for everyone, whatever the participant record still says.
+        return _isParticipant[eventId][user] && _events[eventId].active;
     }
 
     function getUserEventIds(address user, uint256 offset, uint256 limit)

@@ -1,11 +1,4 @@
-import { parseEventLogs } from 'viem';
-import {
-  getActiveConfig,
-  getChainMode,
-  getContracts,
-  getPublicClient,
-  type getWalletClient,
-} from './client';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
 import { relayMintReward } from './relay';
 
 export async function getTokenBalance(address: `0x${string}`): Promise<bigint> {
@@ -15,7 +8,7 @@ export async function getTokenBalance(address: `0x${string}`): Promise<bigint> {
     ...contracts.moveToEarnToken,
     functionName: 'balanceOf',
     args: [address],
-  }) as Promise<bigint>;
+  });
 }
 
 export async function isRewarded(activityHash: `0x${string}`): Promise<boolean> {
@@ -25,56 +18,16 @@ export async function isRewarded(activityHash: `0x${string}`): Promise<boolean> 
     ...contracts.moveToEarnToken,
     functionName: 'isRewarded',
     args: [activityHash],
-  }) as Promise<boolean>;
+  });
 }
 
-/**
- * Mints STRD reward tokens proportional to distance for a completed activity.
- *
- * `mintForActivity` is role-gated on-chain (MINTER_ROLE). This only succeeds when the
- * calling wallet holds that role — true today only in local dev, where every user
- * shares the deployer account. A real multi-user deployment needs a backend holding
- * the minter key instead.
- */
+/** Asks the relayer to mint STRD for the distance: `mintForActivity` is MINTER_ROLE-gated and an athlete's own wallet does not hold the role, on Sepolia or on a local chain alike. */
 export async function mintTokenForActivity(
-  wallet: ReturnType<typeof getWalletClient>,
+  _wallet: ReturnType<typeof getWalletClient>,
   recipient: `0x${string}`,
   activityHash: `0x${string}`,
   distance: number
 ): Promise<{ amount: bigint; confirmed: boolean }> {
-  if (getChainMode() !== 'local') {
-    const result = await relayMintReward(recipient, activityHash, distance);
-    return { amount: 0n, confirmed: result.confirmed };
-  }
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.moveToEarnToken,
-    functionName: 'mintForActivity',
-    args: [recipient, activityHash, BigInt(Math.round(distance))],
-    account,
-    chain: config.chain,
-  });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') {
-    return { amount: 0n, confirmed: false };
-  }
-
-  const [event] = parseEventLogs({
-    abi: contracts.moveToEarnToken.abi,
-    eventName: 'ActivityRewarded',
-    logs: receipt.logs,
-  });
-
-  return {
-    amount:
-      ((event as { args?: Record<string, unknown> })?.args as { amount?: bigint } | undefined)
-        ?.amount ?? 0n,
-    confirmed: true,
-  };
+  const result = await relayMintReward(recipient, activityHash, distance);
+  return { amount: 0n, confirmed: result.confirmed };
 }

@@ -21,6 +21,9 @@ interface IGroupRegistry {
 
     // Errors
     error EmptyName();
+    error NameTooLong();
+    error LocationTooLong();
+    error DescriptionTooLong();
     error GroupNotFound();
     error AlreadyMember();
     error NotMember();

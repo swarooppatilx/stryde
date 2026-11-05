@@ -1,9 +1,20 @@
 use hex_literal::hex;
+use substreams::scalar::BigInt;
 use substreams_ethereum::pb::eth::v2::Block;
 use substreams_ethereum::Event;
 
 use crate::abi;
 use crate::pb::stryde::v1;
+
+/// Contract fields are uint256 and users control them, so out-of-range values clamp instead of
+/// aborting the whole block (BigInt::to_u64 panics).
+fn saturating_u64(value: &BigInt) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
+fn saturating_u32(value: &BigInt) -> u32 {
+    u32::try_from(saturating_u64(value)).unwrap_or(u32::MAX)
+}
 
 // Sepolia deployment — must match packages/shared/src/constants.ts and
 // packages/subgraph/subgraph.yaml.
@@ -40,10 +51,10 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    profile_id: ev.profile_id.to_u64(),
+                    profile_id: saturating_u64(&ev.profile_id),
                     wallet: ev.wallet,
                     username: ev.username,
-                    joined_at: ev.joined_at.to_u64(),
+                    joined_at: saturating_u64(&ev.joined_at),
                 });
                 continue;
             }
@@ -67,7 +78,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     tx_hash: tx_hash.clone(),
                     wallet: ev.wallet,
                     nullifier_hash: ev.nullifier_hash.to_vec(),
-                    verified_at: ev.verified_at.to_u64(),
+                    verified_at: saturating_u64(&ev.verified_at),
                 });
                 continue;
             }
@@ -81,14 +92,14 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    activity_id: ev.activity_id.to_u64(),
+                    activity_id: saturating_u64(&ev.activity_id),
                     owner: ev.owner,
                     activity_hash: ev.activity_hash.to_vec(),
-                    activity_type: ev.activity_type.to_u64() as u32,
-                    distance: ev.distance.to_u64(),
-                    duration: ev.duration.to_u64(),
-                    timestamp: ev.timestamp.to_u64(),
-                    territory_area: ev.territory_area.to_u64(),
+                    activity_type: saturating_u32(&ev.activity_type),
+                    distance: saturating_u64(&ev.distance),
+                    duration: saturating_u64(&ev.duration),
+                    timestamp: saturating_u64(&ev.timestamp),
+                    territory_area: saturating_u64(&ev.territory_area),
                 });
                 continue;
             }
@@ -101,7 +112,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                         block_number,
                         block_timestamp,
                         tx_hash: tx_hash.clone(),
-                        activity_id: ev.activity_id.to_u64(),
+                        activity_id: saturating_u64(&ev.activity_id),
                         owner: ev.owner,
                         metadata_cid: ev.metadata_cid,
                     });
@@ -119,14 +130,14 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     tx_hash: tx_hash.clone(),
                     territory_id: ev.territory_id.to_vec(),
                     controller: ev.controller,
-                    area_sqm: ev.area_sqm.to_u64(),
+                    area_sqm: saturating_u64(&ev.area_sqm),
                     polygon_hash: ev.polygon_hash.to_vec(),
                     min_lng: ev.min_lng.to_i32(),
                     min_lat: ev.min_lat.to_i32(),
                     max_lng: ev.max_lng.to_i32(),
                     max_lat: ev.max_lat.to_i32(),
-                    captured_at: ev.captured_at.to_u64(),
-                    strength: ev.strength.to_u64(),
+                    captured_at: saturating_u64(&ev.captured_at),
+                    strength: saturating_u64(&ev.strength),
                 });
                 continue;
             }
@@ -140,8 +151,8 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     tx_hash: tx_hash.clone(),
                     territory_id: ev.territory_id.to_vec(),
                     controller: ev.controller,
-                    reinforced_at: ev.reinforced_at.to_u64(),
-                    strength: ev.strength.to_u64(),
+                    reinforced_at: saturating_u64(&ev.reinforced_at),
+                    strength: saturating_u64(&ev.strength),
                 });
                 continue;
             }
@@ -154,8 +165,8 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
                     territory_id: ev.territory_id.to_vec(),
-                    decayed_at: ev.decayed_at.to_u64(),
-                    remaining_strength: ev.remaining_strength.to_u64(),
+                    decayed_at: saturating_u64(&ev.decayed_at),
+                    remaining_strength: saturating_u64(&ev.remaining_strength),
                 });
                 continue;
             }
@@ -168,7 +179,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     tx_hash: tx_hash.clone(),
                     territory_id: ev.territory_id.to_vec(),
                     old_controller: ev.old_controller,
-                    lost_at: ev.lost_at.to_u64(),
+                    lost_at: saturating_u64(&ev.lost_at),
                 });
                 continue;
             }
@@ -180,9 +191,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    season_id: ev.season_id.to_u64(),
-                    start_time: ev.start_time.to_u64(),
-                    end_time: ev.end_time.to_u64(),
+                    season_id: saturating_u64(&ev.season_id),
+                    start_time: saturating_u64(&ev.start_time),
+                    end_time: saturating_u64(&ev.end_time),
                 });
                 continue;
             }
@@ -192,9 +203,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    season_id: ev.season_id.to_u64(),
-                    end_time: ev.end_time.to_u64(),
-                    participant_count: ev.participant_count.to_u64(),
+                    season_id: saturating_u64(&ev.season_id),
+                    end_time: saturating_u64(&ev.end_time),
+                    participant_count: saturating_u64(&ev.participant_count),
                 });
                 continue;
             }
@@ -206,10 +217,10 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    season_id: ev.season_id.to_u64(),
+                    season_id: saturating_u64(&ev.season_id),
                     participant: ev.participant,
-                    contribution: ev.contribution.to_u64(),
-                    total: ev.total.to_u64(),
+                    contribution: saturating_u64(&ev.contribution),
+                    total: saturating_u64(&ev.total),
                 });
                 continue;
             }
@@ -223,7 +234,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    token_id: ev.token_id.to_u64(),
+                    token_id: saturating_u64(&ev.token_id),
                     recipient: ev.recipient,
                     achievement_id: ev.achievement_id.to_vec(),
                 });
@@ -252,12 +263,12 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    challenge_id: ev.challenge_id.to_u64(),
+                    challenge_id: saturating_u64(&ev.challenge_id),
                     challenger: ev.challenger,
                     opponent: ev.opponent,
-                    activity_type: ev.activity_type.to_u64() as u32,
-                    target_metric: ev.target_metric.to_u64(),
-                    deadline: ev.deadline.to_u64(),
+                    activity_type: saturating_u32(&ev.activity_type),
+                    target_metric: saturating_u64(&ev.target_metric),
+                    deadline: saturating_u64(&ev.deadline),
                     stake: ev.stake.to_string(),
                 });
                 continue;
@@ -270,7 +281,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    challenge_id: ev.challenge_id.to_u64(),
+                    challenge_id: saturating_u64(&ev.challenge_id),
                     opponent: ev.opponent,
                 });
                 continue;
@@ -283,7 +294,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    challenge_id: ev.challenge_id.to_u64(),
+                    challenge_id: saturating_u64(&ev.challenge_id),
                     winner: ev.winner,
                     loser: ev.loser,
                     payout: ev.payout.to_string(),
@@ -298,7 +309,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    challenge_id: ev.challenge_id.to_u64(),
+                    challenge_id: saturating_u64(&ev.challenge_id),
                     canceller: ev.canceller,
                 });
                 continue;
@@ -311,7 +322,7 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    challenge_id: ev.challenge_id.to_u64(),
+                    challenge_id: saturating_u64(&ev.challenge_id),
                     withdrawer: ev.withdrawer,
                     amount: ev.amount.to_string(),
                 });
@@ -325,13 +336,13 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    group_id: ev.group_id.to_u64(),
+                    group_id: saturating_u64(&ev.group_id),
                     owner: ev.owner,
                     name: ev.name,
                     location: ev.location,
                     description: ev.description,
-                    sport_type: ev.sport_type.to_u64() as u32,
-                    created_at: ev.created_at.to_u64(),
+                    sport_type: saturating_u32(&ev.sport_type),
+                    created_at: saturating_u64(&ev.created_at),
                 });
                 continue;
             }
@@ -341,9 +352,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    group_id: ev.group_id.to_u64(),
+                    group_id: saturating_u64(&ev.group_id),
                     member: ev.member,
-                    member_count: ev.member_count.to_u64(),
+                    member_count: saturating_u64(&ev.member_count),
                 });
                 continue;
             }
@@ -353,9 +364,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    group_id: ev.group_id.to_u64(),
+                    group_id: saturating_u64(&ev.group_id),
                     member: ev.member,
-                    member_count: ev.member_count.to_u64(),
+                    member_count: saturating_u64(&ev.member_count),
                 });
                 continue;
             }
@@ -365,9 +376,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    group_id: ev.group_id.to_u64(),
+                    group_id: saturating_u64(&ev.group_id),
                     last_owner: ev.last_owner,
-                    dissolved_at: ev.dissolved_at.to_u64(),
+                    dissolved_at: saturating_u64(&ev.dissolved_at),
                 });
                 continue;
             }
@@ -379,9 +390,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    activity_id: ev.activity_id.to_u64(),
+                    activity_id: saturating_u64(&ev.activity_id),
                     giver: ev.giver,
-                    timestamp: ev.timestamp.to_u64(),
+                    timestamp: saturating_u64(&ev.timestamp),
                 });
                 continue;
             }
@@ -391,9 +402,9 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    activity_id: ev.activity_id.to_u64(),
+                    activity_id: saturating_u64(&ev.activity_id),
                     giver: ev.giver,
-                    timestamp: ev.timestamp.to_u64(),
+                    timestamp: saturating_u64(&ev.timestamp),
                 });
                 continue;
             }
@@ -403,11 +414,11 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
                     block_number,
                     block_timestamp,
                     tx_hash: tx_hash.clone(),
-                    activity_id: ev.activity_id.to_u64(),
+                    activity_id: saturating_u64(&ev.activity_id),
                     author: ev.author,
                     comment_id: ev.comment_id.to_vec(),
                     comment_cid: ev.comment_cid,
-                    timestamp: ev.timestamp.to_u64(),
+                    timestamp: saturating_u64(&ev.timestamp),
                 });
                 continue;
             }
@@ -415,4 +426,24 @@ pub fn extract_events(block: Block) -> Result<v1::Events, substreams::errors::Er
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_values_that_fit() {
+        assert_eq!(saturating_u64(&BigInt::from(1234u64)), 1234);
+        assert_eq!(saturating_u32(&BigInt::from(7u64)), 7);
+    }
+
+    #[test]
+    fn clamps_instead_of_panicking_when_the_value_is_too_large() {
+        let huge: BigInt = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+            .parse()
+            .unwrap();
+        assert_eq!(saturating_u64(&huge), u64::MAX);
+        assert_eq!(saturating_u32(&huge), u32::MAX);
+    }
 }

@@ -6,12 +6,9 @@ health.get('/', async (c) => {
   const checks: Record<string, string> = {};
   let healthy = true;
 
-  const hasPinataKeys = !!(process.env.PINATA_API_KEY && process.env.PINATA_SECRET_KEY);
-  const hasPinataJwt = !!(process.env.PINATA_JWT && process.env.PINATA_GATEWAY_URL);
-  if (hasPinataKeys) {
+  // Matches what /ipfs/upload actually requires: it signs with the key pair, never a JWT.
+  if (process.env.PINATA_API_KEY && process.env.PINATA_SECRET_KEY) {
     checks.pinata = 'configured';
-  } else if (hasPinataJwt) {
-    checks.pinata = 'configured (jwt)';
   } else {
     checks.pinata = 'missing';
     healthy = false;

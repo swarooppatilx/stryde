@@ -2,13 +2,14 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IAchievementRegistry} from "./interfaces/IAchievementRegistry.sol";
 
-contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable, AccessControl {
+contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable2Step, Pausable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     event BaseURIUpdated(string oldURI, string newURI);
@@ -39,7 +40,10 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
         emit AchievementDefined(achievementId, name);
     }
 
-    function defineAchievement(uint256 achievementId, string calldata name, string calldata) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function defineAchievement(uint256 achievementId, string calldata name, string calldata)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (bytes(name).length == 0) revert EmptyAchievement();
 
         bytes32 id = bytes32(achievementId);
@@ -62,13 +66,22 @@ contract AchievementRegistry is IAchievementRegistry, ERC721, Ownable, Pausable,
         emit AchievementMinted(tokenId, recipient, achievementId);
     }
 
-    function mintAchievement(address to, uint256 achievementId, bytes32 activityHash) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
+    function mintAchievement(address to, uint256 achievementId, bytes32 activityHash)
+        external
+        whenNotPaused
+        onlyRole(MINTER_ROLE)
+        returns (uint256)
+    {
         if (to == address(0)) revert ZeroAddress();
         bytes32 id = bytes32(achievementId);
         Achievement storage achievement = _achievements[id];
         if (!achievement.exists) revert EmptyAchievement();
+        // Same once-per-recipient rule as the bytes32 overload — this one
+        // shares _hasMinted, so neither entry point can re-mint the other's badge.
+        if (_hasMinted[to][id]) revert AlreadyMinted();
 
         uint256 tokenId = _nextTokenId++;
+        _hasMinted[to][id] = true;
         _mint(to, tokenId);
         _tokenAchievement[tokenId] = id;
         _userTokens[to].push(tokenId);

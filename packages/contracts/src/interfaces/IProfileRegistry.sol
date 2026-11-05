@@ -17,6 +17,8 @@ interface IProfileRegistry {
     error UsernameTaken();
     error AlreadyVerified();
     error NotAuthorizedVerifier();
+    error NullifierAlreadyUsed();
+    error ZeroAddress();
 
     // Functions
     function register(string calldata username) external returns (uint256 profileId);

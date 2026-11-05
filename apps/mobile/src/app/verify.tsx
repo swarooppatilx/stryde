@@ -1,19 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { DEV_TOOLS } from '@/constants/devTools';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useGoBack } from '@/hooks/useGoBack';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
+import { formatLongDate } from '@/utils/dates';
+import { getParsedError } from '@/utils/errors';
+
+const STATUS_MESSAGE: Record<string, string> = {
+  opening: 'Opening World ID\u2026',
+  polling: 'Complete Selfie Check in World ID, then return here.',
+};
 
 export default function VerifyScreen() {
-  const router = useRouter();
+  const goBack = useGoBack();
   const theme = useTheme();
   const {
     isVerified,
@@ -28,38 +36,27 @@ export default function VerifyScreen() {
 
   useEffect(() => {
     if (status === 'success') {
-      const timer = setTimeout(() => router.back(), 1200);
+      const timer = setTimeout(() => goBack(), 1200);
       return () => clearTimeout(timer);
     }
-  }, [status, router]);
+  }, [status, goBack]);
 
-  const statusMessage =
-    status === 'opening'
-      ? 'Opening World ID\u2026'
-      : status === 'polling'
-        ? 'Complete Selfie Check in World ID, then return here.'
-        : null;
+  const statusMessage = STATUS_MESSAGE[status] ?? null;
 
-  const verifiedDate =
-    verifiedAt &&
-    new Date(verifiedAt).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
+  const verifiedDate = verifiedAt && formatLongDate(verifiedAt);
 
   return (
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
+          <Tappable
+            onPress={goBack}
             style={[styles.backBtn, { backgroundColor: theme.backgroundElement }]}
             accessibilityRole="button"
             accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={theme.text} />
-          </TouchableOpacity>
+          </Tappable>
           <ThemedText type="headline">Verification</ThemedText>
           <View style={styles.backBtn} />
         </ThemedView>
@@ -69,11 +66,11 @@ export default function VerifyScreen() {
             <ThemedView style={[styles.heroIcon, { backgroundColor: theme.backgroundElement }]}>
               <Ionicons
                 name={isVerified ? 'checkmark-circle' : 'shield-checkmark'}
-                size={40}
+                size={32}
                 color={isVerified ? Brand.verified : theme.brand.primary}
               />
             </ThemedView>
-            <ThemedText type="subtitle" style={styles.heroTitle}>
+            <ThemedText type="headline" style={styles.heroTitle}>
               {isVerified ? 'You are verified' : 'Verify you are human'}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.heroSubtitle}>
@@ -91,7 +88,7 @@ export default function VerifyScreen() {
                 <ThemedView style={styles.benefitCopy}>
                   <ThemedText type="smallBold">Real athlete badge</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    Show a verified check on your profile, similar to social apps.
+                    Show a verified check on your profile.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
@@ -116,24 +113,32 @@ export default function VerifyScreen() {
             </Card>
           )}
 
-          {!isConfigured && (
-            <Card style={{ ...styles.card, borderWidth: 1, borderColor: theme.brand.warning }}>
-              <ThemedText type="sectionTitle">Setup required</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                Add your World app credentials to the mobile .env file:
-              </ThemedText>
-              <ThemedText type="caption" style={styles.mono}>
-                EXPO_PUBLIC_WORLD_APP_ID, EXPO_PUBLIC_WORLD_RP_ID, EXPO_PUBLIC_WORLD_ENVIRONMENT
-              </ThemedText>
-              <ThemedText
-                type="caption"
-                themeColor="textSecondary"
-                style={{ marginTop: Spacing.two }}
-              >
-                The API server handles World ID request signing; nothing to run locally.
-              </ThemedText>
-            </Card>
-          )}
+          {!isConfigured &&
+            (DEV_TOOLS.enabled ? (
+              <Card style={{ ...styles.card, borderWidth: 1, borderColor: theme.brand.warning }}>
+                <ThemedText type="sectionTitle">Setup required</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Add your World app credentials to the mobile .env file:
+                </ThemedText>
+                <ThemedText type="caption" style={styles.mono}>
+                  EXPO_PUBLIC_WORLD_APP_ID, EXPO_PUBLIC_WORLD_RP_ID, EXPO_PUBLIC_WORLD_ENVIRONMENT
+                </ThemedText>
+                <ThemedText
+                  type="caption"
+                  themeColor="textSecondary"
+                  style={{ marginTop: Spacing.two }}
+                >
+                  The API server handles World ID request signing; nothing to run locally.
+                </ThemedText>
+              </Card>
+            ) : (
+              // Athletes can't fix a missing build setting, so they get a plain notice, not env var names.
+              <Card style={styles.card}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Verification isn't available right now. Try again after the next update.
+                </ThemedText>
+              </Card>
+            ))}
 
           {statusMessage && (
             <Card style={styles.card}>
@@ -150,7 +155,10 @@ export default function VerifyScreen() {
                 Verification failed
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {error.message}
+                {getParsedError(error)}
+              </ThemedText>
+              <ThemedText type="caption" themeColor="textSecondary">
+                {VERIFY_RETRY_HINT}
               </ThemedText>
             </Card>
           )}
@@ -159,14 +167,16 @@ export default function VerifyScreen() {
             <Card style={styles.card}>
               <ThemedView style={styles.statusRow}>
                 <Ionicons name="checkmark-circle" size={18} color={Brand.verified} />
-                <ThemedText type="small">
-                  Verification complete. Returning to profile\u2026
-                </ThemedText>
+                <ThemedText type="small">Verification complete. Returning to profile…</ThemedText>
               </ThemedView>
             </Card>
           )}
 
-          {!isVerified ? (
+          {isVerified ? (
+            <AppButton variant="secondary" onPress={goBack}>
+              Back to profile
+            </AppButton>
+          ) : (
             <AppButton
               onPress={startVerification}
               loading={isBusy}
@@ -175,24 +185,23 @@ export default function VerifyScreen() {
             >
               Verify with World ID
             </AppButton>
-          ) : (
-            <AppButton variant="secondary" onPress={() => router.back()}>
-              Back to profile
-            </AppButton>
           )}
 
           {error && (
-            <TouchableOpacity onPress={resetFlow} style={styles.retryLink}>
-              <ThemedText type="small" style={{ color: theme.brand.primary }}>
+            <Tappable onPress={resetFlow} style={styles.retryLink}>
+              <ThemedText type="small" style={{ color: theme.accentText }}>
                 Reset and try again
               </ThemedText>
-            </TouchableOpacity>
+            </Tappable>
           )}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
 }
+
+const VERIFY_RETRY_HINT =
+  'Check that the World App is installed and signed in, then use Reset and try again below.';
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

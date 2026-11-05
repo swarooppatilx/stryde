@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,46 +18,130 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: corepack enable
+          cache: yarn
       - run: yarn install --immutable
-      # Gates run on the deployment-relevant packages only. mobile/contracts/
-      # subgraph carry pre-existing lint/deploy debt that needs its own pass;
-      # excluding them keeps this pipeline green. Their builds are exercised
-      # by the Vercel preview integrations.
-      - run: yarn turbo run lint --filter=@repo/api --filter=web
+      # contracts/subgraph have their own toolchains and are not gated here yet.
+      - run: yarn turbo run lint --filter=@repo/api --filter=@repo/shared --filter=mobile --filter=web
+      - run: yarn workspace @repo/shared check:abis
 
   check-types:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: corepack enable
+          cache: yarn
       - run: yarn install --immutable
-      - run: yarn turbo run check-types --filter=@repo/api --filter=web
+      - run: yarn turbo run check-types --filter=@repo/api --filter=@repo/shared --filter=mobile --filter=web
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: corepack enable
+          cache: yarn
       - run: yarn install --immutable
-      - run: yarn turbo run test --filter=@repo/api --filter=web
+      # `web` is deliberately absent: it has no tests and sets passWithNoTests,
+      # so including it only made this leg look green.
+      - run: yarn turbo run test --filter=@repo/api --filter=@repo/shared --filter=mobile
+      # Fails if the logic layers (utils, services, stores, backends) lose coverage; see vitest.config.ts.
+      - run: yarn workspace mobile test:coverage
 
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: corepack enable
+          cache: yarn
       - run: yarn install --immutable
       - run: yarn turbo run build --filter=@repo/api --filter=web
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      # `forge fmt --check` is not gated yet: the sources have formatting drift, and
+      # reformatting deployed contracts waits for the next planned redeploy.
+      - run: forge build --sizes
+      - run: forge test
+      # The subgraph reads its ABIs from forge's out/, so it builds here.
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --immutable
+        working-directory: .
+      # The committed ABIs are only as fresh as the last time someone ran the
+      # generator: `check:abis` compares the inline abis.ts against the committed
+      # JSON, so a .sol edit that was never regenerated still passes it. forge is
+      # available in this job, so regenerate from source and fail on any diff.
+      - run: yarn workspace @repo/contracts generate:abi
+        working-directory: .
+      - run: git diff --exit-code -- packages/contracts/src/abis packages/shared/src/abis.ts
+        working-directory: .
+      - run: yarn workspace @repo/subgraph codegen && yarn workspace @repo/subgraph build
+        working-directory: .
+
+  # What the contracts really answer when a request is repeated: the app's offline queue retries
+  # writes and treats specific reverts (DuplicateComment, AlreadyMember, ...) as "already done".
+  chain-behaviour:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --immutable
+      - name: Start anvil
+        run: |
+          anvil --port 8545 --silent &
+          for _ in $(seq 1 30); do cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1 && break; sleep 0.5; done
+          cast block-number --rpc-url http://127.0.0.1:8545
+      - run: ANVIL_EXTERNAL=1 bash packages/contracts/scripts/deploy-local.sh
+      # Anvil's addresses are deterministic: if deploying rewrote the committed local maps, they
+      # had drifted from the deploy order.
+      - run: git diff --exit-code -- packages/shared/src/constants.ts packages/api/src/lib/chainConfig.ts
+      - run: yarn workspace @repo/shared test:anvil
+      # The relay routes (settlement, rewards) against the same chain: the rules the contracts enforce,
+      # checked end to end instead of against mocks of viem.
+      - run: yarn workspace @repo/api test:anvil
+
+  substreams:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/substreams
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: bufbuild/buf-setup-action@v1
+      # The generated protobuf code is not committed; buf rebuilds it from proto/.
+      - run: buf generate proto --template buf.gen.yaml
+      - run: cargo test --locked
+      - run: cargo build --locked --release --target wasm32-unknown-unknown

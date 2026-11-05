@@ -1,25 +1,30 @@
-import { Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
-
+import { Modal, StyleSheet, View } from 'react-native';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { Palette } from '@/constants/palette';
+import { BorderRadius, Spacing, tint } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 import { type AlertButton, useAlertStore } from '@/stores/alertStore';
 import { haptics } from '@/utils/haptics';
 
-/** Mounted once at the app root. Renders whatever `@/utils/alert`'s `Alert`
- * shim currently has active — a themed modal card instead of the OS-native
- * alert dialog, matching light/dark mode. */
+/** Mounted once at the app root; renders the active `@/utils/alert` dialog as a themed modal card. */
 export function AlertHost() {
   const theme = useTheme();
   const visible = useAlertStore((s) => s.visible);
   const title = useAlertStore((s) => s.title);
   const message = useAlertStore((s) => s.message);
   const buttons = useAlertStore((s) => s.buttons);
+  const onDismiss = useAlertStore((s) => s.onDismiss);
   const hide = useAlertStore((s) => s.hide);
-  // 3+ options (an action-sheet-style choice, not a simple confirm) reads
-  // better stacked — a row starts wrapping/squeezing text at that point.
+  // With 3 or more options a row starts squeezing text, so stack them.
   const stacked = buttons.length > 2;
+
+  const dismiss = () => {
+    hide();
+    onDismiss?.();
+  };
 
   const handlePress = (button: AlertButton) => {
     haptics.tap();
@@ -38,14 +43,14 @@ export function AlertHost() {
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={hide}
+      onRequestClose={dismiss}
       statusBarTranslucent
     >
       <View style={styles.backdrop}>
-        <TouchableOpacity
+        <Tappable
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
-          onPress={hide}
+          onPress={dismiss}
           accessibilityLabel="Dismiss dialog"
         />
         <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
@@ -67,7 +72,7 @@ export function AlertHost() {
             ]}
           >
             {buttons.map((button, index) => (
-              <TouchableOpacity
+              <Tappable
                 key={`${button.text}-${index}`}
                 style={[
                   styles.button,
@@ -94,7 +99,7 @@ export function AlertHost() {
                 >
                   {button.text}
                 </ThemedText>
-              </TouchableOpacity>
+              </Tappable>
             ))}
           </View>
         </ThemedView>
@@ -106,7 +111,7 @@ export function AlertHost() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: tint(Palette.black, 0.5),
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.five,
@@ -148,7 +153,7 @@ const styles = StyleSheet.create({
     flex: 0,
   },
   buttonText: {
-    fontSize: 15,
+    ...textStyle(TypeScale.callout),
   },
   buttonTextEmphasis: {
     fontWeight: '700',

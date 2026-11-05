@@ -14,14 +14,20 @@
   "scripts": {
     "lint": "biome check .",
     "test": "vitest run",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "generate:abis": "node scripts/generate-abis.mjs",
+    "check:abis": "node scripts/generate-abis.mjs --check",
+    "demo:preflight": "node --import tsx scripts/demo-preflight.mjs",
+    "demo:seed": "node --import tsx scripts/seed-demo.mjs",
+    "deploy:sync": "node scripts/sync-deployment.mjs",
+    "test:anvil": "vitest run --config vitest.anvil.config.ts"
   },
   "dependencies": {
-    "viem": "^2.56.3"
+    "viem": "catalog:"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
-    "typescript": "7.0.2",
-    "vitest": "^5.0.0"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

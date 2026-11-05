@@ -11,17 +11,22 @@ ANVIL_PORT="${ANVIL_PORT:-8545}"
 ANVIL_RPC="http://127.0.0.1:$ANVIL_PORT"
 PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
-echo "=== Starting Anvil on port $ANVIL_PORT ==="
-anvil --port "$ANVIL_PORT" --silent &
-ANVIL_PID=$!
+# ANVIL_EXTERNAL=1: a node is already running on the port (see dev-local.sh), so neither start nor stop one.
+if [ "${ANVIL_EXTERNAL:-0}" = "1" ]; then
+  echo "=== Using the Anvil already running on port $ANVIL_PORT ==="
+else
+  echo "=== Starting Anvil on port $ANVIL_PORT ==="
+  anvil --port "$ANVIL_PORT" --silent &
+  ANVIL_PID=$!
 
-cleanup() {
-  echo "=== Stopping Anvil (PID: $ANVIL_PID) ==="
-  kill "$ANVIL_PID" 2>/dev/null || true
-}
-trap cleanup EXIT
+  cleanup() {
+    echo "=== Stopping Anvil (PID: $ANVIL_PID) ==="
+    kill "$ANVIL_PID" 2>/dev/null || true
+  }
+  trap cleanup EXIT
 
-sleep 2
+  sleep 2
+fi
 
 echo "=== Deploying contracts to local Anvil ==="
 export PRIVATE_KEY
@@ -172,6 +177,46 @@ with open('$SHARED_CONSTANTS', 'w') as f:
     f.write(new_content)
 
 print('Updated local addresses in constants.ts')
+"
+
+# The API relayer keeps its own copy of the local map — if it lags behind
+# constants.ts, relayed writes hit the wrong (or no) contract.
+echo "=== Auto-updating api chainConfig.ts ==="
+
+API_CHAIN_CONFIG="$SCRIPT_DIR/../../api/src/lib/chainConfig.ts"
+
+python3 -c "
+import re
+
+with open('$API_CHAIN_CONFIG', 'r') as f:
+    content = f.read()
+
+addresses = {}
+raw = '''$(printf '%s\n' "${CONTRACT_ADDRESSES[@]}")'''
+for line in raw.strip().split('\n'):
+    if '=' in line:
+        k, v = line.split('=', 1)
+        addresses[k.strip()] = v.strip()
+
+pattern = r'(LOCAL_CONTRACTS[^=]*= \{)([^}]*)(\})'
+
+def replace_addresses(match):
+    prefix, body, suffix = match.groups()
+    for key, addr in addresses.items():
+        if re.search(rf'\b{re.escape(key)}:', body):
+            body = re.sub(rf'({re.escape(key)}:\s*)\x27[^\x27]*\x27', lambda m, a=addr: m.group(1) + chr(39) + a + chr(39), body)
+        else:
+            body = body.rstrip() + '\n  ' + key + ': ' + chr(39) + addr + chr(39) + ',\n'
+    return prefix + body + suffix
+
+new_content, n = re.subn(pattern, replace_addresses, content, flags=re.DOTALL)
+if n != 1:
+    raise SystemExit('LOCAL_CONTRACTS block not found in chainConfig.ts')
+
+with open('$API_CHAIN_CONFIG', 'w') as f:
+    f.write(new_content)
+
+print('Updated local addresses in api chainConfig.ts')
 "
 
 echo ""

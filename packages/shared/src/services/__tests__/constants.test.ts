@@ -1,3 +1,4 @@
+import { isAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { ACTIVITY_TYPE_BY_ID, ACTIVITY_TYPE_MAP, getChainConfig } from '../../constants';
 
@@ -55,4 +56,17 @@ describe('getChainConfig', () => {
     expect(config.chainId).toBe(31337);
     expect(config.rpcUrl).toBe('http://127.0.0.1:8545');
   });
+});
+
+// viem rejects a mixed-case address whose EIP-55 checksum is wrong, and every
+// contract call with it throws "Address ... is invalid" — that took down
+// profile setup for every user after the Sepolia addresses were hand-cased.
+describe('contract addresses', () => {
+  for (const mode of ['ethereum-sepolia', 'base-sepolia', 'local'] as const) {
+    it(`${mode} addresses are valid checksummed addresses`, () => {
+      for (const [name, address] of Object.entries(getChainConfig(mode).contracts)) {
+        expect(isAddress(address), `${mode}.${name} = ${address}`).toBe(true);
+      }
+    });
+  }
 });

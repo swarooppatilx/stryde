@@ -1,24 +1,40 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import {
-  Keyboard,
-  KeyboardAvoidingView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-
+import { Keyboard, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getOutbox } from '@/backends/outbox/appOutbox';
 import { AvatarStack } from '@/components/avatar-stack';
+import { CommentRow } from '@/components/comment-row';
+import { ReportSheet } from '@/components/report-sheet';
+import { shimmerPresetFor } from '@/components/Shimmer/const';
+import { ShimmerEffect as Shimmer } from '@/components/Shimmer/Shimmer';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Tray } from '@/components/tray';
-import { getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { Palette } from '@/constants/palette';
+import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useHiddenAuthors } from '@/hooks/useHiddenAuthors';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { useDeliveryContext, useOutboxEntries } from '@/hooks/useOutbox';
+import { useReportSheet } from '@/hooks/useReport';
+import { useReportedHidden } from '@/hooks/useReportedHidden';
+import { useUserResolver } from '@/hooks/useSocialUser';
 import { activityKey, useSocialStore } from '@/stores/socialStore';
-import { formatRelativeTime, getDisplayName, getInitials } from '@/utils/format';
-import { haptics, impactLight } from '@/utils/haptics';
+import { sameAddress } from '@/utils/address';
+import { charactersLeft, commentListMaxHeight } from '@/utils/commentUi';
+import { deliveryStateOf } from '@/utils/deliveryState';
+import { formatRelativeTime, getDisplayName } from '@/utils/format';
+import { haptics } from '@/utils/haptics';
+import { canReport } from '@/utils/reporting';
+import { visibleComments } from '@/utils/visibleComments';
+import { ListMessage } from './list-message';
+
+const MAX_COMMENT_LENGTH = 500;
+const SKELETON_ROWS = 3;
 
 interface CommentsSheetProps {
   visible: boolean;
@@ -26,23 +42,54 @@ interface CommentsSheetProps {
   onClose: () => void;
 }
 
-function formatLikeCount(count: number): string {
-  if (count === 0) return 'Like';
-  if (count === 1) return '1 Like';
-  return `${count} Likes`;
+function CommentSkeleton() {
+  const theme = useTheme();
+  const preset = shimmerPresetFor(theme.isDark);
+  return (
+    <View style={styles.skeleton} accessibilityLabel="Loading comments">
+      {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+        <View key={i} style={styles.skeletonRow}>
+          <Shimmer isLoading preset={preset} style={styles.skeletonAvatar} />
+          <View style={styles.skeletonLines}>
+            <Shimmer isLoading preset={preset} style={styles.skeletonName} />
+            <Shimmer isLoading preset={preset} style={styles.skeletonText} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function commentAuthorName(
+  isMe: boolean,
+  user: Parameters<typeof getDisplayName>[0] | undefined
+): string {
+  if (isMe) return 'You';
+  return user ? getDisplayName(user) : 'Unknown';
 }
 
 export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetProps) {
   const theme = useTheme();
+  const me = useCurrentUserId();
   const [text, setText] = useState('');
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  // The tray already leaves a margin above the bottom inset, so only the rest of the keyboard needs room.
+  const keyboardGap = Math.max(0, keyboardHeight - Math.max(insets.bottom, 12));
+  const outboxEntries = useOutboxEntries();
+  const deliveryContext = useDeliveryContext(outboxEntries.length > 0);
 
-  // Subscribe to store by activity ID — always fresh, never stale
   const activity = useSocialStore((s) =>
     activityId ? (s.activities[activityKey(s.activities, activityId)] ?? null) : null
   );
   const addComment = useSocialStore((s) => s.addComment);
   const toggleCommentLike = useSocialStore((s) => s.toggleCommentLike);
-  const getUserById = useSocialStore((s) => s.getUserById);
+  const fetchActivities = useSocialStore((s) => s.fetchActivities);
+  const getUserById = useUserResolver();
+  const [loading, setLoading] = useState(false);
+  const report = useReportSheet();
+  const reportedComments = useReportedHidden().comments;
 
   // Reset text when switching activities
   // biome-ignore lint/correctness/useExhaustiveDependencies: activityId is a trigger, not read in the body
@@ -50,14 +97,20 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
     setText('');
   }, [activityId]);
 
-  if (!activityId || !activity) return null;
+  const reload = async () => {
+    setLoading(true);
+    await fetchActivities();
+    setLoading(false);
+  };
+
+  if (!activityId) return null;
 
   const handleSend = () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    addComment(activity.id, trimmed);
+    if (!trimmed || !activity) return;
+    void addComment(activity.id, trimmed);
     setText('');
-    impactLight();
+    haptics.tap();
   };
 
   const handleClose = () => {
@@ -66,244 +119,251 @@ export function CommentsSheet({ visible, activityId, onClose }: CommentsSheetPro
   };
 
   const handleLike = (commentId: string) => {
+    if (!activity) return;
     toggleCommentLike(activity.id, commentId);
     haptics.tap();
   };
 
+  const retry = (commentId: string) => {
+    const outbox = getOutbox();
+    const entry = outbox.entries().find((e) => e.key === `comment:${commentId}`);
+    if (entry) void outbox.retry(entry.id).then(() => outbox.drain());
+  };
+
+  // Held-down comment: offered a report unless it is the athlete's own.
+  const askReport = (comment: { id: string; userId: string }) => {
+    const target = { kind: 'comment', id: comment.id, ownerId: comment.userId } as const;
+    if (!canReport(target, me)) return;
+    haptics.tap();
+    report.ask(target);
+  };
+
+  const hiddenAuthors = useHiddenAuthors();
+  const comments = activity
+    ? visibleComments(activity.comments, reportedComments, hiddenAuthors)
+    : [];
+  const left = charactersLeft(text.length, MAX_COMMENT_LENGTH);
+  const keyboardOpen = keyboardHeight > 0;
+
+  const renderComments = () => {
+    if (!activity) {
+      if (loading || !visible) {
+        return <CommentSkeleton />;
+      }
+      return (
+        <ListMessage
+          icon="cloud-offline-outline"
+          text="Couldn't load this discussion."
+          action={{ label: 'Try again', onPress: () => void reload() }}
+        />
+      );
+    }
+    if (comments.length === 0) {
+      return (
+        <View style={styles.empty}>
+          <Ionicons name="chatbubble-outline" size={36} color={theme.brand.primary} />
+          <ThemedText type="sectionTitle">No comments yet</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+            Be the first to say something about this activity.
+          </ThemedText>
+        </View>
+      );
+    }
+    return comments.map((comment) => {
+      const commentUser = getUserById(comment.userId);
+      const isMe = sameAddress(comment.userId, me);
+      const displayName = commentAuthorName(isMe, commentUser);
+      const likes = comment.likedBy ?? [];
+      return (
+        <CommentRow
+          key={comment.id}
+          name={displayName}
+          avatarUri={commentUser?.avatar}
+          verified={commentUser?.isVerified}
+          text={comment.text}
+          createdAt={comment.createdAt}
+          likes={likes.length}
+          liked={likes.some((id) => sameAddress(id, me))}
+          delivery={deliveryStateOf(outboxEntries, `comment:${comment.id}`, deliveryContext)}
+          onLike={() => handleLike(comment.id)}
+          onRetry={() => retry(comment.id)}
+          onLongPress={isMe ? undefined : () => askReport(comment)}
+        />
+      );
+    });
+  };
+
   return (
-    <Tray
-      open={visible}
-      onOpenChange={(open) => {
-        if (!open) handleClose();
-      }}
-      theme={theme.isDark ? 'dark' : 'light'}
-      palette={{
-        surface: theme.backgroundElement,
-        border: theme.border,
-        handle: theme.border,
-        text: theme.text,
-        mutedText: theme.textSecondary,
-        backdrop: 'rgba(0,0,0,0.4)',
-      }}
-    >
-      <Tray.Content>
-        {/* The tray renders in its own layer, so Android's adjustResize doesn't
-            lift it — pad for the keyboard on both platforms. */}
-        <KeyboardAvoidingView behavior="padding">
-          <Tray.View id="default">
-            {/* Header */}
-            <Tray.Header>
-              <ThemedText type="sectionTitle">Discussion</ThemedText>
-              <Tray.Close>
-                {({ color, size }) => <Ionicons name="close" size={size} color={color} />}
-              </Tray.Close>
-            </Tray.Header>
+    <>
+      <Tray
+        open={visible}
+        onOpenChange={(open) => {
+          if (!open) handleClose();
+        }}
+        theme={theme.isDark ? 'dark' : 'light'}
+        palette={{
+          surface: theme.backgroundElement,
+          border: theme.border,
+          handle: theme.border,
+          text: theme.text,
+          mutedText: theme.textSecondary,
+          backdrop: tint(Palette.black, 0.4),
+        }}
+      >
+        <Tray.Content>
+          {/* The tray renders in its own layer that neither the system nor a KeyboardAvoidingView
+            lifts (it cannot place itself inside the tray), so make room for the keyboard by hand. */}
+          <View style={{ paddingBottom: keyboardGap }}>
+            <Tray.View id="default">
+              <Tray.Header>
+                <ThemedText type="sectionTitle">Comments</ThemedText>
+                <Tray.Close>
+                  {({ color, size }) => <Ionicons name="close" size={size} color={color} />}
+                </Tray.Close>
+              </Tray.Header>
 
-            {/* Activity info banner */}
-            <ThemedView style={[styles.activityBanner, { backgroundColor: theme.background }]}>
-              <ThemedText type="smallBold" numberOfLines={1}>
-                {activity.name}
-              </ThemedText>
-              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {formatRelativeTime(activity.createdAt, true)}
-              </ThemedText>
-            </ThemedView>
-
-            {/* Kudos section */}
-            {activity.kudos.length > 0 && (
-              <ThemedView style={styles.kudosSection}>
-                <Ionicons name="thumbs-up" size={16} color={theme.brand.primary} />
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  {activity.kudos.length}
-                </ThemedText>
-                <AvatarStack userIds={activity.kudos} max={5} size={24} />
-              </ThemedView>
-            )}
-
-            {/* Comments list */}
-            <Tray.ScrollView contentContainerStyle={styles.listContent}>
-              {activity.comments.length === 0 ? (
-                <ThemedView style={styles.empty}>
-                  <Ionicons name="chatbubble-outline" size={32} color={theme.textSecondary} />
-                  <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                    No comments yet. Start the conversation!
-                  </ThemedText>
-                </ThemedView>
-              ) : (
-                activity.comments.map((comment) => {
-                  const commentUser = getUserById(comment.userId);
-                  const isMe = comment.userId === getCurrentUserId();
-                  const displayName = isMe
-                    ? 'You'
-                    : commentUser
-                      ? getDisplayName(commentUser)
-                      : 'Unknown';
-                  const likeCount = comment.likedBy?.length ?? 0;
-                  const hasLiked = (comment.likedBy ?? []).includes(getCurrentUserId());
-
-                  return (
-                    <ThemedView
-                      key={comment.id}
-                      style={styles.comment}
-                      accessibilityRole="text"
-                      accessibilityLabel={`${displayName} said: ${comment.text}`}
-                    >
-                      <View
-                        style={[styles.commentAvatar, { backgroundColor: theme.brand.primaryTint }]}
-                      >
-                        <ThemedText
-                          type="caption"
-                          style={{ color: theme.brand.primary, fontWeight: '700' }}
-                        >
-                          {getInitials(displayName)}
-                        </ThemedText>
-                      </View>
-                      <ThemedView style={styles.commentBody}>
-                        <ThemedView style={styles.commentHeader}>
-                          <ThemedText type="smallBold">{displayName}</ThemedText>
-                          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                            · {formatRelativeTime(comment.createdAt, true)}
-                          </ThemedText>
-                        </ThemedView>
-                        <ThemedText type="small" style={{ color: theme.text }}>
-                          {comment.text}
-                        </ThemedText>
-                        <TouchableOpacity
-                          style={styles.likeBtn}
-                          onPress={() => handleLike(comment.id)}
-                          activeOpacity={0.7}
-                          accessibilityRole="button"
-                          accessibilityLabel={hasLiked ? 'Unlike comment' : 'Like comment'}
-                        >
-                          <Ionicons
-                            name={hasLiked ? 'heart' : 'heart-outline'}
-                            size={14}
-                            color={hasLiked ? theme.brand.danger : theme.textSecondary}
-                          />
-                          <ThemedText
-                            type="caption"
-                            style={{ color: hasLiked ? theme.brand.danger : theme.textSecondary }}
-                          >
-                            {formatLikeCount(likeCount)}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      </ThemedView>
+              {/* What is being discussed, and who gave kudos: one quiet row, out of the way while typing. */}
+              {activity && !keyboardOpen && (
+                <ThemedView style={styles.summary}>
+                  <ThemedView style={styles.summaryText}>
+                    <ThemedText type="smallBold" numberOfLines={1}>
+                      {activity.name}
+                    </ThemedText>
+                    <ThemedText type="caption" themeColor="textSecondary">
+                      {formatRelativeTime(activity.createdAt, true)}
+                    </ThemedText>
+                  </ThemedView>
+                  {activity.kudos.length > 0 && (
+                    <ThemedView style={styles.kudos}>
+                      <Ionicons name="thumbs-up" size={16} color={theme.brand.primary} />
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {activity.kudos.length}
+                      </ThemedText>
+                      <AvatarStack userIds={activity.kudos} max={3} size={22} />
                     </ThemedView>
-                  );
-                })
+                  )}
+                </ThemedView>
               )}
-            </Tray.ScrollView>
 
-            {/* Input bar */}
-            <Tray.Footer>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: theme.background,
-                      color: theme.text,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                  placeholder="Add a comment..."
-                  placeholderTextColor={theme.textSecondary}
-                  value={text}
-                  onChangeText={setText}
-                  returnKeyType="send"
-                  onSubmitEditing={handleSend}
-                  blurOnSubmit={false}
-                  maxLength={500}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.sendBtn,
-                    {
-                      backgroundColor: text.trim() ? theme.brand.primary : theme.backgroundSelected,
-                    },
-                  ]}
-                  onPress={handleSend}
-                  disabled={!text.trim()}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Send comment"
-                >
-                  <Ionicons
-                    name="send"
-                    size={16}
-                    color={text.trim() ? '#fff' : theme.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-            </Tray.Footer>
-          </Tray.View>
-        </KeyboardAvoidingView>
-      </Tray.Content>
-    </Tray>
+              <Tray.ScrollView
+                maxHeight={commentListMaxHeight(windowHeight, keyboardHeight)}
+                contentContainerStyle={styles.listContent}
+              >
+                {renderComments()}
+              </Tray.ScrollView>
+
+              <Tray.Footer>
+                <View style={styles.inputRow}>
+                  <View style={styles.inputColumn}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: theme.background,
+                          color: theme.text,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      placeholder="Add a comment"
+                      placeholderTextColor={theme.placeholder}
+                      accessibilityLabel="Add a comment"
+                      value={text}
+                      onChangeText={setText}
+                      multiline
+                      autoCapitalize="sentences"
+                      returnKeyType="send"
+                      submitBehavior="submit"
+                      onSubmitEditing={handleSend}
+                      maxLength={MAX_COMMENT_LENGTH}
+                    />
+                    {left !== null && (
+                      <ThemedText
+                        type="caption"
+                        themeColor={left <= 10 ? 'dangerText' : 'textTertiary'}
+                        style={styles.counter}
+                        accessibilityLiveRegion="polite"
+                      >
+                        {left} characters left
+                      </ThemedText>
+                    )}
+                  </View>
+                  <Tappable
+                    style={[
+                      styles.sendBtn,
+                      {
+                        backgroundColor: text.trim()
+                          ? theme.brand.primary
+                          : theme.backgroundSelected,
+                      },
+                    ]}
+                    onPress={handleSend}
+                    disabled={!text.trim() || !activity}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Send comment"
+                    accessibilityState={{ disabled: !text.trim() || !activity }}
+                  >
+                    <Ionicons
+                      name="send"
+                      size={16}
+                      color={text.trim() ? Brand.white : theme.textSecondary}
+                    />
+                  </Tappable>
+                </View>
+              </Tray.Footer>
+            </Tray.View>
+          </View>
+        </Tray.Content>
+      </Tray>
+      <ReportSheet {...report.props} />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  activityBanner: {
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    gap: 2,
-  },
-  kudosSection: {
+  summary: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    justifyContent: 'space-between',
+    gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,
   },
+  summaryText: { flex: 1, gap: Spacing.half },
+  kudos: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   listContent: {
     padding: Spacing.four,
     gap: Spacing.three,
   },
   empty: {
     alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.five,
-  },
-  comment: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 180,
   },
-  commentBody: {
-    flex: 1,
-    gap: Spacing.one,
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
-  },
-  likeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
+  emptyText: { textAlign: 'center' },
+  skeleton: { gap: Spacing.three },
+  skeletonRow: { flexDirection: 'row', gap: Spacing.two },
+  skeletonAvatar: { width: 36, height: 36, borderRadius: 18 },
+  skeletonLines: { flex: 1, gap: Spacing.one },
+  skeletonName: { width: '40%', height: 12, borderRadius: 4 },
+  skeletonText: { width: '85%', height: 12, borderRadius: 4 },
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: Spacing.two,
   },
+  inputColumn: { flex: 1, gap: Spacing.half },
   input: {
-    flex: 1,
     borderWidth: 1,
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    fontSize: 14,
+    minHeight: 44,
+    maxHeight: 112,
+    ...textStyle(TypeScale.callout),
   },
+  counter: { textAlign: 'right' },
   sendBtn: {
     minWidth: 44,
     minHeight: 44,

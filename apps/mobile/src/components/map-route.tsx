@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import {
   Camera,
   type CameraRef,
@@ -10,22 +9,22 @@ import {
   type PressEventWithFeatures,
 } from '@maplibre/maplibre-react-native';
 import React, { useMemo, useState } from 'react';
-import { type NativeSyntheticEvent, StyleSheet, View, type ViewStyle } from 'react-native';
-import Svg, { Circle, Line, Polyline } from 'react-native-svg';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
-import { territoryService } from '@/services/territoryService';
+import { type NativeSyntheticEvent, StyleSheet, type ViewStyle } from 'react-native';
+import { MapErrorBoundary, MapPin, MapRouteFallback } from '@/components/map-route-fallback';
+import { offlineMapStyle } from '@/constants/mapStyle';
+import { outdoorStyleFor } from '@/constants/outdoorMapStyle';
+import { Palette } from '@/constants/palette';
+import { Brand, HEAT_RAMP, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
 import type { Ring } from '@/types';
-import { formatArea } from '@/utils/format';
+import { type PuckPosition, puckFeatureCollection } from '@/utils/locationPuck';
 import {
   type LngLatPair,
   routeFeatureCollection,
   type TerritoryFeatureInput,
   territoryFeatureCollection,
 } from '@/utils/mapData';
+import type { Bounds } from '@/utils/routeBounds';
+import type { SplitMarker } from '@/utils/splitMarkers';
 
 export interface MapMarker {
   id: string;
@@ -33,6 +32,15 @@ export interface MapMarker {
   color: string;
   icon?: string;
   label?: string;
+}
+
+/** A camera move reported by the map: `settled` when it has finished, `userInteraction` for a finger. */
+export interface CameraMove {
+  center: [number, number];
+  zoom: number;
+  bearing: number;
+  userInteraction: boolean;
+  settled: boolean;
 }
 
 export interface ActivityRoute {
@@ -45,237 +53,165 @@ export interface ActivityRoute {
 export interface MapRouteProps {
   coordinates?: [number, number][];
   territoryPolygons?: Ring[];
-  /** Same length/order as `territoryPolygons`; maps each local polygon to its
-   * on-chain territory id so a tap can resolve the owner. */
+  /** Same length and order as `territoryPolygons`; the on-chain territory id of each, for tap-to-owner. */
   territoryIds?: string[];
   territoryColor?: string;
   territoryOpacity?: number;
   markers?: MapMarker[];
   followUser?: 'default' | 'heading' | 'course' | undefined;
+  /** Called with false when the athlete drags the map off the follow view, true when it follows again. */
+  onFollowChange?: (following: boolean) => void;
+  /** A tap on empty map (a tap on a territory also arrives here). */
+  onMapPress?: () => void;
+  /** A long press, at [lng, lat]. */
+  onMapLongPress?: (lngLat: [number, number]) => void;
   initialCenter?: [number, number];
   initialZoom?: number;
+  /** Frames this box when the map first appears, so the route is in view before any later camera move. Wins over the centre and zoom. */
+  initialBounds?: {
+    bounds: Bounds;
+    padding: { top: number; right: number; bottom: number; left: number };
+  };
   style?: ViewStyle;
+  /** Draws the athlete's position; mount it only once permission is granted and a fix exists, or the native layer logs errors. */
   showUserLocation?: boolean;
-  mapStyleUrl?: string;
+  dark?: boolean;
+  /** Label parks and other places on the base map. */
+  poi?: boolean;
+  /** Draw cycle paths on the base map. */
+  bikeLanes?: boolean;
   cameraRef?: React.RefObject<CameraRef | null>;
   activityRoutes?: ActivityRoute[];
-  /** Top offset (px) for MapLibre's native compass widget. Callers that
-   * render their own floating control buttons over the map (e.g. the Map
-   * tab) should pass the actual bottom edge of that stack so the compass
-   * doesn't render underneath/behind it. Defaults to a sensible offset for
-   * screens with no competing overlay near the top-right. */
+  /** Top offset (px) of MapLibre's native compass; pass the bottom edge of any floating controls over the map. */
   compassTopOffset?: number;
-  /** Other athletes' territory footprints (bounds-derived rectangles), each
-   * tagged with its territory id for tap-to-owner. */
+  /** Other athletes' territory footprints (bounds-derived rectangles), each tagged with its territory id. */
   othersTerritories?: TerritoryFeatureInput[];
   othersTerritoryColor?: string;
   othersTerritoryOpacity?: number;
   /** Point cloud for the activity-density heatmap layer. */
   heatmapPoints?: LngLatPair[];
   heatmapVisible?: boolean;
-  /** Fires when a territory (own or another athlete's) is tapped, with its
-   * territory id. */
+  /** Fires with the territory id when a territory (own or another athlete's) is tapped. */
   onTerritoryPress?: (territoryId: string) => void;
   /** Keeps the parent's zoom state in sync (drives the 2D zoom buttons). */
   onZoomChanged?: (zoom: number) => void;
+  /** Every camera move by a finger while it happens, and each move of any kind once it has finished. */
+  onCameraMove?: (move: CameraMove) => void;
+  /** Keeps the camera inside these zoom levels, for gestures and animations alike. */
+  zoomRange?: { min: number; max: number };
+  /**
+   * The athlete's position, drawn as one puck (accuracy circle, dot, heading arrow) instead of the
+   * native one. Null draws nothing yet; leave it undefined for no puck at all.
+   */
+  position?: PuckPosition | null;
+  /** Fires once the map has loaded, so callers can frame the route then. */
+  onMapReady?: () => void;
+  /** The route cut into pieces coloured by how fast the athlete was; drawn instead of the plain line. */
+  paceSegments?: ReadonlyArray<{ coordinates: LngLatPair[]; color: string }>;
+  /** Numbered pins where each kilometre (or mile) ends along the route. */
+  splitMarkers?: readonly SplitMarker[];
 }
 
-class MapErrorBoundary extends React.Component<
-  { fallback: React.ReactNode; children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
+/** Split pins appear once the map is close enough for them not to crowd the line. */
+const SPLIT_MARKER_MIN_ZOOM = 12;
+const SPLIT_MARKER_RADIUS = ['interpolate', ['linear'], ['zoom'], 12, 6, 16, 9] as never;
+const SPLIT_LABEL_SIZE = ['interpolate', ['linear'], ['zoom'], 12, 8, 16, 11] as never;
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
+/** Line widths grow with zoom so the route stays readable from a city view down to a street. */
+const ROUTE_LINE_WIDTH = ['interpolate', ['linear'], ['zoom'], 10, 3, 15, 4.5, 18, 7] as never;
+const ROUTE_CASING_WIDTH = ['interpolate', ['linear'], ['zoom'], 10, 5.5, 15, 8, 18, 11] as never;
 
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
+/** Some platform builds put `features` on the event itself rather than under `nativeEvent`. */
+function topLevelFeatures(event: object): GeoJSON.Feature[] | undefined {
+  return 'features' in event && Array.isArray(event.features) ? event.features : undefined;
 }
 
-function MapRouteFallback({
-  coordinates,
-  territoryPolygons = [],
-  markers = [],
-  initialCenter = [73.851074, 18.524209],
-  style,
-}: MapRouteProps) {
-  const theme = useTheme();
-  const [layout, setLayout] = useState<{ width: number; height: number } | null>(null);
-
-  const routePoints = useMemo(() => {
-    if (!coordinates || coordinates.length < 2 || !layout) return null;
-
-    const pad = 40;
-    const w = Math.max(layout.width - pad * 2, 10);
-    const h = Math.max(layout.height - pad * 2, 10);
-
-    const lngs = coordinates.map((c) => c[0]);
-    const lats = coordinates.map((c) => c[1]);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-
-    const lngSpan = maxLng - minLng || 0.0005;
-    const latSpan = maxLat - minLat || 0.0005;
-
-    const points = coordinates.map(([lng, lat]) => {
-      const x = pad + ((lng - minLng) / lngSpan) * w;
-      const y = pad + (1 - (lat - minLat) / latSpan) * h;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-
-    const startPt = points[0].split(',').map(Number) as [number, number];
-    const endPt = points[points.length - 1].split(',').map(Number) as [number, number];
-
-    return {
-      polyline: points.join(' '),
-      start: startPt,
-      end: endPt,
-    };
-  }, [coordinates, layout]);
-
-  const totalTerritoryArea = useMemo(
-    () => territoryPolygons.reduce((sum, ring) => sum + territoryService.getPolygonArea(ring), 0),
-    [territoryPolygons]
-  );
-
-  return (
-    <View
-      style={[styles.map, { backgroundColor: theme.backgroundElement }, style]}
-      onLayout={(e) => {
-        const { width, height } = e.nativeEvent.layout;
-        if (width > 0 && height > 0) {
-          setLayout({ width, height });
-        }
-      }}
-    >
-      {/* Decorative background grid lines */}
-      {layout && (
-        <Svg width={layout.width} height={layout.height} style={StyleSheet.absoluteFill}>
-          {[0.2, 0.4, 0.6, 0.8].map((ratio) => (
-            <Line
-              key={`h-${ratio}`}
-              x1={0}
-              y1={layout.height * ratio}
-              x2={layout.width}
-              y2={layout.height * ratio}
-              stroke={theme.border}
-              strokeWidth={1}
-              strokeDasharray="4 6"
-              opacity={0.6}
-            />
-          ))}
-          {[0.25, 0.5, 0.75].map((ratio) => (
-            <Line
-              key={`v-${ratio}`}
-              x1={layout.width * ratio}
-              y1={0}
-              x2={layout.width * ratio}
-              y2={layout.height}
-              stroke={theme.border}
-              strokeWidth={1}
-              strokeDasharray="4 6"
-              opacity={0.6}
-            />
-          ))}
-
-          {/* SVG Route Visualization when GPS points exist */}
-          {routePoints && (
-            <>
-              <Polyline
-                points={routePoints.polyline}
-                fill="none"
-                stroke={Brand.primary}
-                strokeWidth={10}
-                strokeOpacity={0.25}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <Polyline
-                points={routePoints.polyline}
-                fill="none"
-                stroke={Brand.primary}
-                strokeWidth={4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <Circle
-                cx={routePoints.start[0]}
-                cy={routePoints.start[1]}
-                r={7}
-                fill={Brand.success}
-                stroke="#fff"
-                strokeWidth={2}
-              />
-              <Circle
-                cx={routePoints.end[0]}
-                cy={routePoints.end[1]}
-                r={7}
-                fill={Brand.danger}
-                stroke="#fff"
-                strokeWidth={2}
-              />
-            </>
-          )}
-        </Svg>
-      )}
-
-      {/* Markers overlay */}
-      {!routePoints && markers.length > 0 && (
-        <View style={styles.fallbackCenterContainer}>
-          <View
-            style={[styles.markerOuter, { backgroundColor: markers[0]?.color ?? Brand.primary }]}
-          >
-            <View style={styles.markerInner}>
-              <Ionicons
-                name={(markers[0]?.icon || 'location') as keyof typeof Ionicons.glyphMap}
-                size={14}
-                color="#fff"
-              />
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Top badges */}
-      <View style={styles.fallbackBadgeRow}>
-        {totalTerritoryArea > 0 && (
-          <ThemedView style={[styles.fallbackPill, { backgroundColor: theme.background }]}>
-            <Ionicons name="map" size={14} color={Brand.primary} />
-            <ThemedText type="small" style={{ color: Brand.primary, fontWeight: '700' }}>
-              {formatArea(totalTerritoryArea)} captured
-            </ThemedText>
-          </ThemedView>
-        )}
-        {coordinates && coordinates.length > 1 && (
-          <ThemedView style={[styles.fallbackPill, { backgroundColor: theme.background }]}>
-            <Ionicons name="navigate-outline" size={14} color={theme.text} />
-            <ThemedText type="small" style={{ color: theme.text, fontWeight: '600' }}>
-              {coordinates.length} points
-            </ThemedText>
-          </ThemedView>
-        )}
-      </View>
-
-      {/* Center state when no route */}
-      {!coordinates && (
-        <View style={styles.fallbackCenterContainer}>
-          <Ionicons name="map-outline" size={38} color={theme.textSecondary} />
-          <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: Spacing.one }}>
-            {initialCenter[1].toFixed(4)}°N, {initialCenter[0].toFixed(4)}°E
-          </ThemedText>
-        </View>
-      )}
-    </View>
-  );
+function cameraMoveOf(
+  event: { center: number[]; zoom: number; bearing: number; userInteraction: boolean },
+  settled: boolean
+): CameraMove {
+  return {
+    center: [event.center[0] as number, event.center[1] as number],
+    zoom: event.zoom,
+    bearing: event.bearing,
+    userInteraction: event.userInteraction,
+    settled,
+  };
 }
+
+export function routeFeatureLine(
+  coordinates: MapRouteProps['coordinates']
+): GeoJSON.FeatureCollection<GeoJSON.LineString> {
+  const drawable = coordinates && coordinates.length >= 2;
+  return {
+    type: 'FeatureCollection' as const,
+    features: drawable
+      ? [
+          {
+            type: 'Feature' as const,
+            geometry: { type: 'LineString' as const, coordinates },
+            properties: {},
+          },
+        ]
+      : [],
+  };
+}
+
+function paceFeatureLines(
+  paceSegments: MapRouteProps['paceSegments']
+): GeoJSON.FeatureCollection<GeoJSON.LineString> | null {
+  if (!paceSegments || paceSegments.length === 0) return null;
+  return {
+    type: 'FeatureCollection' as const,
+    features: paceSegments.map((segment) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: segment.coordinates },
+      properties: { color: segment.color },
+    })),
+  };
+}
+
+function splitFeaturePoints(
+  splitMarkers: readonly SplitMarker[]
+): GeoJSON.FeatureCollection<GeoJSON.Point> | null {
+  if (splitMarkers.length === 0) return null;
+  return {
+    type: 'FeatureCollection' as const,
+    features: splitMarkers.map((marker) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: marker.coordinate },
+      properties: { label: marker.label },
+    })),
+  };
+}
+
+function heatmapFeaturePoints(
+  heatmapPoints: LngLatPair[],
+  heatmapVisible: boolean
+): GeoJSON.FeatureCollection<GeoJSON.Point> | null {
+  if (!heatmapVisible || heatmapPoints.length === 0) return null;
+  return {
+    type: 'FeatureCollection',
+    features: heatmapPoints.map(([lng, lat]) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: {},
+    })),
+  };
+}
+
+const PUCK_DOT_RADIUS = 7;
+const PUCK_CASING_RADIUS = 10;
+/** The accuracy circle's radius is carried in pixels at zoom 0; every zoom level doubles it. */
+const PUCK_ACCURACY_RADIUS = [
+  'interpolate',
+  ['exponential', 2],
+  ['zoom'],
+  0,
+  ['get', 'accuracyPx'],
+  22,
+  ['*', ['get', 'accuracyPx'], 4194304],
+] as never;
 
 const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   coordinates,
@@ -285,123 +221,136 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   territoryOpacity = 0.25,
   markers = [],
   followUser,
+  onFollowChange,
+  onMapPress,
+  onMapLongPress,
   initialCenter = [73.851074, 18.524209],
   initialZoom = 15,
+  initialBounds,
   style,
-  showUserLocation = true,
-  mapStyleUrl,
+  showUserLocation = false,
+  dark = false,
+  poi = true,
+  bikeLanes = false,
   cameraRef,
   activityRoutes = [],
   compassTopOffset = 150,
   othersTerritories = [],
-  othersTerritoryColor = '#7c3aed',
+  othersTerritoryColor = OTHERS_TERRITORY_COLOR,
   othersTerritoryOpacity = 0.12,
   heatmapPoints = [],
   heatmapVisible = true,
   onTerritoryPress,
   onZoomChanged,
+  onCameraMove,
+  zoomRange,
+  position,
+  splitMarkers = [],
+  paceSegments,
+  onMapReady,
 }: MapRouteProps) {
-  const routeGeoJSON = useMemo(() => {
-    if (!coordinates || coordinates.length < 2) return null;
-    return {
-      type: 'FeatureCollection' as const,
-      features: [
-        {
-          type: 'Feature' as const,
-          geometry: {
-            type: 'LineString' as const,
-            coordinates,
-          },
-          properties: {},
-        },
-      ],
-    };
-  }, [coordinates]);
-
-  const territoryGeoJSON = useMemo(
-    () =>
-      territoryFeatureCollection(
-        territoryPolygons.map((ring, i) => ({
-          id: territoryIds[i] ?? `local-${i}`,
-          ring,
-        }))
-      ),
-    [territoryPolygons, territoryIds]
+  // A live route grows by one point per fix; only a longer line or a new last point is new geometry.
+  const routeLength = coordinates?.length ?? 0;
+  const lastPoint = coordinates?.[routeLength - 1];
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on length and last point, not on the array identity a fix replaces
+  const routeGeoJSON = useMemo(
+    () => routeFeatureLine(coordinates),
+    [routeLength, lastPoint?.[0], lastPoint?.[1]]
   );
 
-  const othersTerritoryGeoJSON = useMemo(
-    () => territoryFeatureCollection(othersTerritories),
-    [othersTerritories]
+  const paceGeoJSON = useMemo(() => paceFeatureLines(paceSegments), [paceSegments]);
+
+  const splitGeoJSON = useMemo(() => splitFeaturePoints(splitMarkers), [splitMarkers]);
+
+  const puckGeoJSON = useMemo(
+    () => (position === undefined ? null : puckFeatureCollection(position)),
+    [position]
   );
 
-  const routesGeoJSON = useMemo(() => routeFeatureCollection(activityRoutes), [activityRoutes]);
-
-  const heatmapGeoJSON = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point> | null>(() => {
-    if (!heatmapVisible || heatmapPoints.length === 0) return null;
-    return {
-      type: 'FeatureCollection',
-      features: heatmapPoints.map(([lng, lat]) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [lng, lat] },
-        properties: {},
-      })),
-    };
-  }, [heatmapVisible, heatmapPoints]);
-
-  const handleTerritoryPress = React.useCallback(
-    (event: NativeSyntheticEvent<PressEventWithFeatures>) => {
-      if (!onTerritoryPress) return;
-      // Native press events arrive with `features` at the event's top level in
-      // some platform builds and under `nativeEvent` in others — read both.
-      const native = event.nativeEvent;
-      const features =
-        native?.features ?? (event as unknown as { features?: GeoJSON.Feature[] }).features;
-      const territoryId = features?.[0]?.properties?.territoryId;
-      if (typeof territoryId === 'string' && !territoryId.startsWith('local-')) {
-        onTerritoryPress(territoryId);
-      }
-    },
-    [onTerritoryPress]
+  const territoryGeoJSON = territoryFeatureCollection(
+    territoryPolygons.map((ring, i) => ({
+      id: territoryIds[i] ?? `local-${i}`,
+      ring,
+    }))
   );
+
+  const othersTerritoryGeoJSON = territoryFeatureCollection(othersTerritories);
+
+  const routesGeoJSON = routeFeatureCollection(activityRoutes);
+
+  const heatmapGeoJSON = heatmapFeaturePoints(heatmapPoints, heatmapVisible);
+
+  const handleTerritoryPress = (event: NativeSyntheticEvent<PressEventWithFeatures>) => {
+    if (!onTerritoryPress) return;
+    // Native press events arrive with `features` at the event's top level in
+    // some platform builds and under `nativeEvent` in others — read both.
+    const features = event.nativeEvent?.features ?? topLevelFeatures(event);
+    const territoryId = features?.[0]?.properties?.territoryId;
+    if (typeof territoryId === 'string' && !territoryId.startsWith('local-')) {
+      onTerritoryPress(territoryId);
+    }
+  };
 
   const cameraCenter =
     coordinates && coordinates.length > 0
       ? coordinates[Math.floor(coordinates.length / 2)]
       : initialCenter;
 
-  const resolvedMapStyle = mapStyleUrl ?? 'https://tiles.openfreemap.org/styles/liberty';
+  // With no connection on a first visit the style cannot load, and nothing is drawn on a map
+  // without one. A plain background keeps the route, territory and pins showing.
+  const [styleFailed, setStyleFailed] = useState(false);
+  const onStyleFailed = () => setStyleFailed(true);
+  const resolvedMapStyle = styleFailed
+    ? offlineMapStyle(dark)
+    : outdoorStyleFor(dark, { poi, bikeLanes });
 
   return (
     <MapLibreMap
       style={[styles.map, style]}
       mapStyle={resolvedMapStyle}
       compassPosition={{ top: compassTopOffset, right: Spacing.three }}
+      onDidFinishLoadingMap={onMapReady}
+      onDidFailLoadingMap={onStyleFailed}
+      onPress={onMapPress ? () => onMapPress() : undefined}
+      onLongPress={
+        onMapLongPress
+          ? (e) => onMapLongPress([e.nativeEvent.lngLat[0], e.nativeEvent.lngLat[1]])
+          : undefined
+      }
+      onRegionIsChanging={
+        onCameraMove
+          ? (e) => {
+              if (e.nativeEvent?.userInteraction) onCameraMove(cameraMoveOf(e.nativeEvent, false));
+            }
+          : undefined
+      }
       onRegionDidChange={
-        onZoomChanged ? (e) => onZoomChanged(e.nativeEvent?.zoom ?? initialZoom) : undefined
+        onZoomChanged || onCameraMove
+          ? (e) => {
+              onZoomChanged?.(e.nativeEvent?.zoom ?? initialZoom);
+              if (e.nativeEvent) onCameraMove?.(cameraMoveOf(e.nativeEvent, true));
+            }
+          : undefined
       }
     >
       <Camera
         ref={cameraRef}
-        initialViewState={{
-          center: cameraCenter,
-          zoom: initialZoom,
-        }}
+        initialViewState={
+          initialBounds
+            ? { bounds: initialBounds.bounds, padding: initialBounds.padding }
+            : { center: cameraCenter, zoom: initialZoom }
+        }
+        minZoom={zoomRange?.min}
+        maxZoom={zoomRange?.max}
         trackUserLocation={followUser}
+        onTrackUserLocationChange={
+          onFollowChange
+            ? (e) => onFollowChange(e.nativeEvent.trackUserLocation != null)
+            : undefined
+        }
       />
 
-      {showUserLocation && NativeUserLocation && (
-        <NativeUserLocation
-          mode={
-            followUser === 'heading'
-              ? 'heading'
-              : followUser === 'course'
-                ? 'course'
-                : followUser
-                  ? 'default'
-                  : undefined
-          }
-        />
-      )}
+      {showUserLocation && NativeUserLocation && <NativeUserLocation mode={followUser} />}
 
       {heatmapGeoJSON && (
         <GeoJSONSource id="activity-heatmap" data={heatmapGeoJSON}>
@@ -416,16 +365,7 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
                 'interpolate',
                 ['linear'],
                 ['heatmap-density'],
-                0,
-                'rgba(34,197,94,0)',
-                0.25,
-                'rgba(168,85,247,0.4)',
-                0.5,
-                'rgba(236,72,153,0.55)',
-                0.75,
-                'rgba(249,115,22,0.7)',
-                1,
-                'rgba(220,38,38,0.9)',
+                ...HEAT_RAMP.flat(),
               ],
               'heatmap-radius': 20,
               'heatmap-opacity': 0.55,
@@ -486,34 +426,108 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
         </GeoJSONSource>
       )}
 
-      {routeGeoJSON && (
-        <GeoJSONSource id="route" data={routeGeoJSON}>
+      <GeoJSONSource id="route" data={routeGeoJSON}>
+        {/* An outline lifts the line off busy ground, the way a trail reads on a topo map. */}
+        <Layer
+          id="route-casing"
+          type="line"
+          source="route"
+          layout={{
+            'line-cap': 'round',
+            'line-join': 'round',
+          }}
+          paint={{
+            'line-color': dark ? '#0d1014' : Palette.white,
+            'line-width': ROUTE_CASING_WIDTH,
+            'line-opacity': 0.9,
+          }}
+        />
+        <Layer
+          id="route-line"
+          type="line"
+          source="route"
+          layout={{
+            'line-cap': 'round',
+            'line-join': 'round',
+          }}
+          paint={{
+            'line-color': Brand.primary,
+            'line-width': ROUTE_LINE_WIDTH,
+            'line-opacity': paceGeoJSON ? 0 : 1,
+          }}
+        />
+        {/* Small arrowheads along the line, so the direction of the route reads at a glance. */}
+        <Layer
+          id="route-arrows"
+          type="symbol"
+          source="route"
+          layout={{
+            'symbol-placement': 'line',
+            'symbol-spacing': 80,
+            'text-field': '›',
+            // Without a font MapLibre asks for its own default, which the tile host does not serve (404), so the chevrons never drew.
+            'text-font': ['Noto Sans Regular'],
+            'text-size': 22,
+            'text-keep-upright': false,
+            'text-rotation-alignment': 'map',
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          }}
+          paint={{
+            'text-color': Palette.white,
+            'text-halo-color': Brand.primary,
+            'text-halo-width': 1.2,
+          }}
+        />
+      </GeoJSONSource>
+
+      {paceGeoJSON && (
+        <GeoJSONSource id="route-pace" data={paceGeoJSON}>
           <Layer
-            id="route-glow"
+            id="route-pace-line"
             type="line"
-            source="route"
+            source="route-pace"
             layout={{
               'line-cap': 'round',
               'line-join': 'round',
             }}
             paint={{
-              'line-color': Brand.primary,
-              'line-width': 8,
-              'line-opacity': 0.25,
+              'line-color': ['get', 'color'],
+              'line-width': ROUTE_LINE_WIDTH,
             }}
           />
+        </GeoJSONSource>
+      )}
+
+      {splitGeoJSON && (
+        <GeoJSONSource id="split-markers" data={splitGeoJSON}>
           <Layer
-            id="route-line"
-            type="line"
-            source="route"
-            layout={{
-              'line-cap': 'round',
-              'line-join': 'round',
-            }}
+            id="split-markers-dot"
+            type="circle"
+            source="split-markers"
+            minzoom={SPLIT_MARKER_MIN_ZOOM}
             paint={{
-              'line-color': Brand.primary,
-              'line-width': 4,
+              'circle-radius': SPLIT_MARKER_RADIUS,
+              'circle-color': Palette.white,
+              'circle-stroke-color': Palette.neutral.n1,
+              'circle-stroke-width': 1.5,
             }}
+          />
+          {/* The offline fallback style has no glyphs, so the numbers can't be drawn there. */}
+          <Layer
+            id="split-markers-label"
+            type="symbol"
+            source="split-markers"
+            minzoom={SPLIT_MARKER_MIN_ZOOM}
+            layout={{
+              visibility: styleFailed ? 'none' : 'visible',
+              'text-field': ['get', 'label'],
+              'text-font': ['Noto Sans Bold'],
+              'text-size': SPLIT_LABEL_SIZE,
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            }}
+            paint={{ 'text-color': Palette.neutral.n1 }}
           />
         </GeoJSONSource>
       )}
@@ -550,21 +564,66 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
         </GeoJSONSource>
       )}
 
+      {puckGeoJSON && (
+        <GeoJSONSource id="position-puck" data={puckGeoJSON}>
+          <Layer
+            id="position-puck-accuracy"
+            type="circle"
+            source="position-puck"
+            paint={{
+              'circle-radius': PUCK_ACCURACY_RADIUS,
+              'circle-color': Brand.primary,
+              'circle-opacity': 0.14,
+              'circle-stroke-color': Brand.primary,
+              'circle-stroke-width': 1,
+              'circle-stroke-opacity': 0.35,
+            }}
+          />
+          {/* The offline fallback style has no glyphs, so the arrow can't be drawn there. */}
+          <Layer
+            id="position-puck-heading"
+            type="symbol"
+            source="position-puck"
+            filter={['has', 'heading']}
+            layout={{
+              visibility: styleFailed ? 'none' : 'visible',
+              'text-field': '▲',
+              'text-font': ['Noto Sans Bold'],
+              'text-size': 16,
+              'text-rotate': ['get', 'heading'],
+              'text-rotation-alignment': 'map',
+              'text-offset': [0, -1.5],
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            }}
+            paint={{
+              'text-color': Brand.primary,
+              'text-halo-color': Palette.white,
+              'text-halo-width': 1.5,
+            }}
+          />
+          <Layer
+            id="position-puck-casing"
+            type="circle"
+            source="position-puck"
+            paint={{ 'circle-radius': PUCK_CASING_RADIUS, 'circle-color': Palette.white }}
+          />
+          <Layer
+            id="position-puck-dot"
+            type="circle"
+            source="position-puck"
+            paint={{ 'circle-radius': PUCK_DOT_RADIUS, 'circle-color': Brand.primary }}
+          />
+        </GeoJSONSource>
+      )}
+
       {markers.map((marker) => (
         <Marker
           key={marker.id}
           lngLat={[marker.coordinate[0], marker.coordinate[1]]}
           anchor="center"
         >
-          <View style={[styles.markerOuter, { backgroundColor: marker.color }]}>
-            <View style={styles.markerInner}>
-              <Ionicons
-                name={(marker.icon || 'location') as keyof typeof Ionicons.glyphMap}
-                size={14}
-                color="#fff"
-              />
-            </View>
-          </View>
+          <MapPin color={marker.color} icon={marker.icon} />
         </Marker>
       ))}
     </MapLibreMap>
@@ -582,54 +641,5 @@ export const MapRoute = React.memo(function MapRoute(props: MapRouteProps) {
 const styles = StyleSheet.create({
   map: {
     flex: 1,
-  },
-  markerOuter: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  markerInner: {
-    width: 20,
-    height: 20,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fallbackCenterContainer: {
-    ...StyleSheet.absoluteFill,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fallbackBadgeRow: {
-    position: 'absolute',
-    top: Spacing.three,
-    left: Spacing.three,
-    right: Spacing.three,
-    flexDirection: 'row',
-    gap: Spacing.two,
-    flexWrap: 'wrap',
-  },
-  fallbackPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one + 2,
-    borderRadius: BorderRadius.full,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
   },
 });

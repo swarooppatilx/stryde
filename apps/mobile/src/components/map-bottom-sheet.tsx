@@ -1,243 +1,237 @@
 import { Ionicons } from '@expo/vector-icons';
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
+import { useState } from 'react';
+import { StyleSheet } from 'react-native';
+import {
+  Extrapolation,
+  interpolate,
+  type SharedValue,
+  useAnimatedReaction,
   useSharedValue,
-  withSpring,
 } from 'react-native-reanimated';
-
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { getCurrentUserId } from '@/constants/config';
+import { getSportIcon } from '@/constants/activity';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useTerritorySummary } from '@/hooks/useTerritorySummary';
 import { useActivityStore } from '@/stores/activityStore';
-import { useTerritoryStore } from '@/stores/territoryStore';
+import { type SavedRoute, useRouteStore } from '@/stores/routeStore';
+import { Alert } from '@/utils/alert';
 import { formatArea, formatDistance, formatDuration } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { countOf } from '@/utils/plural';
+import { recentRoutes } from '@/utils/recentRoutes';
+import { visibleSavedRoutes } from '@/utils/savedRoutesList';
+import { SHEET_SNAP_POINTS } from '@/utils/sheetSnap';
+import { ListMessage } from './list-message';
 
-type SnapPoint = 'collapsed' | 'peek' | 'expanded';
-
-const COLLAPSED_HEIGHT = 24;
-const PEEK_HEIGHT = 200;
-const EXPANDED_HEIGHT = 420;
-
-const SPRING_CONFIG = { damping: 22, stiffness: 200 };
-
-function getTargetHeight(point: SnapPoint): number {
-  switch (point) {
-    case 'collapsed':
-      return COLLAPSED_HEIGHT;
-    case 'peek':
-      return PEEK_HEIGHT;
-    case 'expanded':
-      return EXPANDED_HEIGHT;
-  }
+interface MapBottomSheetProps {
+  /** The sheet's height, shared so the map's floating buttons can ride above it. */
+  height: SharedValue<number>;
+  /** A saved route was tapped: show it on the map. */
+  onPreviewRoute: (route: SavedRoute) => void;
+  /** The saved route now drawn on the map, if any. */
+  previewId: string | null;
 }
 
-export function MapBottomSheet() {
+export function MapBottomSheet({ height, onPreviewRoute, previewId }: MapBottomSheetProps) {
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const router = useRouter();
   const userActivities = useActivityStore((s) => s.activities);
-  const getTotalArea = useTerritoryStore((s) => s.getTotalArea);
-  const getUserPolygons = useTerritoryStore((s) => s.getUserPolygons);
-  const userId = getCurrentUserId();
-  const totalArea = useMemo(() => getTotalArea(userId), [getTotalArea, userId]);
-  const polygonCount = useMemo(() => getUserPolygons(userId).length, [getUserPolygons, userId]);
+  const userId = useCurrentUserId();
+  const { totalArea, polygons } = useTerritorySummary(userId);
+  const polygonCount = polygons.length;
 
-  // Starting fully collapsed leaves only a sliver that's hard to notice or
-  // hit - default to 'peek' so territory/route info is visible immediately.
-  const [snap, setSnap] = useState<SnapPoint>('peek');
-  const animatedHeight = useSharedValue(PEEK_HEIGHT);
+  // Fully collapsed leaves only a sliver that is hard to notice or hit, so start at the middle point.
+  const [index, setIndex] = useState(PEEK_INDEX);
+  const animatedIndex = useSharedValue<number>(PEEK_INDEX);
 
-  const recentWithRoute = userActivities.filter((a) => a.polyline?.includes(',')).slice(0, 5);
+  const savedRoutes = useRouteStore((s) => s.routes);
+  const removeRoute = useRouteStore((s) => s.remove);
+  // A bookmark icon sits inside a tappable card, so a slip of the thumb removes a route; ask first.
+  const confirmRemove = (route: SavedRoute) => {
+    Alert.alert('Remove saved route?', route.name, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => removeRoute(route.id) },
+    ]);
+  };
+  const recentWithRoute = recentRoutes(userActivities, 5);
 
-  // Animate height when snap changes
-  useEffect(() => {
-    animatedHeight.value = withSpring(getTargetHeight(snap), SPRING_CONFIG);
-  }, [snap, animatedHeight]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    height: animatedHeight.value,
-  }));
-
-  const navigateSnap = useCallback((direction: 'up' | 'down') => {
-    haptics.tap();
-    setSnap((prev) => {
-      if (direction === 'up') {
-        if (prev === 'collapsed') return 'peek';
-        if (prev === 'peek') return 'expanded';
-        return 'expanded';
-      }
-      if (prev === 'expanded') return 'peek';
-      if (prev === 'peek') return 'collapsed';
-      return 'collapsed';
-    });
-  }, []);
-
-  const panGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetY([-10, 10])
-        .onEnd((event) => {
-          if (event.translationY < -20 || event.velocityY < -500) {
-            runOnJS(navigateSnap)('up');
-          } else if (event.translationY > 20 || event.velocityY > 500) {
-            runOnJS(navigateSnap)('down');
-          }
-        }),
-    [navigateSnap]
+  // The map's floating buttons ride on the sheet's height, so it follows the sheet while it is dragged.
+  useAnimatedReaction(
+    () => animatedIndex.value,
+    (current) => {
+      height.value = interpolate(
+        current,
+        [0, 1, 2],
+        SHEET_SNAP_POINTS as unknown as number[],
+        Extrapolation.CLAMP
+      );
+    }
   );
 
-  const isCollapsed = snap === 'collapsed';
-  const isExpanded = snap === 'expanded';
+  const isExpanded = index === SHEET_SNAP_POINTS.length - 1;
 
   return (
-    <GestureDetector gesture={panGesture}>
-      <Animated.View
-        style={[
-          styles.container,
-          animatedStyle,
-          {
-            backgroundColor: theme.backgroundElement,
-            bottom: 0,
-            paddingTop: isCollapsed ? Spacing.one : Spacing.two,
-            paddingBottom: isCollapsed ? Spacing.one : Spacing.three,
-          },
-        ]}
+    <BottomSheet
+      index={PEEK_INDEX}
+      snapPoints={SHEET_SNAP_POINTS as unknown as number[]}
+      animatedIndex={animatedIndex}
+      onChange={setIndex}
+      enableDynamicSizing={false}
+      enableOverDrag={false}
+      style={theme.shadows.sheet}
+      backgroundStyle={[styles.background, { backgroundColor: theme.backgroundElement }]}
+      handleIndicatorStyle={[styles.handle, { backgroundColor: theme.border }]}
+    >
+      <BottomSheetScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.body}
       >
-        {/* Handle - tappable to toggle */}
-        <TouchableOpacity
-          onPress={() => navigateSnap(isCollapsed ? 'up' : 'down')}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 40, right: 40 }}
-          accessibilityRole="button"
-          accessibilityLabel={isCollapsed ? 'Expand panel' : 'Collapse panel'}
-        >
-          <View style={styles.handleRow}>
-            <View style={[styles.handle, { backgroundColor: theme.border }]} />
-          </View>
-        </TouchableOpacity>
-
-        {/* Collapsed: no content — just the handle */}
-
-        {/* Peek / Expanded: full content */}
-        {!isCollapsed && (
-          <>
-            {totalArea > 0 && (
-              <ThemedView
-                style={[styles.territoryBanner, { backgroundColor: theme.backgroundSelected }]}
-              >
-                <Ionicons name="shield-checkmark-outline" size={18} color={theme.text} />
-                <ThemedView style={styles.territoryInfo}>
-                  <ThemedText type="smallBold" style={{ color: theme.text }}>
-                    {formatArea(totalArea)} captured
-                  </ThemedText>
-                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                    {polygonCount} {polygonCount === 1 ? 'territory' : 'territories'}
-                  </ThemedText>
-                </ThemedView>
-              </ThemedView>
-            )}
-
-            {recentWithRoute.length > 0 && (
-              <ThemedView style={styles.routesSection}>
-                <ThemedView style={styles.sectionHeader}>
-                  <ThemedText type="sectionTitle" style={{ color: theme.text }}>
-                    Recent Routes
-                  </ThemedText>
-                  <TouchableOpacity
-                    onPress={() => router.push('/(tabs)/profile')}
-                    accessibilityRole="button"
-                    accessibilityLabel="View all activities"
-                  >
-                    <ThemedText type="small" style={{ color: theme.brand.primary }}>
-                      View all
-                    </ThemedText>
-                  </TouchableOpacity>
-                </ThemedView>
-
-                {recentWithRoute.slice(0, isExpanded ? 5 : 2).map((activity) => (
-                  <TouchableOpacity
-                    key={activity.id}
-                    style={[styles.routeCard, { backgroundColor: theme.background }]}
-                    activeOpacity={0.7}
-                    onPress={() => router.push(`/activity-summary?id=${activity.id}`)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${activity.name}, ${formatDistance(activity.distance)}`}
-                  >
-                    <ThemedView style={styles.routeIcon}>
-                      <Ionicons
-                        name={activity.activityType === 'ride' ? 'bicycle-outline' : 'walk-outline'}
-                        size={20}
-                        color={theme.textSecondary}
-                      />
-                    </ThemedView>
-                    <ThemedView style={styles.routeInfo}>
-                      <ThemedText type="smallBold" numberOfLines={1} style={{ color: theme.text }}>
-                        {activity.name}
-                      </ThemedText>
-                      <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                        {formatDistance(activity.distance)} · {formatDuration(activity.duration)}
-                      </ThemedText>
-                    </ThemedView>
-                    <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
-                  </TouchableOpacity>
-                ))}
-              </ThemedView>
-            )}
-
-            {recentWithRoute.length === 0 && totalArea === 0 && (
-              <ThemedView style={styles.emptyState}>
-                <Ionicons name="map-outline" size={28} color={theme.textSecondary} />
-                <ThemedText
-                  type="small"
-                  style={{ color: theme.textSecondary, textAlign: 'center' }}
-                >
-                  Start an activity to see your routes and captured territory here
-                </ThemedText>
-              </ThemedView>
-            )}
-          </>
+        {totalArea > 0 && (
+          <ThemedView
+            style={[styles.territoryBanner, { backgroundColor: theme.backgroundSelected }]}
+          >
+            <Ionicons name="shield-checkmark-outline" size={18} color={theme.text} />
+            <ThemedView style={styles.territoryInfo}>
+              <ThemedText type="smallBold" style={{ color: theme.text }}>
+                {formatArea(totalArea, unitSystem)} captured
+              </ThemedText>
+              <ThemedText type="caption" themeColor="textSecondary">
+                {countOf(polygonCount, 'territory', 'territories')}
+              </ThemedText>
+            </ThemedView>
+          </ThemedView>
         )}
-      </Animated.View>
-    </GestureDetector>
+
+        {savedRoutes.length > 0 && (
+          <ThemedView style={styles.routesSection}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="sectionTitle" style={{ color: theme.text }}>
+                Saved routes
+              </ThemedText>
+              <Tappable
+                onPress={() => router.push('/saved-routes')}
+                accessibilityRole="button"
+                accessibilityLabel="See all saved routes"
+              >
+                <ThemedText type="small" style={{ color: theme.accentText }}>
+                  See all
+                </ThemedText>
+              </Tappable>
+            </ThemedView>
+            {visibleSavedRoutes(savedRoutes, isExpanded).map((route) => (
+              <Tappable
+                key={route.id}
+                style={[styles.routeCard, { backgroundColor: theme.background }]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  haptics.selection();
+                  onPreviewRoute(route);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: previewId === route.id }}
+                accessibilityLabel={`${route.name}, ${formatDistance(route.distance, unitSystem)}. Show on map`}
+              >
+                <ThemedView style={styles.routeIcon}>
+                  <Ionicons
+                    name={getSportIcon(route.sport)}
+                    size={20}
+                    color={theme.brand.primary}
+                  />
+                </ThemedView>
+                <ThemedView style={styles.routeInfo}>
+                  <ThemedText type="smallBold" numberOfLines={1} style={{ color: theme.text }}>
+                    {route.name}
+                  </ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {formatDistance(route.distance, unitSystem)}
+                  </ThemedText>
+                </ThemedView>
+                <Tappable
+                  onPress={() => confirmRemove(route)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${route.name} from saved routes`}
+                >
+                  <Ionicons name="bookmark" size={18} color={theme.brand.primary} />
+                </Tappable>
+              </Tappable>
+            ))}
+          </ThemedView>
+        )}
+
+        {recentWithRoute.length > 0 && (
+          <ThemedView style={styles.routesSection}>
+            <ThemedView style={styles.sectionHeader}>
+              <ThemedText type="sectionTitle" style={{ color: theme.text }}>
+                Recent activities
+              </ThemedText>
+              <Tappable
+                onPress={() => router.push('/(tabs)/profile')}
+                accessibilityRole="button"
+                accessibilityLabel="View all activities"
+              >
+                <ThemedText type="small" style={{ color: theme.accentText }}>
+                  View all
+                </ThemedText>
+              </Tappable>
+            </ThemedView>
+
+            {recentWithRoute.slice(0, isExpanded ? 5 : 2).map((activity) => (
+              <Tappable
+                key={activity.id}
+                style={[styles.routeCard, { backgroundColor: theme.background }]}
+                activeOpacity={0.7}
+                onPress={() => router.push(`/activities/${activity.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`${activity.name}, ${formatDistance(activity.distance, unitSystem)}`}
+              >
+                <ThemedView style={styles.routeIcon}>
+                  <Ionicons
+                    name={getSportIcon(activity.activityType)}
+                    size={20}
+                    color={theme.textSecondary}
+                  />
+                </ThemedView>
+                <ThemedView style={styles.routeInfo}>
+                  <ThemedText type="smallBold" numberOfLines={1} style={{ color: theme.text }}>
+                    {activity.name}
+                  </ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {formatDistance(activity.distance, unitSystem)} ·{' '}
+                    {formatDuration(activity.duration)}
+                  </ThemedText>
+                </ThemedView>
+                <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
+              </Tappable>
+            ))}
+          </ThemedView>
+        )}
+
+        {recentWithRoute.length === 0 && totalArea === 0 && (
+          <ListMessage
+            icon="map-outline"
+            text="Start an activity to see your routes and captured territory here"
+          />
+        )}
+      </BottomSheetScrollView>
+    </BottomSheet>
   );
 }
 
+const PEEK_INDEX = 1;
+
 const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.three,
-    overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  handleRow: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.two,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-  },
+  body: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.four },
+  background: { borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl },
+  handle: { width: 36, height: 4 },
   territoryBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -247,7 +241,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   territoryInfo: {
-    gap: 2,
+    gap: Spacing.half,
   },
   routesSection: {
     gap: Spacing.two,
@@ -272,11 +266,6 @@ const styles = StyleSheet.create({
   },
   routeInfo: {
     flex: 1,
-    gap: 2,
-  },
-  emptyState: {
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.five,
+    gap: Spacing.half,
   },
 });

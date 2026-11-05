@@ -1,9 +1,11 @@
 import { Component, type ReactNode } from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { logger } from '@/utils/logger';
 
 interface Props {
   children: ReactNode;
@@ -13,22 +15,16 @@ interface State {
   hasError: boolean;
 }
 
-/**
- * Root-level safety net. Without this, any unhandled render error anywhere
- * in the tree takes down the entire app with no recovery — a real risk
- * during a live demo. Narrower boundaries (e.g. MapErrorBoundary) still make
- * sense where a broken widget shouldn't kill an otherwise-fine screen; this
- * one is the last resort.
- */
+/** Root-level boundary so an unhandled render error does not take down the whole app; narrower boundaries (e.g. MapErrorBoundary) handle isolated widgets. */
 export class AppErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false };
+  override state: State = { hasError: false };
 
   static getDerivedStateFromError(): State {
     return { hasError: true };
   }
 
-  componentDidCatch(error: unknown, info: { componentStack?: string }) {
-    console.error(
+  override componentDidCatch(error: unknown, info: { componentStack?: string }) {
+    logger.error(
       '[AppErrorBoundary] Unhandled error:',
       error instanceof Error ? error.stack : error,
       info.componentStack
@@ -39,7 +35,7 @@ export class AppErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false });
   };
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return <AppErrorFallback onRetry={this.reset} />;
     }
@@ -69,11 +65,11 @@ export function AppErrorFallback({
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
           {subtitle}
         </ThemedText>
-        <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={onRetry}>
+        <Tappable accessibilityRole="button" style={styles.button} onPress={onRetry}>
           <ThemedText type="button" style={styles.buttonLabel}>
             {buttonLabel}
           </ThemedText>
-        </TouchableOpacity>
+        </Tappable>
       </SafeAreaView>
     </ThemedView>
   );

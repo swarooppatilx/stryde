@@ -1,10 +1,9 @@
 import { parseEventLogs } from 'viem';
-import { getActiveConfig, getContracts, getPublicClient, type getWalletClient } from './client';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
 import { getGroupsFromSubgraph, getUserGroupsFromSubgraph } from './subgraph';
+import { writeAndConfirm } from './tx';
 
-/** Sentinel sportType value for a group that spans multiple activity types
- * (mirrors the mobile app's `'multi'` Club.sportType) — kept out of the
- * ACTIVITY_TYPE_MAP range (0-11) so it never collides with a real type. */
+/** Sentinel `sportType` for multi-sport groups (mirrors the app's `'multi'`); outside ACTIVITY_TYPE_MAP (0-11) so it never collides. */
 export const MULTI_SPORT_TYPE = 255;
 
 export interface OnchainGroup {
@@ -62,7 +61,7 @@ export async function getGroupCount(): Promise<bigint> {
   return client.readContract({
     ...contracts.groupRegistry,
     functionName: 'getGroupCount',
-  }) as Promise<bigint>;
+  });
 }
 
 export async function getMemberCount(groupId: bigint): Promise<bigint> {
@@ -72,7 +71,7 @@ export async function getMemberCount(groupId: bigint): Promise<bigint> {
     ...contracts.groupRegistry,
     functionName: 'getMemberCount',
     args: [groupId],
-  }) as Promise<bigint>;
+  });
 }
 
 export async function isGroupMember(groupId: bigint, user: `0x${string}`): Promise<boolean> {
@@ -82,26 +81,24 @@ export async function isGroupMember(groupId: bigint, user: `0x${string}`): Promi
     ...contracts.groupRegistry,
     functionName: 'isMember',
     args: [groupId, user],
-  }) as Promise<boolean>;
+  });
 }
 
 export async function getUserGroupIds(
   user: `0x${string}`,
   offset = 0n,
   limit = 100n
-): Promise<bigint[]> {
+): Promise<readonly bigint[]> {
   const client = getPublicClient();
   const contracts = getContracts();
   return client.readContract({
     ...contracts.groupRegistry,
     functionName: 'getUserGroupIds',
     args: [user, offset, limit],
-  }) as Promise<bigint[]>;
+  });
 }
 
-/** Every active group, on-chain scan fallback for chain modes with no
- * subgraph deployed (or if the subgraph request fails). Prefer
- * `getAllGroups()` below, which tries the subgraph first. */
+/** Every active group via on-chain scan; fallback for modes with no subgraph or when its request fails. Prefer `getAllGroups()`. */
 async function scanAllGroupsFromChain(): Promise<OnchainGroup[]> {
   const count = await getGroupCount();
   if (count === 0n) return [];
@@ -111,11 +108,7 @@ async function scanAllGroupsFromChain(): Promise<OnchainGroup[]> {
   return groups.filter((g) => g.active);
 }
 
-/** All active groups, for the community/groups tab. Prefers the deployed
- * subgraph (indexed, no O(n) contract-read fan-out) when one exists for the
- * active chain mode; falls back to scanning getGroupCount()/getGroup()
- * directly for modes with no subgraph (e.g. local Anvil) or if the subgraph
- * request itself fails. */
+/** All active groups; subgraph first (no O(n) read fan-out), else scans getGroupCount()/getGroup(). */
 export async function getAllGroups(): Promise<OnchainGroup[]> {
   try {
     const fromSubgraph = await getGroupsFromSubgraph();
@@ -124,17 +117,11 @@ export async function getAllGroups(): Promise<OnchainGroup[]> {
     console.warn('[Group] Subgraph fetch failed, falling back to on-chain scan:', e);
   }
 
-  try {
-    return await scanAllGroupsFromChain();
-  } catch (e) {
-    console.warn('[Group] Failed to scan groups from chain:', e);
-    return [];
-  }
+  // No catch: an empty list means "there are none", not "couldn't read".
+  return scanAllGroupsFromChain();
 }
 
-/** The groups a single wallet currently belongs to (owner or member).
- * Prefers the deployed subgraph when one exists for the active chain mode;
- * falls back to getUserGroupIds()+getGroup() directly otherwise. */
+/** The groups a wallet belongs to (owner or member); subgraph first, else getUserGroupIds()+getGroup(). */
 export async function getUserGroups(user: `0x${string}`): Promise<OnchainGroup[]> {
   try {
     const fromSubgraph = await getUserGroupsFromSubgraph(user);
@@ -143,14 +130,9 @@ export async function getUserGroups(user: `0x${string}`): Promise<OnchainGroup[]
     console.warn('[Group] Subgraph fetch failed, falling back to on-chain scan:', e);
   }
 
-  try {
-    const ids = await getUserGroupIds(user);
-    const groups = await Promise.all(ids.map((id) => getGroup(id)));
-    return groups.filter((g) => g.active);
-  } catch (e) {
-    console.warn('[Group] Failed to fetch user groups from chain:', e);
-    return [];
-  }
+  const ids = await getUserGroupIds(user);
+  const groups = await Promise.all(ids.map((id) => getGroup(id)));
+  return groups.filter((g) => g.active);
 }
 
 export async function createGroup(
@@ -163,21 +145,12 @@ export async function createGroup(
   }
 ): Promise<{ groupId: bigint; confirmed: boolean }> {
   const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
 
-  const hash = await wallet.writeContract({
-    ...contracts.groupRegistry,
+  const { confirmed, receipt } = await writeAndConfirm(wallet, 'groupRegistry', {
     functionName: 'createGroup',
     args: [params.name, params.location, params.description, params.sportType],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') {
+  if (!confirmed) {
     return { groupId: 0n, confirmed: false };
   }
 
@@ -190,9 +163,7 @@ export async function createGroup(
     logs: receipt.logs,
   });
 
-  const groupId =
-    ((event as { args?: Record<string, unknown> })?.args as { groupId?: bigint } | undefined)
-      ?.groupId ?? 0n;
+  const groupId = event?.args.groupId ?? 0n;
   return { groupId, confirmed: true };
 }
 
@@ -200,50 +171,25 @@ export async function joinGroup(
   wallet: ReturnType<typeof getWalletClient>,
   groupId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.groupRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'groupRegistry', {
     functionName: 'joinGroup',
     args: [groupId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
 export async function leaveGroup(
   wallet: ReturnType<typeof getWalletClient>,
   groupId: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.groupRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'groupRegistry', {
     functionName: 'leaveGroup',
     args: [groupId],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
-/** A group's shared on-chain treasury balance, in wei. The natural fit for
- * the Privy "business/organization managing digital assets" track — this is
- * an organization (the group/club), not an individual, holding and spending
- * pooled funds. */
+/** A group's shared treasury balance, in wei. */
 export async function getGroupTreasury(groupId: bigint): Promise<bigint> {
   const client = getPublicClient();
   const contracts = getContracts();
@@ -251,62 +197,35 @@ export async function getGroupTreasury(groupId: bigint): Promise<bigint> {
     ...contracts.groupRegistry,
     functionName: 'getGroupTreasury',
     args: [groupId],
-  }) as Promise<bigint>;
+  });
 }
 
-/** Contribute to a group's shared treasury. Any wallet may contribute
- * (members or outside sponsors) — routes through whatever wallet client the
- * caller passes in, so it rides the same gasless Privy smart-account path as
- * every other write in the app when one is configured (see useViemWallet). */
+/** Contributes to a group's treasury; any wallet may, via the caller-supplied wallet client so it uses the gasless smart-account path when configured. */
 export async function depositToTreasury(
   wallet: ReturnType<typeof getWalletClient>,
   groupId: bigint,
   amountWei: bigint
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.groupRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'groupRegistry', {
     functionName: 'depositToTreasury',
     args: [groupId],
     value: amountWei,
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
-/** Spend from a group's shared treasury — owner-gated on-chain (single
- * signer, not a real multisig/threshold approval; see FEEDBACK.md for the
- * stated production follow-up). */
+/** Spends from a group's treasury; owner-gated on-chain with a single signer, not a multisig. */
 export async function withdrawFromTreasury(
   wallet: ReturnType<typeof getWalletClient>,
   groupId: bigint,
   amountWei: bigint,
   to: `0x${string}`
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.groupRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'groupRegistry', {
     functionName: 'withdrawFromTreasury',
     args: [groupId, amountWei, to],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }
 
 export async function transferGroupOwnership(
@@ -314,20 +233,9 @@ export async function transferGroupOwnership(
   groupId: bigint,
   newOwner: `0x${string}`
 ): Promise<{ confirmed: boolean; txHash?: `0x${string}` }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.groupRegistry,
+  const { txHash, confirmed } = await writeAndConfirm(wallet, 'groupRegistry', {
     functionName: 'transferGroupOwnership',
     args: [groupId, newOwner],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success', txHash: hash };
+  return { confirmed, txHash };
 }

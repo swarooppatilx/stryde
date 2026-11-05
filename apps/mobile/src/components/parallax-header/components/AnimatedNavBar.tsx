@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, StyleSheet } from 'react-native';
-import { useAnimateNavbar } from '../hooks/useAnimatedNavBar';
-import type { AnimatedNavbarProps } from '../types/index';
+import { useAnimateNavbar } from '@/components/parallax-header/hooks/useAnimatedNavBar';
+import type { AnimatedNavbarProps } from '@/components/parallax-header/types/index';
 
 const AnimatedNavbar = ({
   scroll,

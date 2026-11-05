@@ -1,16 +1,31 @@
 import {
   AvatarUpdated,
   ProfileCreated,
+  ProfileRegistry,
+  ProfileUpdated,
   ProfileVerified,
 } from '../../generated/ProfileRegistry/ProfileRegistry';
+import { getOrCreateProfile } from '../helpers';
 import { Profile } from '../../generated/schema';
 
 export function handleProfileCreated(event: ProfileCreated): void {
-  const profile = new Profile(event.params.wallet);
+  // The wallet may already have a placeholder (it was named in an event before it registered);
+  // fill that in rather than replacing it, so nothing recorded about it is lost.
+  const profile = getOrCreateProfile(event.params.wallet);
   profile.username = event.params.username;
   profile.profileId = event.params.profileId;
   profile.createdAt = event.params.joinedAt;
-  profile.isVerified = false;
+  profile.save();
+}
+
+export function handleProfileUpdated(event: ProfileUpdated): void {
+  // The event names the profile id, not the wallet, and the profile entity is keyed by wallet.
+  const registry = ProfileRegistry.bind(event.address);
+  const wallet = registry.try_getWallet(event.params.profileId);
+  if (wallet.reverted) return;
+  const profile = Profile.load(wallet.value);
+  if (!profile) return;
+  profile.username = event.params.username;
   profile.save();
 }
 

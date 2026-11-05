@@ -40,7 +40,10 @@ export function handleActivityRecorded(event: ActivityRecorded): void {
   const lastActiveDay = streak.lastActiveDay;
   const dayDiff = currentDay.minus(lastActiveDay);
 
-  streak.totalActiveDays = streak.totalActiveDays.plus(BigInt.fromI32(1));
+  // A day counts once, however many activities fall on it.
+  if (dayDiff.gt(BigInt.zero())) {
+    streak.totalActiveDays = streak.totalActiveDays.plus(BigInt.fromI32(1));
+  }
 
   if (dayDiff.equals(BigInt.fromI32(1))) {
     streak.currentStreak = streak.currentStreak.plus(BigInt.fromI32(1));

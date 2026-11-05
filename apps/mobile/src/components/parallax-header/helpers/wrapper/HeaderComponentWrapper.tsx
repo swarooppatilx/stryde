@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import type React from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
-import type { HeaderComponentWrapperProps } from '../../types';
+import type { HeaderComponentWrapperProps } from '@/components/parallax-header/types';
 
 export const HeaderComponentWrapper: React.FC<HeaderComponentWrapperProps> = ({
   children,
@@ -16,7 +16,7 @@ export const HeaderComponentWrapper: React.FC<HeaderComponentWrapperProps> = ({
       {useGradient && (
         <LinearGradient
           colors={
-            gradientColors && gradientColors.length >= 2
+            gradientColors?.[0] && gradientColors[1]
               ? [gradientColors[0], gradientColors[1], ...gradientColors.slice(2)]
               : ['transparent', 'transparent']
           }
@@ -29,17 +29,6 @@ export const HeaderComponentWrapper: React.FC<HeaderComponentWrapperProps> = ({
           }}
         />
       )}
-
-      {/* <LinearGradient
-        colors={["transparent", "black"]}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 400,
-        }}
-      /> */}
     </View>
   );
 };

@@ -1,111 +1,109 @@
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
-import {
-  Image,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandWordmark } from '@/components/brand';
 import { AppButton } from '@/components/button';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { ONBOARDING_COPY } from '@/constants/copy';
+import { Palette } from '@/constants/palette';
+import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
+import { useSettingsStore } from '@/stores/settingsStore';
 
-const SLIDES = [
-  {
-    image: require('@/assets/images/onboarding-0.jpg'),
-    title: 'Track every mile',
-    body: 'Record runs, rides, hikes and walks with GPS tracking, pace, and elevation in real time.',
-  },
-  {
-    image: require('@/assets/images/onboarding-1.jpg'),
-    title: 'Claim your territory',
-    body: 'Every route you finish maps the ground you covered. Build your world as you move.',
-  },
-  {
-    image: require('@/assets/images/onboarding-2.jpg'),
-    title: 'Train with friends',
-    body: 'See what the people around you are up to. Share routes, compare stats, and keep each other honest.',
-  },
-  {
-    image: require('@/assets/images/onboarding-3.jpg'),
-    title: 'Your progress, always',
-    body: 'Everything you record stays with you. No lock-in, no paywall — just your data, wherever you go.',
-  },
+const IMAGES = [
+  require('@/assets/images/onboarding-0.jpg'),
+  require('@/assets/images/onboarding-1.jpg'),
+  require('@/assets/images/onboarding-2.jpg'),
+  require('@/assets/images/onboarding-3.jpg'),
 ];
+const SLIDES = ONBOARDING_COPY.map((slide, i) => ({ ...slide, image: IMAGES[i] }));
+
+// Space the fixed dots + buttons take at the bottom, so each slide's caption
+// sits just above them instead of underneath.
+const FOOTER_HEIGHT = 168;
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-  const { width: screenWidth } = useWindowDimensions();
-
-  const activeSlide = SLIDES[index];
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const goToSlide = (next: number) => {
     scrollRef.current?.scrollTo({ x: next * screenWidth, animated: true });
     setIndex(next);
   };
 
-  const handleGetStarted = () => {
-    router.replace('/login');
-  };
-
-  const handleLogin = () => {
+  // Sign-up and log-in are the same wallet flow, so both buttons lead to the same screen.
+  const setHasOnboarded = useSettingsStore((state) => state.setHasOnboarded);
+  // Having seen the carousel counts, whether or not they finish signing in this time.
+  const goToLogin = () => {
+    setHasOnboarded();
     router.replace('/login');
   };
 
   return (
     <View style={styles.container}>
-      {/* Placeholder — swap for a real background photo when one is ready, see
-          onboarding-background-placeholder.tsx for the exact replacement. */}
-      <Image
-        source={require('@/assets/images/onboarding_bg.webp')}
-        resizeMode="cover"
+      <StatusBar style="light" />
+      {/* The photos are the slides: each page fills the screen and its caption
+          travels with it. Controls below are overlaid, not part of the pager. */}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => {
+          const next = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+          setIndex(next);
+        }}
         style={StyleSheet.absoluteFill}
-      />
-      <LinearGradient
-        colors={['rgba(11,11,12,0.35)', 'rgba(11,11,12,0.8)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.wordmark}>
-          <BrandWordmark width={140} color={Brand.white} />
-        </View>
-
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(e) => {
-            const next = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
-            setIndex(next);
-          }}
-          style={styles.carousel}
-          accessibilityRole="adjustable"
-          accessibilityLabel="Onboarding tutorial"
-          accessibilityHint="Swipe left to continue through the tutorial"
-        >
-          {SLIDES.map((slide) => (
-            <View key={slide.title} style={[styles.slideVisual, { width: screenWidth }]}>
-              <View style={styles.phoneFrame}>
-                <Image source={slide.image} style={styles.phoneImage} resizeMode="cover" />
-              </View>
+        accessibilityRole="adjustable"
+        accessibilityLabel="Onboarding tutorial"
+        accessibilityHint="Swipe up or down to change slide"
+        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        onAccessibilityAction={(e) => {
+          const step = e.nativeEvent.actionName === 'increment' ? 1 : -1;
+          goToSlide(Math.min(SLIDES.length - 1, Math.max(0, index + step)));
+        }}
+      >
+        {SLIDES.map((slide) => (
+          <View key={slide.title} style={{ width: screenWidth, height: screenHeight }}>
+            {/* expo-image, not RN Image: RN's cover rendered these ~2x too
+                large on device, cropping out the subject of each photo. */}
+            <Image source={slide.image} contentFit="cover" style={StyleSheet.absoluteFill} />
+            <LinearGradient
+              colors={[tint(Palette.black, 0.55), tint(Palette.black, 0)]}
+              style={[styles.topScrim, { height: insets.top + 120 }]}
+            />
+            <LinearGradient
+              colors={[tint(Palette.black, 0), tint(Palette.black, 0.6), tint(Palette.black, 0.92)]}
+              locations={[0, 0.45, 1]}
+              style={styles.bottomScrim}
+            />
+            <View style={[styles.caption, { bottom: FOOTER_HEIGHT + insets.bottom }]}>
+              <ThemedText type="display" style={styles.slideTitle}>
+                {slide.title}
+              </ThemedText>
+              <ThemedText style={styles.slideBody}>{slide.body}</ThemedText>
             </View>
-          ))}
-        </ScrollView>
+          </View>
+        ))}
+      </ScrollView>
 
+      <View pointerEvents="none" style={[styles.wordmark, { top: insets.top + Spacing.three }]}>
+        <BrandWordmark width={140} color={Brand.white} />
+      </View>
+
+      <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.four }]}>
         <View style={styles.dots}>
           {SLIDES.map((slide, i) => (
-            <TouchableOpacity
+            <Tappable
               key={slide.title}
               onPress={() => goToSlide(i)}
               hitSlop={8}
@@ -114,26 +112,16 @@ export default function OnboardingScreen() {
               accessibilityState={{ selected: i === index }}
             >
               <View style={[styles.dot, i === index ? styles.dotActive : styles.dotInactive]} />
-            </TouchableOpacity>
+            </Tappable>
           ))}
         </View>
-
-        <Animated.View key={index} entering={FadeIn.duration(220)} style={styles.textArea}>
-          <ThemedText type="title" style={styles.slideTitle}>
-            {activeSlide.title}
-          </ThemedText>
-          <ThemedText style={styles.slideBody}>{activeSlide.body}</ThemedText>
-        </Animated.View>
-
-        <View style={styles.footer}>
-          <AppButton variant="secondary" style={styles.joinButton} onPress={handleGetStarted}>
-            Get Started
-          </AppButton>
-          <TouchableOpacity onPress={handleLogin} hitSlop={8} activeOpacity={0.7}>
-            <ThemedText style={styles.loginLink}>Login</ThemedText>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+        <AppButton variant="secondary" style={styles.joinButton} onPress={goToLogin}>
+          Get Started
+        </AppButton>
+        <Tappable onPress={goToLogin} hitSlop={8} activeOpacity={0.7}>
+          <ThemedText style={styles.loginLink}>Login</ThemedText>
+        </Tappable>
+      </View>
     </View>
   );
 }
@@ -141,43 +129,58 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Brand.black,
   },
-  safeArea: {
-    flex: 1,
+  topScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  bottomScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '60%',
+  },
+  caption: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    paddingHorizontal: Spacing.five,
+    gap: Spacing.two,
   },
   wordmark: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    marginTop: Spacing.three,
   },
-  carousel: {
-    flex: 1,
+  slideTitle: {
+    color: Brand.white,
+    textAlign: 'center',
+    ...textStyle(TypeScale.title),
   },
-  slideVisual: {
+  slideBody: {
+    color: Brand.white,
+    textAlign: 'center',
+    opacity: 0.9,
+    lineHeight: 22,
+  },
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.five,
+    gap: Spacing.three,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  phoneFrame: {
-    width: 210,
-    height: 446,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: 'rgba(255,255,255,0.25)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 12,
-  },
-  phoneImage: {
-    width: '100%',
-    height: '100%',
   },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: Spacing.one,
-    marginBottom: Spacing.three,
   },
   dot: {
     width: 8,
@@ -189,38 +192,14 @@ const styles = StyleSheet.create({
     width: 20,
   },
   dotInactive: {
-    backgroundColor: 'rgba(255,255,255,0.4)',
-  },
-  textArea: {
-    paddingHorizontal: Spacing.five,
-    gap: Spacing.two,
-    minHeight: 96,
-  },
-  slideTitle: {
-    color: Brand.white,
-    textAlign: 'center',
-    fontSize: 28,
-  },
-  slideBody: {
-    color: Brand.white,
-    textAlign: 'center',
-    opacity: 0.9,
-    lineHeight: 22,
-  },
-  footer: {
-    paddingHorizontal: Spacing.five,
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.four,
-    gap: Spacing.three,
-    alignItems: 'center',
+    backgroundColor: tint(Palette.white, 0.4),
   },
   joinButton: {
     borderRadius: BorderRadius.full,
   },
   loginLink: {
     color: Brand.white,
-    fontWeight: '600',
-    fontSize: 16,
+    ...textStyle(TypeScale.bodyBold),
     padding: Spacing.one,
   },
 });

@@ -1,10 +1,8 @@
 import { BlurView } from 'expo-blur';
 import React, { isValidElement } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { HeaderNavBarProps } from '../../types';
-
-const WIDTH = Dimensions.get('window').width;
+import type { HeaderNavBarProps } from '@/components/parallax-header/types';
 
 export const HeaderNavBar: React.FC<HeaderNavBarProps> = ({
   children,
@@ -13,6 +11,7 @@ export const HeaderNavBar: React.FC<HeaderNavBarProps> = ({
   tint = 'systemUltraThinMaterialDark',
   ...props
 }) => {
+  const { width } = useWindowDimensions();
   const childrenArray = React.Children.toArray(children).filter((child) => isValidElement(child));
   const childCount = childrenArray.length;
 
@@ -57,13 +56,8 @@ export const HeaderNavBar: React.FC<HeaderNavBarProps> = ({
     );
   };
 
-  // expo-blur's actual blur effect is inconsistently supported on Android
-  // (depends on OS version/GPU) — when it doesn't render, a fully
-  // transparent background leaves scrolled-past content visible right
-  // through the "collapsed" header instead of hiding it. A semi-opaque
-  // fallback tied to the same tint keeps the header legible either way:
-  // barely noticeable extra tint where blur does render, and the only
-  // thing standing between content and the header where it doesn't.
+  // expo-blur is unreliable on Android (OS version and GPU dependent). Without blur a transparent
+  // header shows scrolled-past content, so a semi-opaque fallback in the same tint keeps it legible.
   const isDarkTint = tint.toLowerCase().includes('dark');
   const fallbackBackgroundColor = isDarkTint ? 'rgba(18,18,18,0.85)' : 'rgba(255,255,255,0.85)';
 
@@ -72,6 +66,7 @@ export const HeaderNavBar: React.FC<HeaderNavBarProps> = ({
       style={[
         styles.container,
         {
+          width,
           height: headerHeight,
           backgroundColor: fallbackBackgroundColor,
         },
@@ -89,7 +84,6 @@ export const HeaderNavBar: React.FC<HeaderNavBarProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    width: WIDTH,
     position: 'absolute',
     top: 0,
     left: 0,

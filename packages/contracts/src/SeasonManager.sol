@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ISeasonManager} from "./interfaces/ISeasonManager.sol";
 
-contract SeasonManager is ISeasonManager, Ownable, Pausable {
+contract SeasonManager is ISeasonManager, Ownable2Step, Pausable {
     Season private _currentSeason;
     uint256 private _seasonCount;
 
@@ -14,12 +15,20 @@ contract SeasonManager is ISeasonManager, Ownable, Pausable {
     mapping(uint256 => uint256) private _totalContributions;
     mapping(uint256 => uint256) private _participantCount;
     mapping(uint256 => mapping(address => bool)) private _hasParticipated;
+    // Contributions feed the season leaderboard, so only the owner and
+    // accounts it trusts (the relayer, after it checks the activity) may write
+    // them — an open recordContribution let anyone award anyone any amount.
+    mapping(address => bool) private _recorders;
 
     constructor() Ownable(msg.sender) {}
 
     function startSeason(uint256 duration) external override onlyOwner whenNotPaused {
         if (duration == 0) revert InvalidDuration();
-        if (_currentSeason.isActive) revert SeasonAlreadyActive();
+        if (_currentSeason.isActive) {
+            // A season whose end time has passed no longer runs, even if endSeason was never called.
+            if (block.timestamp <= _currentSeason.endTime) revert SeasonAlreadyActive();
+            _closeCurrentSeason(_currentSeason.endTime);
+        }
 
         _seasonCount++;
         _currentSeason =
@@ -31,17 +40,31 @@ contract SeasonManager is ISeasonManager, Ownable, Pausable {
 
     function endSeason() external override onlyOwner {
         if (!_currentSeason.isActive) revert SeasonNotActive();
+        _closeCurrentSeason(block.timestamp);
+    }
 
+    function _closeCurrentSeason(uint256 endedAt) private {
         uint256 seasonId = _currentSeason.id;
         _currentSeason.isActive = false;
         _seasons[seasonId] = _currentSeason;
 
-        emit SeasonEnded(seasonId, block.timestamp, _participantCount[seasonId]);
+        emit SeasonEnded(seasonId, endedAt, _participantCount[seasonId]);
+    }
+
+    function setRecorder(address recorder, bool allowed) external override onlyOwner {
+        if (recorder == address(0)) revert ZeroAddress();
+        _recorders[recorder] = allowed;
+        emit RecorderUpdated(recorder, allowed);
+    }
+
+    function isRecorder(address account) external view override returns (bool) {
+        return _recorders[account];
     }
 
     function recordContribution(address participant, uint256 amount) external override whenNotPaused {
+        if (msg.sender != owner() && !_recorders[msg.sender]) revert NotRecorder();
         if (participant == address(0)) revert ZeroAddress();
-        if (!_currentSeason.isActive) revert SeasonNotActive();
+        if (!_currentSeason.isActive || block.timestamp > _currentSeason.endTime) revert SeasonNotActive();
 
         uint256 seasonId = _currentSeason.id;
 

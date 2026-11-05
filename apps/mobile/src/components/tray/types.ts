@@ -24,10 +24,7 @@ type TTrayDetent = number | `${number}%`;
 /** Axis a view slides along when navigating. `none` cross-fades in place. */
 type TTrayViewAxis = 'x' | 'y' | 'none';
 
-/**
- * Every tunable in the tray's motion, in one place. Callers pass a partial and
- * it is merged over the defaults, so they override only what they care about.
- */
+/** Every tunable in the tray's motion; callers pass a partial that is merged over the defaults. */
 interface ITrayMotion {
   /** Presenting and dismissing the sheet. */
   readonly presentSpring: WithSpringConfig;

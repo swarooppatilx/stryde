@@ -1,23 +1,54 @@
 import {
   createPublicClient,
   createWalletClient,
+  custom,
   http,
   type PublicClient,
   type WalletClient,
+  zeroAddress,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { type ChainMode, DEFAULT_CHAIN_MODE, getChainConfig } from '../constants';
 import { ABIS } from '../contracts';
 
-// A bit more resilience against transient RPC failures (rate limits, brief
-// outages) than viem's default 150ms retry delay. Public HTTP RPC endpoints
-// occasionally reject/drop requests without warning (see: Ankr's free
-// eth_sepolia tier started requiring an API key mid-hackathon).
+// Retry delays are longer than viem's 150ms default to ride out transient RPC failures; public HTTP RPCs sometimes reject or drop requests without warning.
+/** Thrown instead of any network call while the chain is switched off (see `setChainOffline`). */
+export class ChainOfflineError extends Error {
+  constructor() {
+    super('The chain is switched off for this session');
+    this.name = 'ChainOfflineError';
+  }
+}
+
+let chainOffline = false;
+
+/**
+ * Switches every chain read and write (and the subgraph) to fail at once with `ChainOfflineError`,
+ * instead of waiting on a node that is not there. For a developer profile that runs with no network.
+ */
+export function setChainOffline(offline: boolean): void {
+  chainOffline = offline;
+}
+
+export function isChainOffline(): boolean {
+  return chainOffline;
+}
+
 const rpcTransport = (url: string) =>
-  http(url, {
-    retryCount: 3,
-    retryDelay: 1000,
-  });
+  chainOffline
+    ? custom(
+        {
+          request: async () => {
+            throw new ChainOfflineError();
+          },
+        },
+        // Nothing to wait for: retrying cannot make a switched-off chain answer.
+        { retryCount: 0 }
+      )
+    : http(url, {
+        retryCount: 3,
+        retryDelay: 1000,
+      });
 
 const warnedZeroAddressModes = new Set<ChainMode>();
 
@@ -52,7 +83,7 @@ export function getActiveConfig() {
 
 export function getPublicClient(): PublicClient {
   const config = getChainConfig(currentMode);
-  const key = `${currentMode}:${config.rpcUrl}`;
+  const key = `${currentMode}:${config.rpcUrl}:${chainOffline ? 'offline' : 'online'}`;
 
   if (cachedPublicClient?.key === key) {
     return cachedPublicClient.client;
@@ -74,7 +105,7 @@ export function getBalance(address: `0x${string}`): Promise<bigint> {
 
 export function getWalletClient(privateKey: `0x${string}`): WalletClient {
   const config = getChainConfig(currentMode);
-  const key = `${currentMode}:${config.rpcUrl}:${privateKey}`;
+  const key = `${currentMode}:${config.rpcUrl}:${chainOffline ? 'offline' : 'online'}:${privateKey}`;
 
   if (cachedWalletClient?.key === key) {
     return cachedWalletClient.client;
@@ -89,8 +120,6 @@ export function getWalletClient(privateKey: `0x${string}`): WalletClient {
   return client;
 }
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
 export function getContracts() {
   const config = getChainConfig(currentMode);
   const key = `${currentMode}:${config.rpcUrl}`;
@@ -101,7 +130,7 @@ export function getContracts() {
 
   if (
     !warnedZeroAddressModes.has(currentMode) &&
-    Object.values(config.contracts).every((address) => address === ZERO_ADDRESS)
+    Object.values(config.contracts).every((address) => address === zeroAddress)
   ) {
     warnedZeroAddressModes.add(currentMode);
     console.warn(
@@ -160,7 +189,7 @@ export function getContracts() {
     },
   } as const;
 
-  if (profileRegistryAddress === '0x0000000000000000000000000000000000000000') {
+  if (profileRegistryAddress === zeroAddress) {
     throw new Error('Contract addresses not configured — run deploy script first');
   }
 

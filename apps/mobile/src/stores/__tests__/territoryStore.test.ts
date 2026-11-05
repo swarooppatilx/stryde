@@ -1,15 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { installFakePlatform } from '@/platform/fakes';
 import type { Ring } from '@/types';
 
-vi.mock('@react-native-async-storage/async-storage', () => ({
-  default: {
-    getItem: vi.fn().mockResolvedValue(null),
-    setItem: vi.fn().mockResolvedValue(undefined),
-    removeItem: vi.fn().mockResolvedValue(undefined),
-  },
-}));
+// Stores hydrate from storage the moment they're imported, so a platform must
+// already be installed.
+installFakePlatform();
 
-const { useTerritoryStore } = await import('../territoryStore');
+const { useTerritoryStore } = await import('@/stores/territoryStore');
 const { services } = await import('@repo/shared');
 
 // A tiny real ring so `territoryService.getPolygonArea` (used for local-only
@@ -133,5 +130,47 @@ describe('territoryStore getTotalArea', () => {
     capturePolygon(OWNER, RING_B);
     const afterSecond = getTotalArea(OWNER);
     expect(afterSecond).toBeGreaterThan(afterFirst);
+  });
+
+  // A territory that decayed or was lost no longer shows up in the next sync.
+  // Merging kept it forever, so total area (and area achievements) never went down.
+  it('drops synced territories the chain no longer reports for that owner', () => {
+    const { setTerritories, getTotalArea } = useTerritoryStore.getState();
+    setTerritories(OWNER, [
+      { id: '0xa', areaSqm: 500, strength: 100, capturedAt: 1, lastReinforced: 1 },
+      { id: '0xb', areaSqm: 300, strength: 100, capturedAt: 1, lastReinforced: 1 },
+    ]);
+    expect(getTotalArea(OWNER)).toBe(800);
+
+    setTerritories(OWNER, [
+      { id: '0xa', areaSqm: 500, strength: 100, capturedAt: 1, lastReinforced: 1 },
+    ]);
+
+    expect(getTotalArea(OWNER)).toBe(500);
+    expect(useTerritoryStore.getState().getTerritoryMetadata('0xb')).toBeUndefined();
+  });
+
+  it('leaves other owners untouched when one owner is re-synced', () => {
+    const { setTerritories, getTotalArea } = useTerritoryStore.getState();
+    setTerritories('0xotherOwner', [
+      { id: '0xc', areaSqm: 999, strength: 100, capturedAt: 1, lastReinforced: 1 },
+    ]);
+
+    setTerritories(OWNER, []);
+
+    expect(getTotalArea('0xotherOwner')).toBe(999);
+  });
+
+  it('keeps freshly synced data current: a re-sync updates strength and area', () => {
+    const { setTerritories, getTerritoryMetadata } = useTerritoryStore.getState();
+    setTerritories(OWNER, [
+      { id: '0xa', areaSqm: 500, strength: 100, capturedAt: 1, lastReinforced: 1 },
+    ]);
+
+    setTerritories(OWNER, [
+      { id: '0xa', areaSqm: 520, strength: 80, capturedAt: 1, lastReinforced: 9 },
+    ]);
+
+    expect(getTerritoryMetadata('0xa')).toMatchObject({ areaSqm: 520, strength: 80 });
   });
 });

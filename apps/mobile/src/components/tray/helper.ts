@@ -16,7 +16,7 @@ function nearestOffsetIndex(offsets: readonly number[], position: number): numbe
   let best = 0;
   let bestDistance = Number.MAX_VALUE;
   for (let i = 0; i < offsets.length; i += 1) {
-    const distance = Math.abs(offsets[i] - position);
+    const distance = Math.abs((offsets[i] ?? 0) - position);
     if (distance < bestDistance) {
       bestDistance = distance;
       best = i;

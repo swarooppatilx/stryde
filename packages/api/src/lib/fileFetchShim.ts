@@ -8,11 +8,16 @@ import { fileURLToPath } from 'node:url';
 // intercepted; everything else passes through untouched.
 let installed = false;
 
+function requestHref(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : '';
+}
+
 export function installFileFetchShim() {
   if (installed) return;
   const nativeFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
-    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
+    const href = requestHref(input);
     if (href.startsWith('file:')) {
       return new Response(await readFile(fileURLToPath(href)), {
         headers: { 'Content-Type': 'application/wasm' },

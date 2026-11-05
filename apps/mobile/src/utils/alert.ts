@@ -1,14 +1,15 @@
-import { type AlertButton, useAlertStore } from '@/stores/alertStore';
+import { type AlertButton, type AlertOptions, useAlertStore } from '@/stores/alertStore';
 
-export type { AlertButton };
+export type { AlertButton, AlertOptions };
 
-/** Drop-in themed replacement for React Native's `Alert.alert` — identical
- * signature, so every existing call site (confirm/cancel prompts, action
- * sheets, plain info alerts) works unchanged by just swapping the import.
- * Backed by our own store/host instead of the OS-native dialog, so it
- * matches the app's theme instead of popping a system alert box. */
+/** Themed drop-in for `Alert.alert` with the same signature plus optional `options`, rendered by the app's own host instead of the OS dialog. */
 export const Alert = {
-  alert: (title: string, message?: string, buttons?: AlertButton[]): void => {
-    useAlertStore.getState().show(title, message, buttons);
+  alert: (
+    title: string,
+    message?: string,
+    buttons?: AlertButton[],
+    options?: AlertOptions
+  ): void => {
+    useAlertStore.getState().show(title, message, buttons, options);
   },
 };

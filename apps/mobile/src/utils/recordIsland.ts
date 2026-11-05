@@ -1,0 +1,49 @@
+import type { MapStylePref } from '@/stores/mapPrefsStore';
+
+export const MAP_STYLE_LABELS: Record<MapStylePref, string> = {
+  auto: 'Automatic',
+  light: 'Light',
+  dark: 'Dark',
+};
+
+/** The stats island holds this many figures, the first of the athlete's live layout. */
+const ISLAND_STAT_COUNT = 3;
+
+/** The figures for the floating island: the live layout in order, skipping any with no data behind it. */
+export function islandStatIds<T>(layout: readonly T[], isAvailable: (id: T) => boolean): T[] {
+  return layout.filter(isAvailable).slice(0, ISLAND_STAT_COUNT);
+}
+
+export type FlyoutRowId = 'laps' | 'settings' | 'layers' | 'share' | 'sensor';
+
+export interface FlyoutRow {
+  id: FlyoutRowId;
+  title: string;
+  subtitle: string;
+  /** False for an option that is not built yet: shown as a plain row, not a control. */
+  available: boolean;
+}
+
+export const COMING_LATER = 'Coming later';
+
+/** The options flyout: each row says what it is set to now. */
+export function flyoutRows({
+  trackLaps,
+  mapStyle,
+}: {
+  trackLaps: boolean;
+  mapStyle: MapStylePref;
+}): FlyoutRow[] {
+  return [
+    { id: 'laps', title: 'Track laps', subtitle: trackLaps ? 'On' : 'Off', available: true },
+    {
+      id: 'settings',
+      title: 'Recording settings',
+      subtitle: 'Audio cues, auto-pause',
+      available: true,
+    },
+    { id: 'layers', title: 'Map layers', subtitle: MAP_STYLE_LABELS[mapStyle], available: true },
+    { id: 'share', title: 'Share live location', subtitle: COMING_LATER, available: false },
+    { id: 'sensor', title: 'Add a sensor', subtitle: COMING_LATER, available: false },
+  ];
+}

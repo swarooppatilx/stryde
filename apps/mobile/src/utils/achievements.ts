@@ -1,3 +1,4 @@
+import { ACHIEVEMENT_RULES, achievementStats } from '@repo/shared';
 import { AchievementColors } from '@/constants/theme';
 import type { Activity } from '@/types';
 
@@ -10,97 +11,90 @@ export interface Achievement {
   unlocked: boolean;
 }
 
+/** How each badge looks; what earns it lives in `@repo/shared` so the relay checks the same rule. */
+const PRESENTATION: Record<string, { description: string; icon: string; color: string }> = {
+  first_activity: {
+    description: 'Complete your first activity',
+    icon: 'flag',
+    color: AchievementColors.green,
+  },
+  five_activities: {
+    description: 'Complete 5 activities',
+    icon: 'flame',
+    color: AchievementColors.orange,
+  },
+  ten_activities: {
+    description: 'Complete 10 activities',
+    icon: 'trophy',
+    color: AchievementColors.yellow,
+  },
+  first_territory: {
+    description: 'Capture your first territory',
+    icon: 'map',
+    color: AchievementColors.blue,
+  },
+  ten_thousand_sqm: {
+    description: 'Capture 10,000m² of territory',
+    icon: 'globe',
+    color: AchievementColors.indigo,
+  },
+  hundred_thousand_sqm: {
+    description: 'Capture 100,000m² of territory',
+    icon: 'star',
+    color: AchievementColors.purple,
+  },
+  five_km: { description: 'Run 5km total', icon: 'walk', color: AchievementColors.green },
+  ten_km: { description: 'Cover 10km total', icon: 'footsteps', color: AchievementColors.blue },
+  fifty_km: { description: 'Cover 50km total', icon: 'bicycle', color: AchievementColors.orange },
+  week_streak: {
+    description: 'Active 7 different days',
+    icon: 'calendar',
+    color: AchievementColors.red,
+  },
+};
+
 export function computeAchievements(activities: Activity[], totalArea: number): Achievement[] {
-  const totalDistance = activities.reduce((sum, a) => sum + a.distance, 0);
-  const totalActivities = activities.length;
-  const uniqueDays = new Set(activities.map((a) => new Date(a.createdAt).toDateString())).size;
-
-  const achievements: Achievement[] = [
-    {
-      id: 'first_activity',
-      title: 'First Activity',
-      description: 'Complete your first activity',
-      icon: 'flag',
-      color: AchievementColors.green,
-      unlocked: totalActivities >= 1,
-    },
-    {
-      id: 'five_activities',
-      title: 'Getting Started',
-      description: 'Complete 5 activities',
-      icon: 'flame',
-      color: AchievementColors.orange,
-      unlocked: totalActivities >= 5,
-    },
-    {
-      id: 'ten_activities',
-      title: 'Dedicated',
-      description: 'Complete 10 activities',
-      icon: 'trophy',
-      color: AchievementColors.yellow,
-      unlocked: totalActivities >= 10,
-    },
-    {
-      id: 'first_territory',
-      title: 'Territory Pioneer',
-      description: 'Capture your first territory',
-      icon: 'map',
+  const stats = achievementStats(
+    activities.map((a) => ({
+      distance: a.distance,
+      activityType: a.activityType,
+      timestamp: new Date(a.createdAt).getTime() / 1000,
+      isManual: a.isManual,
+    })),
+    totalArea
+  );
+  return ACHIEVEMENT_RULES.map((rule) => {
+    const look = PRESENTATION[rule.id] ?? {
+      description: '',
+      icon: 'ribbon',
       color: AchievementColors.blue,
-      unlocked: totalArea > 0,
-    },
-    {
-      id: 'ten_thousand_sqm',
-      title: 'Map Maker',
-      description: 'Capture 10,000m² of territory',
-      icon: 'globe',
-      color: AchievementColors.indigo,
-      unlocked: totalArea >= 10_000,
-    },
-    {
-      id: 'hundred_thousand_sqm',
-      title: 'Territory King',
-      description: 'Capture 100,000m² of territory',
-      icon: 'star',
-      color: AchievementColors.purple,
-      unlocked: totalArea >= 100_000,
-    },
-    {
-      id: 'five_km',
-      title: '5K Runner',
-      description: 'Run 5km total',
-      icon: 'walk',
-      color: AchievementColors.green,
-      unlocked: totalDistance >= 5000,
-    },
-    {
-      id: 'ten_km',
-      title: '10K Club',
-      description: 'Cover 10km total',
-      icon: 'footsteps',
-      color: AchievementColors.blue,
-      unlocked: totalDistance >= 10000,
-    },
-    {
-      id: 'fifty_km',
-      title: 'Half Century',
-      description: 'Cover 50km total',
-      icon: 'bicycle',
-      color: AchievementColors.orange,
-      unlocked: totalDistance >= 50000,
-    },
-    {
-      id: 'week_streak',
-      title: 'Week Warrior',
-      description: 'Active 7 different days',
-      icon: 'calendar',
-      color: AchievementColors.red,
-      unlocked: uniqueDays >= 7,
-    },
-  ];
-
-  return achievements;
+    };
+    return { id: rule.id, title: rule.name, ...look, unlocked: rule.unlocked(stats) };
+  });
 }
 
 export function getUnlockedCount(achievements: Achievement[]): number {
   return achievements.filter((a) => a.unlocked).length;
+}
+
+/**
+ * Which achievements each activity earned: the ones unlocked once it is counted (in date order)
+ * that were not unlocked before it. Keyed by activity id; activities that earned nothing are left out.
+ * Territory counts what the activities up to that point had claimed.
+ */
+export function achievementsEarnedBy(activities: readonly Activity[]): Map<string, Achievement[]> {
+  const ordered = [...activities].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+  const earned = new Map<string, Achievement[]>();
+  let before = new Set<string>();
+  let area = 0;
+  ordered.forEach((activity, index) => {
+    area += activity.territoryArea ?? 0;
+    const now = computeAchievements(ordered.slice(0, index + 1), area).filter((a) => a.unlocked);
+    const fresh = now.filter((a) => !before.has(a.id));
+    if (fresh.length > 0) earned.set(activity.id, fresh);
+    before = new Set(now.map((a) => a.id));
+  });
+  return earned;
 }

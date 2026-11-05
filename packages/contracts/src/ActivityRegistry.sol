@@ -2,10 +2,14 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IActivityRegistry} from "./interfaces/IActivityRegistry.sol";
 
-contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
+contract ActivityRegistry is IActivityRegistry, Ownable2Step, Pausable {
+    /// @dev An IPFS CID is under 100 characters; the cap keeps a stray string from bloating logs.
+    uint256 public constant MAX_CID_LENGTH = 128;
+
     uint256 private _nextActivityId = 1;
 
     struct Activity {
@@ -31,7 +35,9 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
         if (_hashUsed[activityHash]) revert DuplicateHash();
         if (activityType > 11) revert InvalidActivityType();
 
-        unchecked { activityId = _nextActivityId++; }
+        unchecked {
+            activityId = _nextActivityId++;
+        }
         _activities[activityId] = Activity({activityHash: activityHash, owner: msg.sender, timestamp: block.timestamp});
         _activitiesByUser[msg.sender].push(activityId);
         _hashUsed[activityHash] = true;
@@ -45,6 +51,7 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
         address activityOwner = _activities[activityId].owner;
         if (activityOwner == address(0)) revert ActivityNotFound();
         if (activityOwner != msg.sender) revert NotActivityOwner();
+        if (bytes(metadataCid).length > MAX_CID_LENGTH) revert CidTooLong();
 
         emit ActivityMetadataUpdated(activityId, msg.sender, metadataCid);
     }
@@ -61,7 +68,12 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
         return _activities[activityId].timestamp;
     }
 
-    function getActivity(uint256 activityId) external view override returns (bytes32 activityHash, address owner, uint256 timestamp) {
+    function getActivity(uint256 activityId)
+        external
+        view
+        override
+        returns (bytes32 activityHash, address owner, uint256 timestamp)
+    {
         Activity storage a = _activities[activityId];
         return (a.activityHash, a.owner, a.timestamp);
     }
@@ -70,7 +82,12 @@ contract ActivityRegistry is IActivityRegistry, Ownable, Pausable {
         return _activitiesByUser[user].length;
     }
 
-    function getUserActivityIds(address user, uint256 offset, uint256 limit) external view override returns (uint256[] memory) {
+    function getUserActivityIds(address user, uint256 offset, uint256 limit)
+        external
+        view
+        override
+        returns (uint256[] memory)
+    {
         uint256[] storage arr = _activitiesByUser[user];
         if (offset >= arr.length) {
             return new uint256[](0);

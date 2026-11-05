@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   IDKit,
   IDKitErrorCodes,
@@ -5,11 +6,14 @@ import {
   selfieCheckLegacy,
 } from '@worldcoin/idkit-core';
 import { signRequest } from '@worldcoin/idkit-server';
-import { randomUUID } from 'crypto';
 import { Hono } from 'hono';
-import { getRelayChainConfig } from '../lib/chainConfig.js';
-import { RELAY_ABIS } from '../lib/relayAbis.js';
-import { getRelayerPublicClient, getRelayerWallet } from '../lib/relayer.js';
+import { bodyLimit } from 'hono/body-limit';
+import { keccak256, toBytes } from 'viem';
+import { isAddress } from '../lib/address.js';
+import { isProduction } from '../lib/env.js';
+import { logError } from '../lib/logError.js';
+import { ConfigError } from '../lib/relayErrors.js';
+import { relayTx } from '../lib/relayerTx.js';
 
 export const world = new Hono();
 
@@ -20,76 +24,68 @@ const WORLD_ENVIRONMENT = (process.env.WORLD_ENVIRONMENT || 'sandbox') as
   | 'production'
   | 'staging'
   | 'sandbox';
-const SKIP_REMOTE_VERIFY = process.env.WORLD_SKIP_REMOTE_VERIFY === 'true';
+// Skipping confirms proofs World never vouched for: never honoured in production.
+const SKIP_REMOTE_VERIFY_REQUESTED = process.env.WORLD_SKIP_REMOTE_VERIFY === 'true';
+const IS_PRODUCTION_DEPLOY = isProduction();
+const SKIP_REMOTE_VERIFY = SKIP_REMOTE_VERIFY_REQUESTED && !IS_PRODUCTION_DEPLOY;
 const WORLD_DEVELOPER_API_KEY = process.env.WORLD_DEVELOPER_API_KEY;
+
+if (SKIP_REMOTE_VERIFY_REQUESTED && IS_PRODUCTION_DEPLOY) {
+  console.error(
+    '[world] WORLD_SKIP_REMOTE_VERIFY=true is ignored on the production deployment — every proof is verified with World.'
+  );
+}
 
 if (!RP_SIGNING_KEY) {
   console.warn('[world] WORLD_RP_SIGNING_KEY not set — /world/session will return 503');
 }
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
+const SESSION_GONE = 'Session not found or expired.';
+const DEFAULT_RETURN_TO = 'stryde://verify';
+/** The app's scheme, and the one it used before (builds already installed still send it). Nothing else is a way back. */
+const RETURN_TO_PREFIXES = ['stryde://', 'strydeexpo://'] as const;
+const MAX_BODY_BYTES = 16 * 1024;
+/** Bounds memory: every pending session holds an IDKit request until it expires. */
+const MAX_LIVE_SESSIONS = 1000;
 
 interface SessionEntry {
   request: IDKitRequest;
   createdAt: number;
-  /** The wallet address this session's Selfie Check is for (passed as
-   * `signal` on session creation) — used to mirror a confirmed verification
-   * onto ProfileRegistry.verify() so it's visible to other users, not just
-   * the verifying device. */
+  /** Wallet address this Selfie Check is for (`signal` on session creation); mirrored onto ProfileRegistry.verify() so other users see the verification. */
   wallet: string;
 }
 
-const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
 
-/** Best-effort mirror of a confirmed Selfie Check onto
- * ProfileRegistry.verify(), so the badge is visible to other users via the
- * subgraph (see FEEDBACK.md) rather than only stored locally on the
- * verifying device. Failure here (e.g. relayer not configured, wallet not
- * yet registered on-chain, or already verified) does not fail the overall
- * verification — World ID confirmed the human, which is what matters for
- * the caller — it's just logged. */
+/** World returns a bytes32 nullifier; anything else is hashed so distinct values never collide. */
+function toNullifierHash(nullifier: string | null): `0x${string}` {
+  return HEX_BYTES32_RE.test(nullifier ?? '')
+    ? (nullifier as `0x${string}`)
+    : keccak256(toBytes(nullifier ?? randomUUID()));
+}
+
+/** Best effort: the caller is already verified by World, so a failed mirror is only logged. */
 async function mirrorVerificationOnchain(wallet: string, nullifier: string | null): Promise<void> {
-  if (!HEX_ADDRESS_RE.test(wallet)) {
-    console.warn(`[world] Skipping onchain verify mirror — not a wallet address: ${wallet}`);
+  if (!isAddress(wallet)) {
+    console.warn(`[world] Skipping onchain verify mirror: not a wallet address: ${wallet}`);
     return;
   }
   try {
-    const contractAddress = getRelayChainConfig().contracts.profileRegistry;
-    if (!contractAddress) {
-      console.warn('[world] Skipping onchain verify mirror — profileRegistry not configured');
-      return;
-    }
-    const nullifierHash = HEX_BYTES32_RE.test(nullifier ?? '')
-      ? (nullifier as `0x${string}`)
-      : // Fall back to a deterministic bytes32 derived from whatever nullifier
-        // string World returned, in case it isn't already a 0x-prefixed
-        // 32-byte hash (e.g. a raw nullifier UUID/string).
-        (`0x${Buffer.from(nullifier ?? randomUUID())
-          .toString('hex')
-          .padEnd(64, '0')
-          .slice(0, 64)}` as `0x${string}`);
-
-    const wallet_ = getRelayerWallet();
-    const publicClient = getRelayerPublicClient();
-    const chain = getRelayChainConfig().chain;
-    const account = wallet_.account!;
-
-    const hash = await wallet_.writeContract({
-      address: contractAddress,
-      abi: RELAY_ABIS.profileRegistry,
+    const { hash, confirmed } = await relayTx({
+      contract: 'profileRegistry',
       functionName: 'verify',
-      args: [wallet as `0x${string}`, nullifierHash],
-      account,
-      chain,
+      args: [wallet, toNullifierHash(nullifier)],
     });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    console.log(`[world] Mirrored verification onchain for ${wallet}: ${hash} (${receipt.status})`);
+    console.info(`[world] Mirrored verification for ${wallet}: ${hash} (confirmed=${confirmed})`);
   } catch (error) {
-    // Most common cause: ProfileRegistry.AlreadyVerified (re-verifying) or
-    // NotRegistered-adjacent (wallet hasn't called register() yet) — both
-    // expected/benign, so this is a warning, not an error.
-    console.warn(`[world] Onchain verify mirror failed for ${wallet}:`, error);
+    logError(`[world] Onchain verify mirror failed for ${wallet}:`, error);
+  }
+}
+
+class SessionLimitError extends Error {
+  constructor() {
+    super('Too many verifications in progress. Try again shortly.');
   }
 }
 
@@ -131,7 +127,7 @@ function describeVerifyFailure(detail: string): string {
   if (text.includes('rp_signature') || text.includes('timestamp')) {
     return 'RP signature expired. Tap Reset and try again.';
   }
-  return detail;
+  return 'World ID could not verify this proof. Please try again.';
 }
 
 async function verifyWithWorld(idkitResponse: unknown): Promise<unknown> {
@@ -142,7 +138,7 @@ async function verifyWithWorld(idkitResponse: unknown): Promise<unknown> {
 
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (WORLD_DEVELOPER_API_KEY) {
-    headers['Authorization'] = `Bearer ${WORLD_DEVELOPER_API_KEY}`;
+    headers.Authorization = `Bearer ${WORLD_DEVELOPER_API_KEY}`;
   }
 
   const response = await fetch(`https://developer.world.org/api/v4/verify/${targetId}`, {
@@ -173,11 +169,16 @@ interface PollResult {
 
 async function createSession(signal: string, returnTo: string): Promise<SessionCreateResponse> {
   if (!RP_SIGNING_KEY || !WORLD_APP_ID || !WORLD_RP_ID) {
-    throw new Error('World ID not configured on server');
+    throw new ConfigError('World ID (WORLD_APP_ID / WORLD_RP_ID / signing key)');
   }
 
   if (!signal) {
     throw new Error('Missing signal for Selfie Check session.');
+  }
+
+  pruneSessions();
+  if (sessions.size >= MAX_LIVE_SESSIONS) {
+    throw new SessionLimitError();
   }
 
   const { sig, nonce, createdAt, expiresAt } = signRequest({
@@ -216,13 +217,15 @@ async function pollSession(sessionId: string): Promise<PollResult> {
   pruneSessions();
   const entry = sessions.get(sessionId);
   if (!entry) {
-    throw new Error('Session not found or expired.');
+    throw new Error(SESSION_GONE);
   }
 
   const status = await entry.request.pollOnce();
-  console.log(`[world] poll ${sessionId.slice(0, 8)} → ${status.type}`, status.error ?? '');
+  console.info(`[world] poll ${sessionId.slice(0, 8)} → ${status.type}`, status.error ?? '');
 
-  if (status.type === 'awaiting_confirmation') {
+  // Anything but a final answer (waiting_for_connection, awaiting_confirmation,
+  // ...) means the user hasn't finished in World App yet.
+  if (status.type !== 'confirmed' && status.type !== 'failed') {
     return { status: 'pending' };
   }
 
@@ -234,8 +237,9 @@ async function pollSession(sessionId: string): Promise<PollResult> {
       console.warn(
         `[world] World ID returned '${error}', but WORLD_SKIP_REMOTE_VERIFY=true — confirming demo verification.`
       );
-      const mockNullifier = '0x' + randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
-      void mirrorVerificationOnchain(entry.wallet, mockNullifier);
+      // Not mirrored onchain: ProfileRegistry.verify() is permanent and
+      // public, and this nullifier is a random UUID, not a human.
+      const mockNullifier = `0x${randomUUID().replace(/-/g, '')}${randomUUID().replace(/-/g, '')}`;
       return {
         status: 'confirmed',
         result: {
@@ -265,12 +269,14 @@ async function pollSession(sessionId: string): Promise<PollResult> {
     return { status: 'failed', error, message };
   }
 
-  if (!SKIP_REMOTE_VERIFY) {
+  if (SKIP_REMOTE_VERIFY) {
+    console.warn('[world] Skipping remote verify (WORLD_SKIP_REMOTE_VERIFY=true)');
+  } else {
     try {
       await verifyWithWorld(status.result);
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Verification failed';
-      console.error('[world] World verify failed:', detail);
+      logError('[world] World verify failed:', detail);
       sessions.delete(sessionId);
       return {
         status: 'failed',
@@ -278,35 +284,71 @@ async function pollSession(sessionId: string): Promise<PollResult> {
         message: describeVerifyFailure(detail),
       };
     }
-  } else {
-    console.warn('[world] Skipping remote verify (WORLD_SKIP_REMOTE_VERIFY=true)');
   }
 
   sessions.delete(sessionId);
-  const nullifier = extractNullifier(
-    (status.result ?? {}) as { responses?: Array<Record<string, unknown>> }
-  );
-  void mirrorVerificationOnchain(entry.wallet, nullifier);
+  // Only a proof World's verify endpoint accepted earns the onchain badge;
+  // a skipped check stays a local demo confirmation.
+  if (!SKIP_REMOTE_VERIFY) {
+    const nullifier = extractNullifier(
+      (status.result ?? {}) as { responses?: Array<Record<string, unknown>> }
+    );
+    void mirrorVerificationOnchain(entry.wallet, nullifier);
+  }
   return { status: 'confirmed', result: status.result };
 }
 
-world.post('/session', async (c) => {
-  if (!RP_SIGNING_KEY) {
-    return c.json({ error: 'World ID signing not configured' }, 503);
-  }
+function sessionFailureMessage(error: unknown, code: string | null): string {
+  if (error instanceof Error) return error.message;
+  return code ? `Session creation failed (${code})` : 'Session creation failed';
+}
 
-  const body = await c.req.json().catch(() => null);
-  const signal = body?.signal;
-  const returnTo = body?.return_to || 'strydeexpo://verify';
+world.post(
+  '/session',
+  bodyLimit({
+    maxSize: MAX_BODY_BYTES,
+    onError: (c) => c.json({ error: 'Payload too large' }, 413),
+  }),
+  async (c) => {
+    if (!RP_SIGNING_KEY) {
+      return c.json({ error: 'World ID signing not configured' }, 503);
+    }
 
-  try {
-    const session = await createSession(signal, returnTo);
-    return c.json(session);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Session creation failed';
-    return c.json({ error: message }, 400);
+    const body = await c.req.json().catch(() => null);
+    const signal = body?.signal;
+    // The signal is the wallet the verification is mirrored onto; any other
+    // value would pass World's check and then verify nobody onchain.
+    if (!isAddress(signal)) {
+      return c.json({ error: 'signal must be the wallet address being verified' }, 400);
+    }
+    const returnTo = body?.return_to ?? DEFAULT_RETURN_TO;
+    if (
+      typeof returnTo !== 'string' ||
+      !RETURN_TO_PREFIXES.some((prefix) => returnTo.startsWith(prefix))
+    ) {
+      return c.json({ error: 'return_to must be a Stryde app link' }, 400);
+    }
+
+    try {
+      const session = await createSession(signal, returnTo);
+      return c.json(session);
+    } catch (error) {
+      // The IDKit client can throw plain objects (e.g. { code: 'invalid_rp_signature' }),
+      // so don't collapse those into a message-less failure.
+      if (error instanceof SessionLimitError) return c.json({ error: error.message }, 503);
+      if (error instanceof ConfigError) {
+        console.error('[world]', error.message);
+        return c.json({ error: 'Service misconfigured' }, 503);
+      }
+      logError('[world] Session creation failed:', error);
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code: unknown }).code)
+          : null;
+      return c.json({ error: sessionFailureMessage(error, code) }, 400);
+    }
   }
-});
+);
 
 world.post('/session/:id/poll', async (c) => {
   if (!RP_SIGNING_KEY) {
@@ -319,35 +361,47 @@ world.post('/session/:id/poll', async (c) => {
     const result = await pollSession(sessionId);
     return c.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Poll failed';
-    return c.json({ error: message }, message === 'Session not found or expired.' ? 404 : 500);
+    if (error instanceof Error && error.message === SESSION_GONE) {
+      return c.json({ error: SESSION_GONE }, 404);
+    }
+    // The detail stays in the logs: upstream/network errors can name internal hosts.
+    logError('[world] Poll failed:', error);
+    return c.json({ error: 'Could not check the verification. Try again.' }, 502);
   }
 });
 
-world.post('/verify', async (c) => {
-  if (!RP_SIGNING_KEY) {
-    return c.json({ error: 'World ID signing not configured' }, 503);
-  }
+world.post(
+  '/verify',
+  bodyLimit({
+    maxSize: MAX_BODY_BYTES,
+    onError: (c) => c.json({ error: 'Payload too large' }, 413),
+  }),
+  async (c) => {
+    if (!RP_SIGNING_KEY) {
+      return c.json({ error: 'World ID signing not configured' }, 503);
+    }
 
-  const body = await c.req.json().catch(() => null);
-  const { idkitResponse } = body as { idkitResponse?: unknown };
+    const body = (await c.req.json().catch(() => null)) as { idkitResponse?: unknown } | null;
+    const idkitResponse = body?.idkitResponse;
 
-  if (!idkitResponse) {
-    return c.json({ error: 'Missing idkitResponse' }, 400);
-  }
+    if (!idkitResponse) {
+      return c.json({ error: 'Missing idkitResponse' }, 400);
+    }
 
-  if (SKIP_REMOTE_VERIFY) {
-    const nullifier = extractNullifier(
-      idkitResponse as { responses?: Array<Record<string, unknown>> }
-    );
-    return c.json({ ok: true, nullifier });
-  }
+    if (SKIP_REMOTE_VERIFY) {
+      const nullifier = extractNullifier(
+        idkitResponse as { responses?: Array<Record<string, unknown>> }
+      );
+      return c.json({ ok: true, nullifier });
+    }
 
-  try {
-    const result = await verifyWithWorld(idkitResponse);
-    return c.json({ ok: true, result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Verification failed';
-    return c.json({ error: message }, 400);
+    try {
+      const result = await verifyWithWorld(idkitResponse);
+      return c.json({ ok: true, result });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Verification failed';
+      logError('[world] Verify failed:', detail);
+      return c.json({ error: describeVerifyFailure(detail) }, 400);
+    }
   }
-});
+);

@@ -18,6 +18,7 @@ CONTRACTS=(
   MoveToEarnToken
   GroupRegistry
   SocialRegistry
+  EventRegistry
 )
 
 for contract in "${CONTRACTS[@]}"; do

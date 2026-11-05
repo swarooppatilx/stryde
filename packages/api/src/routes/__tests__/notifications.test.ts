@@ -136,9 +136,10 @@ describe('POST /notifications/push', () => {
     expect(sendPushNotificationsAsync).not.toHaveBeenCalled();
   });
 
-  it('fails loudly in production when EXPO_ACCESS_TOKEN is missing', async () => {
+  it('fails closed in production when the Expo token is missing, without naming the setting to the client', async () => {
     process.env.NODE_ENV = 'production';
     process.env.EXPO_ACCESS_TOKEN = '';
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const res = await notifications.request('/push', {
       method: 'POST',
@@ -148,7 +149,52 @@ describe('POST /notifications/push', () => {
 
     expect(res.status).toBe(503);
     const json = await res.json();
-    expect(json.error).toMatch(/EXPO_ACCESS_TOKEN/);
+    expect(JSON.stringify(json)).not.toContain('EXPO_ACCESS_TOKEN');
+    // The operator still sees which setting is missing.
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining('EXPO_ACCESS_TOKEN'));
     expect(sendPushNotificationsAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /notifications/push limits', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.EXPO_ACCESS_TOKEN = 'test-expo-access-token';
+    sendPushNotificationsAsync.mockResolvedValue([{ status: 'ok', id: 't' }]);
+  });
+
+  const push = (body: unknown) =>
+    notifications.request('/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('refuses a batch of more than 100 messages', async () => {
+    const messages = Array.from({ length: 101 }, () => ({ to: VALID_TOKEN, title: 'hi' }));
+
+    const res = await push({ messages });
+
+    expect(res.status).toBe(400);
+    expect(sendPushNotificationsAsync).not.toHaveBeenCalled();
+  });
+
+  it('refuses an oversized request before reading it', async () => {
+    const res = await push({ to: VALID_TOKEN, body: 'x'.repeat(200_000) });
+
+    expect(res.status).toBe(413);
+  });
+
+  it('reports a too-long title or body per message instead of sending it', async () => {
+    const res = await push({
+      messages: [
+        { to: VALID_TOKEN, title: 't'.repeat(101) },
+        { to: VALID_TOKEN, body: 'b'.repeat(1001) },
+        { to: VALID_TOKEN, title: 'fine' },
+      ],
+    });
+
+    const json = (await res.json()) as { results: Array<{ status: string }> };
+    expect(json.results.map((r) => r.status)).toEqual(['error', 'error', 'ok']);
   });
 });

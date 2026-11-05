@@ -1,52 +1,53 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLoginWithEmail } from '@privy-io/expo';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getActiveProfileId } from '@/backends/activeProfile';
+import { PROFILES } from '@/backends/profiles';
 import { BrandWordmark } from '@/components/brand';
 import { AppButton } from '@/components/button';
+import { DevLogin } from '@/components/dev-login';
 import { OtpInput } from '@/components/otp-input';
+import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { describeLoginFailure, isPlausibleEmail } from '@/utils/loginErrors';
 
 const RESEND_SECONDS = 30;
 
+/** Real sign-in on Live; a developer persona picker on the other profiles. */
 export default function LoginScreen() {
+  return PROFILES[getActiveProfileId()].auth === 'dev' ? <DevLogin /> : <PrivyLogin />;
+}
+
+function PrivyLogin() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const [otpResetKey, setOtpResetKey] = useState(0);
+  const [rejectedCodes, setRejectedCodes] = useState(0);
   const { sendCode, loginWithCode, state } = useLoginWithEmail();
   const router = useRouter();
   const theme = useTheme();
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const submittingRef = useRef(false);
 
   const isSending = state.status === 'sending-code';
   const isSubmitting = state.status === 'submitting-code';
 
+  // One tick per second, and none once the wait is over.
   useEffect(() => {
-    if (!codeSent) return;
-    timerRef.current = setInterval(() => {
-      setSecondsLeft((s) => (s <= 1 ? 0 : s - 1));
-    }, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [codeSent]);
+    if (!codeSent || secondsLeft <= 0) return;
+    const timer = setTimeout(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [codeSent, secondsLeft]);
 
   const handleLogin = useCallback(
     async (value: string) => {
@@ -56,10 +57,10 @@ export default function LoginScreen() {
       try {
         await loginWithCode({ code: value, email: email.trim() });
         router.replace('/');
-      } catch (_err) {
-        setError('Invalid code. Please try again.');
+      } catch (err) {
+        setError(describeLoginFailure(err, 'verify'));
         setCode('');
-        setOtpResetKey((k) => k + 1);
+        setRejectedCodes((n) => n + 1);
       } finally {
         submittingRef.current = false;
       }
@@ -72,14 +73,17 @@ export default function LoginScreen() {
       setError('Please enter your email');
       return;
     }
+    if (!isPlausibleEmail(email)) {
+      setError("That email address doesn't look right.");
+      return;
+    }
     setError(null);
     try {
       await sendCode({ email: email.trim() });
       setCodeSent(true);
       setSecondsLeft(RESEND_SECONDS);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Failed to send code: ${msg}`);
+      setError(describeLoginFailure(err, 'send'));
     }
   };
 
@@ -92,8 +96,7 @@ export default function LoginScreen() {
     try {
       await sendCode({ email: email.trim() });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Failed to resend code: ${msg}`);
+      setError(describeLoginFailure(err, 'send'));
     }
   };
 
@@ -105,7 +108,7 @@ export default function LoginScreen() {
             style={styles.flex}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
-            <TouchableOpacity
+            <Tappable
               style={[styles.backButton, { backgroundColor: theme.backgroundElement }]}
               onPress={() => {
                 setCodeSent(false);
@@ -118,10 +121,10 @@ export default function LoginScreen() {
               accessibilityLabel="Go back to previous screen"
             >
               <Ionicons name="chevron-back" size={20} color={theme.text} />
-            </TouchableOpacity>
+            </Tappable>
 
             <View style={styles.otpContent}>
-              <ThemedText type="title" style={styles.otpTitle}>
+              <ThemedText type="display" style={styles.otpTitle}>
                 We sent you a code
               </ThemedText>
               <ThemedText style={[styles.otpSubtitle, { color: theme.textSecondary }]}>
@@ -136,9 +139,10 @@ export default function LoginScreen() {
                   value={code}
                   onChange={(value) => {
                     setCode(value);
-                    if (value.length === 6) handleLogin(value);
+                    if (value.length === 6) void handleLogin(value);
                   }}
                   autoFocus
+                  rejectedCount={rejectedCodes}
                 />
               </View>
 
@@ -149,12 +153,12 @@ export default function LoginScreen() {
               ) : null}
 
               {isSubmitting ? (
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                <ThemedText type="small" themeColor="textSecondary">
                   Verifying...
                 </ThemedText>
               ) : null}
 
-              <TouchableOpacity
+              <Tappable
                 onPress={handleResend}
                 disabled={secondsLeft > 0}
                 hitSlop={8}
@@ -172,7 +176,7 @@ export default function LoginScreen() {
                     ? `Resend code in 0:${String(secondsLeft).padStart(2, '0')}`
                     : 'Get a new code'}
                 </ThemedText>
-              </TouchableOpacity>
+              </Tappable>
             </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -192,12 +196,12 @@ export default function LoginScreen() {
               <Image
                 source={require('@/assets/images/stryde-emblem.png')}
                 style={styles.emblem}
-                resizeMode="contain"
+                contentFit="contain"
               />
               <BrandWordmark width={110} color={theme.text} />
             </View>
 
-            <ThemedText type="title" style={styles.title}>
+            <ThemedText type="display" style={styles.title}>
               Get started
             </ThemedText>
             <ThemedText style={[styles.subtitle, { color: theme.textSecondary }]}>
@@ -263,15 +267,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.two,
     marginHorizontal: 'auto',
-  },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: Spacing.three,
   },
   title: {
     textAlign: 'center',

@@ -1,14 +1,16 @@
-import { usePrivy } from '@privy-io/expo';
 import { useEffect } from 'react';
 
+import { useAuth } from '@/hooks/useAuth';
 import { fetchPrivyMetadata } from '@/services/profileService';
 import { useProfileStore } from '@/stores/profileStore';
+import { logger } from '@/utils/logger';
 
 export function usePrivyMetadataSync() {
-  const { user } = usePrivy();
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    // Only a real account has metadata to read; a developer persona has none.
+    if (!user?.id || user.kind !== 'privy') return;
 
     useProfileStore.getState().setPrivyUserId(user.id);
 
@@ -28,11 +30,12 @@ export function usePrivyMetadataSync() {
           useProfileStore.getState().setLastName(metadata.lastName);
         }
       })
-      .catch(() => {
-        // Metadata sync is best-effort; the user can set their name later.
+      .catch((error) => {
+        // Best-effort: the user can set their name later.
+        logger.warn('[PrivyMetadataSync] Failed', error);
       });
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, user?.kind]);
 }

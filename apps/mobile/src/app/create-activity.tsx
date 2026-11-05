@@ -1,353 +1,321 @@
 import { Ionicons } from '@expo/vector-icons';
-import { services } from '@repo/shared';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatUnits } from 'viem';
+import { AppSwitch } from '@/components/app-switch';
 import { AppButton } from '@/components/button';
+import { DayField } from '@/components/day-field';
+import { FeelPicker } from '@/components/feel-picker';
+import { GearPicker } from '@/components/gear-picker';
 import { PhotoPicker } from '@/components/photo-picker';
 import { PrivacyPicker } from '@/components/privacy-picker';
-import { SportTypePicker } from '@/components/sport-type-picker';
+import { RouteThumbnail } from '@/components/route-thumbnail';
+import { SegmentedChoice } from '@/components/segmented-choice';
+import { SportField } from '@/components/sport-field';
+import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { FEEL_OPTIONS } from '@/constants/activity';
-import { ENV, getCurrentUserId } from '@/constants/config';
-import { BorderRadius, Spacing, tint } from '@/constants/theme';
+import { EFFORT_OPTIONS, GPS_DISTANCE_SPORTS } from '@/constants/activity';
+import { COPY, SIMULATED_LOCATION_NOTICE } from '@/constants/copy';
+import { ACTIVITY_DESCRIPTION_MAX, NUMBER_INPUT_MAX, PRIVATE_NOTE_MAX } from '@/constants/limits';
+import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
-import { useViemWallet } from '@/hooks/useViemWallet';
-import { ipfsToHttpUrl, uploadImageToIpfs } from '@/services/ipfsService';
-import { useActivityStore } from '@/stores/activityStore';
-import { useTerritoryStore } from '@/stores/territoryStore';
-import { useWorldVerificationStore } from '@/stores/worldVerificationStore';
-import type { Activity, ActivityFeel, ActivityPrivacy, ActivityType } from '@/types';
+import { useGoBack } from '@/hooks/useGoBack';
+import { usePostRun } from '@/hooks/usePostRun';
+import { EmptyRecordingError } from '@/services/postRun';
+import { useGearStore } from '@/stores/gearStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import type {
+  ActivityEffort,
+  ActivityFeel,
+  ActivityPrivacy,
+  ActivityStream,
+  ActivityType,
+  BestEffort,
+  Lap,
+  Ring,
+  Split,
+} from '@/types';
 import { Alert } from '@/utils/alert';
-import { formatArea, formatDistance, formatDuration, getActivityName } from '@/utils/format';
+import { confirmOnlyMe } from '@/utils/confirmOnlyMe';
+import { formatTimeOfDay } from '@/utils/dates';
+import { metersPerDistanceUnit } from '@/utils/distanceUnits';
+import {
+  formatArea,
+  formatDistance,
+  formatDuration,
+  formatPaceOrSpeed,
+  getActivityName,
+} from '@/utils/format';
+import { gearForSport } from '@/utils/gearMileage';
 import { haptics } from '@/utils/haptics';
-import { generateId } from '@/utils/id';
+import { logger } from '@/utils/logger';
+import { manualStartedAt, shouldConfirmDiscard, validateManualEntry } from '@/utils/manualActivity';
+import { savePrivacyCaption } from '@/utils/privacyNotes';
+import { dropRecordedRun, peekRecordedRun } from '@/utils/recordedRunHandoff';
+import { parseJsonParam } from '@/utils/routeParams';
+
+/** Tall enough to read the route's shape, short enough that the form stays in view. */
+const MAP_PREVIEW_HEIGHT = 160;
 
 type Params = {
+  /** '1' when the numbers come from a recording (even a GPS-less one). */
+  recorded?: string;
+  /** When a recorded run began (ms since 1970). */
+  startedAt?: string;
+  /** '1' when the recording used a simulated location. */
+  mocked?: string;
+  /** '1' when the recording didn't loop back, so no territory was captured. */
+  noTerritory?: string;
   polyline?: string;
   distance?: string;
   duration?: string;
   territory?: string;
   territoryArea?: string;
+  splits?: string;
+  stream?: string;
+  elevationGain?: string;
+  elevationLoss?: string;
+  bestEfforts?: string;
+  laps?: string;
   activityType?: ActivityType;
   photos?: string;
 };
 
+/** A route param that is a number, or undefined when it was not sent. */
+function optionalNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export default function CreateActivityScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const theme = useTheme();
   const unitSystem = useUnitSystem();
-  const params = useLocalSearchParams<Params>();
-  const saveActivity = useActivityStore((s) => s.saveActivity);
-  const updateActivity = useActivityStore((s) => s.updateActivity);
-  const capturePolygon = useTerritoryStore((s) => s.capturePolygon);
-  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
+  const routeParams = useLocalSearchParams<Params & { run?: string }>();
+  // A just-recorded run arrives as a short id; its data (per-second points and all) is held in memory.
+  const params: Params = routeParams.run
+    ? ((peekRecordedRun(routeParams.run) as Params | undefined) ?? {})
+    : routeParams;
+  const { save } = usePostRun();
+  const hideRouteEnds = useSettingsStore((s) => s.hideRouteEnds);
+  const privacyZones = useSettingsStore((s) => s.privacyZones);
 
-  const isFromTracking = !!params.polyline;
+  const isFromTracking = params.recorded === '1' || !!params.polyline;
   const [isSaving, setIsSaving] = useState(false);
 
-  const [title, setTitle] = useState('');
+  // null until the user types: the title then follows the sport and the time of day.
+  const [titleInput, setTitleInput] = useState<string | null>(null);
+  const hourAtOpen = useRef(new Date().getHours()).current;
   const [description, setDescription] = useState('');
   const [activityType, setActivityType] = useState<ActivityType>(
     (params.activityType as ActivityType) || 'run'
   );
-  const [photos, setPhotos] = useState<string[]>(() => {
-    try {
-      return params.photos ? JSON.parse(params.photos) : [];
-    } catch (e) {
-      console.warn('[Activity] Failed to parse photos param:', e);
-      return [];
-    }
-  });
-  const [privacy, setPrivacy] = useState<ActivityPrivacy>('everyone');
+  const [photos, setPhotos] = useState<string[]>(() =>
+    parseJsonParam<string[]>(params.photos, 'photos', [])
+  );
+  const defaultPrivacy = useSettingsStore((s) => s.defaultPrivacy);
+  const [privacy, setPrivacy] = useState<ActivityPrivacy>(defaultPrivacy);
+  const privacyCaption = savePrivacyCaption({ recorded: isFromTracking, privacy });
   const [feel, setFeel] = useState<ActivityFeel | undefined>();
-  const [showSportPicker, setShowSportPicker] = useState(false);
+  const [effort, setEffort] = useState<ActivityEffort | undefined>();
+  const [isCommute, setIsCommute] = useState(false);
+  const [hideRoute, setHideRoute] = useState(false);
+  const [privateNote, setPrivateNote] = useState('');
 
   const [manualDistance, setManualDistance] = useState('');
   const [manualMinutes, setManualMinutes] = useState('');
-  const distanceUnitMeters = unitSystem === 'imperial' ? 1609.344 : 1000;
-  const distance = isFromTracking
-    ? Number.parseFloat(params.distance || '0')
-    : Math.round(Number.parseFloat(manualDistance || '0') * distanceUnitMeters);
-  const duration = isFromTracking
-    ? Number.parseFloat(params.duration || '0')
-    : Math.round(Number.parseFloat(manualMinutes || '0') * 60_000);
-  const canSave = !isSaving && (isFromTracking || (distance > 0 && duration > 0));
+  const [manualDay, setManualDay] = useState(() => new Date());
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const distanceUnitMeters = metersPerDistanceUnit(unitSystem);
+  const manualEntry = validateManualEntry({
+    sport: activityType,
+    distanceInput: manualDistance,
+    minutesInput: manualMinutes,
+    metersPerUnit: distanceUnitMeters,
+  });
+  const manualStartTimeFuture = manualDay.getTime() > Date.now();
+  const manualDistanceValue = manualEntry.ok ? manualEntry.distance : 0;
+  const manualDurationValue = manualEntry.ok ? manualEntry.duration : 0;
+  const distance = isFromTracking ? Number.parseFloat(params.distance || '0') : manualDistanceValue;
+  const duration = isFromTracking ? Number.parseFloat(params.duration || '0') : manualDurationValue;
+  const canSave = !isSaving && (isFromTracking || (manualEntry.ok && !manualStartTimeFuture));
+  const typedSomething = manualDistance.trim() !== '' || manualMinutes.trim() !== '';
   const polyline = params.polyline || '';
   const territoryArea = params.territoryArea ? Number.parseFloat(params.territoryArea) : 0;
 
-  const territory = useMemo(() => {
-    try {
-      return params.territory ? JSON.parse(params.territory) : null;
-    } catch (e) {
-      console.warn('[Activity] Failed to parse territory param:', e);
-      return null;
-    }
-  }, [params.territory]);
+  const territory = useMemo(
+    () => parseJsonParam<Ring | null>(params.territory, 'territory', null),
+    [params.territory]
+  );
+  const splits = useMemo(
+    () => parseJsonParam<Split[] | undefined>(params.splits, 'splits', undefined),
+    [params.splits]
+  );
+  const stream = useMemo(
+    () => parseJsonParam<ActivityStream | undefined>(params.stream, 'stream', undefined),
+    [params.stream]
+  );
+  const bestEfforts = useMemo(
+    () => parseJsonParam<BestEffort[] | undefined>(params.bestEfforts, 'best efforts', undefined),
+    [params.bestEfforts]
+  );
+  const laps = useMemo(
+    () => parseJsonParam<Lap[] | undefined>(params.laps, 'laps', undefined),
+    [params.laps]
+  );
 
-  // Auto-generate title
-  useEffect(() => {
-    if (!title && !isFromTracking) {
-      setTitle(getActivityName(activityType, new Date().getHours()));
-    }
-  }, [activityType, isFromTracking, title]);
+  const allGear = useGearStore((s) => s.gear);
+  const gearOptions = useMemo(() => gearForSport(allGear, activityType), [allGear, activityType]);
+  // Starts on the first pair of shoes or bike for this sport; the athlete can pick another or none.
+  const [pickedGear, setPickedGear] = useState<string | null | undefined>(undefined);
+  const gearId = pickedGear === undefined ? (gearOptions[0]?.id ?? null) : pickedGear;
+  const setGearId = setPickedGear;
+
+  // A recorded run is named and dated by when it began, not by when it was saved.
+  const recordedStart = isFromTracking ? optionalNumber(params.startedAt) : undefined;
+  const startHour = recordedStart === undefined ? hourAtOpen : new Date(recordedStart).getHours();
+  const defaultTitle = getActivityName(activityType, startHour);
+  const title = titleInput ?? defaultTitle;
 
   const handleSave = async () => {
     haptics.success();
     setIsSaving(true);
+    try {
+      const result = await save({
+        title,
+        description,
+        activityType,
+        distance,
+        duration,
+        polyline,
+        splits,
+        stream,
+        elevationGain: optionalNumber(params.elevationGain),
+        elevationLoss: optionalNumber(params.elevationLoss),
+        gearId: gearId ?? undefined,
+        bestEfforts,
+        laps,
+        territory,
+        territoryArea,
+        photos,
+        privacy,
+        feel,
+        effort,
+        isCommute,
+        hideRoute: isFromTracking && privacy !== 'only_me' ? hideRoute : undefined,
+        mocked: isFromTracking && params.mocked === '1' ? true : undefined,
+        privateNote,
+        isManual: !isFromTracking,
+        startedAt: isFromTracking ? recordedStart : manualStartedAt(manualDay, Date.now()),
+        hideRouteEnds,
+        privacyZones,
+      });
 
-    async function uploadWithConcurrency<T>(
-      items: T[],
-      fn: (item: T) => Promise<string>,
-      limit: number
-    ): Promise<string[]> {
-      const results: string[] = [];
-      let index = 0;
-
-      async function worker() {
-        while (index < items.length) {
-          const i = index++;
-          results[i] = await fn(items[i]);
-        }
-      }
-
-      await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-      return results;
-    }
-
-    const uploadFn = async (uri: string) => {
-      if (uri.startsWith('http')) return uri;
-      try {
-        const { cid } = await uploadImageToIpfs(`activity-${Date.now()}`, uri);
-        return ipfsToHttpUrl(cid);
-      } catch (err) {
-        console.warn('[CreateActivity] Photo upload failed, keeping local URI', err);
-        return uri;
-      }
-    };
-
-    const uploadedPhotos = await uploadWithConcurrency(photos, uploadFn, 3);
-
-    const activityId = generateId();
-    // Included in the hash so two activities with the same route/stats (e.g. manual
-    // entries with no polyline) don't collide on-chain and revert as a duplicate.
-    const activityHash = services.activity.computeActivityHash(polyline, territoryArea, activityId);
-
-    const activity: Activity = {
-      id: activityId,
-      userId: getCurrentUserId(),
-      name: title.trim() || getActivityName(activityType, new Date().getHours()),
-      activityType,
-      distance,
-      duration,
-      polyline,
-      territory,
-      territoryArea,
-      description: description.trim() || undefined,
-      feel,
-      privacy,
-      images: uploadedPhotos.length > 0 ? uploadedPhotos : undefined,
-      isManual: !isFromTracking,
-      activityHash,
-      createdAt: new Date(),
-    };
-
-    saveActivity(activity);
-
-    if (territory) {
-      capturePolygon(getCurrentUserId(), territory);
-    }
-
-    if (wallet) {
-      let onchainFailed = false;
-
-      try {
-        const {
-          activityId: onchainActivityId,
-          txHash,
-          confirmed,
-        } = await services.activity.recordActivity(wallet, {
-          polyline,
-          activityType,
-          distance,
-          duration,
-          territoryArea,
-          metadata: activityId,
-        });
-        updateActivity(activity.id, { txHash });
-        if (!confirmed) {
-          onchainFailed = true;
-        } else {
-          updateActivity(activity.id, { onchainActivityId: onchainActivityId.toString() });
-
-          try {
-            // Best-effort: persists name/description/photos to IPFS and
-            // attaches the CID on-chain via setActivityMetadata, so this
-            // activity's rich metadata survives logout / a device switch
-            // instead of living only in this device's AsyncStorage. A
-            // failure here doesn't affect the activity record itself, which
-            // is already saved locally and recorded on-chain by this point.
-            const metadataResult = await services.activity.uploadAndSetActivityMetadata(
-              wallet,
-              onchainActivityId,
-              {
-                name: activity.name,
-                description: activity.description,
-                photos: uploadedPhotos.length > 0 ? uploadedPhotos : undefined,
-                // The chain only ever stores a hash/distance/duration/area —
-                // this is the only durable place the actual route/territory
-                // shape lives, so any other viewer (or this device after a
-                // logout) can still render a map thumbnail for it.
-                polyline: polyline || undefined,
-                territory: territory ?? undefined,
-                coordinates: polyline
-                  ? (polyline
-                      .split(';')
-                      .map((p) => p.split(',').map(Number) as [number, number])
-                      .filter(
-                        ([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat)
-                      ) as Array<[number, number]>)
-                  : undefined,
-              }
-            );
-            if (metadataResult?.confirmed) {
-              updateActivity(activity.id, { metadataCid: metadataResult.cid });
-            }
-          } catch (err) {
-            console.warn('[CreateActivity] Activity metadata upload/set failed', err);
-          }
-
-          try {
-            if (address) {
-              await services.season.ensureActiveSeason(wallet);
-              await services.season.recordContribution(wallet, address, distance);
-            }
-          } catch (err) {
-            // Leaderboard contribution is best-effort — only the local dev shared
-            // account has the owner/permission to start seasons or record contributions.
-            console.warn('[CreateActivity] Season contribution failed', err);
-          }
-
-          try {
-            // Move-to-earn reward is best-effort and fires for every recorded
-            // activity, regardless of territory capture.
-            if (address) {
-              const { amount, confirmed: rewardConfirmed } =
-                await services.moveToEarnToken.mintTokenForActivity(
-                  wallet,
-                  address,
-                  activityHash,
-                  distance
-                );
-              if (rewardConfirmed && amount > 0n) {
-                updateActivity(activity.id, { strdEarned: Number(formatUnits(amount, 18)) });
-              }
-            }
-          } catch (err) {
-            console.warn('[CreateActivity] Move-to-earn mint failed', err);
-          }
-        }
-      } catch (err) {
-        console.warn('[CreateActivity] recordActivity failed', err);
-        onchainFailed = true;
-      }
-
-      if (territory) {
-        // World ID Selfie Check gate: a UX-level sybil-resistance signal, not
-        // a security control — a modified client could skip this check
-        // client-side just as easily as it could call claimTerritory
-        // directly. Real abuse-prevention would need this enforced on-chain
-        // (see FEEDBACK.md / TRACKS.md for context on why that's out of
-        // scope for the hackathon timeline). Unverified users still get
-        // their activity + distance recorded above; only the territory
-        // claim is skipped.
-        if (!useWorldVerificationStore.getState().isVerified) {
-          Alert.alert(
-            'Verify to claim territory',
-            'Verify with World ID Selfie Check to claim territory and help keep the map fair for everyone.',
-            [
-              { text: 'Not now', style: 'cancel' },
-              { text: 'Verify', onPress: () => router.push('/verify') },
-            ]
-          );
-        } else {
-          try {
-            const { territoryId, confirmed } = await services.territory.claimTerritory(wallet, {
-              polygon: territory,
-              areaSqm: territoryArea,
-            });
-            if (!confirmed) {
-              onchainFailed = true;
-            } else if (address) {
-              try {
-                await services.territoryNFT.mintTerritoryNFT(wallet, territoryId, address);
-              } catch (err) {
-                console.warn('[CreateActivity] Territory NFT mint failed', err);
-              }
-            }
-          } catch (err) {
-            console.warn('[CreateActivity] claimTerritory failed', err);
-            onchainFailed = true;
-          }
-        }
-      }
-
-      if (onchainFailed) {
+      // One dialog at a time: a failure outranks the nudge to verify.
+      if (result.onchainFailed) {
+        Alert.alert(COPY.saveFailedTitle, COPY.saveFailedBody);
+      } else if (result.needsVerification) {
         Alert.alert(
-          'Saved locally, onchain sync failed',
-          "Your activity is saved on this device, but recording it onchain didn't go through. It'll stay out of sync with the chain until you retry."
+          'Verify to claim territory',
+          'Verify with World ID Selfie Check to claim territory and help keep the map fair for everyone.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Verify', onPress: () => router.push('/verify') },
+          ]
         );
       }
+
+      if (routeParams.run) dropRecordedRun(routeParams.run);
+      router.replace({ pathname: '/post-upload', params: { id: result.activity.id } });
+    } catch (err) {
+      logger.warn('[CreateActivity] Save failed', err);
+      if (err instanceof EmptyRecordingError) {
+        Alert.alert('Activity too short', 'This recording has no route, so it cannot be saved.');
+        return;
+      }
+      Alert.alert(
+        'Could not save activity',
+        'Something went wrong saving this activity. Try again.'
+      );
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsSaving(false);
-
-    router.replace({
-      pathname: '/activity-summary',
-      params: { id: activity.id },
-    });
   };
 
   const handleBack = () => {
-    if (title.trim() || description.trim() || photos.length > 0) {
-      // eslint-disable-next-line no-alert
-      Alert.alert('Discard Activity?', 'Your changes will be lost.', [
-        { text: 'Keep Editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-      ]);
-    } else {
-      router.back();
+    const confirm = shouldConfirmDiscard({
+      recorded: isFromTracking,
+      titleEdited: !!titleInput?.trim(),
+      description,
+      privateNote,
+      photoCount: photos.length,
+      distanceInput: manualDistance,
+      minutesInput: manualMinutes,
+    });
+    if (!confirm) {
+      goBack();
+      return;
     }
+    Alert.alert(
+      isFromTracking ? 'Discard this recording?' : 'Discard Activity?',
+      isFromTracking ? "This recording can't be recovered." : 'Your changes will be lost.',
+      [
+        { text: 'Keep Editing', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            // A discarded run must not come back as an "unsaved run" on the next launch.
+            if (routeParams.run) dropRecordedRun(routeParams.run);
+            goBack();
+          },
+        },
+      ]
+    );
   };
+
+  // Hardware back and the back gesture must show the same discard prompt as the close button.
+  const handleBackRef = useRef(handleBack);
+  useEffect(() => {
+    handleBackRef.current = handleBack;
+  });
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleBackRef.current();
+      return true;
+    });
+    return () => subscription.remove();
+  }, []);
 
   return (
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
         <ThemedView style={[styles.header, { borderBottomColor: theme.border }]}>
-          <TouchableOpacity
+          <Tappable
             onPress={handleBack}
             style={styles.headerBtn}
             accessibilityRole="button"
             accessibilityLabel="Cancel"
           >
             <Ionicons name="close" size={24} color={theme.text} />
-          </TouchableOpacity>
+          </Tappable>
           <ThemedText type="sectionTitle">Save Activity</ThemedText>
-          <TouchableOpacity
+          <Tappable
             onPress={handleSave}
             disabled={!canSave}
             style={styles.headerBtn}
@@ -357,11 +325,14 @@ export default function CreateActivityScreen() {
             {isSaving ? (
               <ActivityIndicator size="small" color={theme.brand.primary} />
             ) : (
-              <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
+              <ThemedText
+                type="smallBold"
+                style={{ color: canSave ? theme.brand.primary : theme.textSecondary }}
+              >
                 Save
               </ThemedText>
             )}
-          </TouchableOpacity>
+          </Tappable>
         </ThemedView>
       </SafeAreaView>
 
@@ -375,115 +346,167 @@ export default function CreateActivityScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Title */}
+          {isFromTracking && params.mocked === '1' && (
+            <ThemedText type="caption" style={{ color: theme.warningText }}>
+              {SIMULATED_LOCATION_NOTICE}
+            </ThemedText>
+          )}
+
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Title
             </ThemedText>
-            <TextField
-              value={title}
-              onChangeText={setTitle}
-              placeholder={getActivityName(activityType, new Date().getHours())}
-            />
+            <TextField value={title} onChangeText={setTitleInput} placeholder={defaultTitle} />
           </ThemedView>
 
-          {/* Description */}
+          <SportField value={activityType} onChange={setActivityType} />
+
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Description
             </ThemedText>
             <TextField
               value={description}
               onChangeText={setDescription}
-              placeholder="How did it feel?"
+              maxLength={ACTIVITY_DESCRIPTION_MAX}
+              placeholder="Add a description"
               multiline
             />
-          </ThemedView>
-
-          {/* Sport Type */}
-          <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
-              Sport Type
-            </ThemedText>
-            <TouchableOpacity
-              style={[
-                styles.sportSelector,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-              activeOpacity={0.7}
-              onPress={() => {
-                haptics.tap();
-                setShowSportPicker(!showSportPicker);
-              }}
-            >
-              <ThemedText type="smallBold">
-                {activityType.charAt(0).toUpperCase() + activityType.slice(1)}
-              </ThemedText>
-              <Ionicons
-                name={showSportPicker ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={theme.textSecondary}
-              />
-            </TouchableOpacity>
-            {showSportPicker && (
-              <SportTypePicker
-                selected={activityType}
-                onSelect={(type) => {
-                  setActivityType(type);
-                  setShowSportPicker(false);
-                }}
-              />
-            )}
           </ThemedView>
 
           {!isFromTracking && (
             <View style={styles.manualRow}>
               <ThemedView style={[styles.field, styles.manualField]}>
-                <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+                <ThemedText type="eyebrow" themeColor="textSecondary">
                   Distance ({unitSystem === 'imperial' ? 'mi' : 'km'})
+                  {GPS_DISTANCE_SPORTS.has(activityType) ? '' : ' (optional)'}
                 </ThemedText>
                 <TextField
                   value={manualDistance}
-                  onChangeText={(t) => setManualDistance(t.replace(/[^0-9.]/g, ''))}
+                  onChangeText={(t) => setManualDistance(t.replace(/[^0-9.,]/g, ''))}
                   placeholder="e.g. 5"
+                  maxLength={NUMBER_INPUT_MAX}
                   keyboardType="decimal-pad"
                 />
               </ThemedView>
               <ThemedView style={[styles.field, styles.manualField]}>
-                <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
-                  Duration (min)
+                <ThemedText type="eyebrow" themeColor="textSecondary">
+                  Duration (min or h:mm)
                 </ThemedText>
                 <TextField
                   value={manualMinutes}
-                  onChangeText={(t) => setManualMinutes(t.replace(/[^0-9.]/g, ''))}
-                  placeholder="e.g. 30"
-                  keyboardType="decimal-pad"
+                  onChangeText={(t) => setManualMinutes(t.replace(/[^0-9.,:]/g, ''))}
+                  placeholder="e.g. 30 or 1:30"
+                  maxLength={NUMBER_INPUT_MAX}
+                  keyboardType="numbers-and-punctuation"
                 />
               </ThemedView>
             </View>
           )}
+          {!isFromTracking && (
+            <ThemedView style={styles.field}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                When
+              </ThemedText>
+              <DayField
+                label="Date of the activity"
+                value={manualDay}
+                onChange={(day) => {
+                  setManualDay((current) => {
+                    const next = new Date(day);
+                    next.setHours(current.getHours(), current.getMinutes(), 0, 0);
+                    return next;
+                  });
+                }}
+                maximum={new Date()}
+              />
+              <ThemedView style={styles.timeField}>
+                <ThemedText type="eyebrow" themeColor="textSecondary">
+                  Start time
+                </ThemedText>
+                <Tappable
+                  style={[
+                    styles.timeButton,
+                    { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                  ]}
+                  onPress={() => setTimePickerOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Start time, ${formatTimeOfDay(manualDay)}`}
+                >
+                  <ThemedText>{formatTimeOfDay(manualDay)}</ThemedText>
+                  <Ionicons name="time-outline" size={20} color={theme.textSecondary} />
+                </Tappable>
+                {manualStartTimeFuture && (
+                  <ThemedText type="small" style={{ color: theme.brand.danger }}>
+                    Start time must be in the past
+                  </ThemedText>
+                )}
+                {timePickerOpen && (
+                  <DateTimePicker
+                    value={manualDay}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onValueChange={(_, time) => {
+                      setTimePickerOpen(Platform.OS === 'ios');
+                      if (time) {
+                        setManualDay((current) => {
+                          const next = new Date(current);
+                          next.setHours(time.getHours(), time.getMinutes(), 0, 0);
+                          return next;
+                        });
+                      }
+                    }}
+                    onDismiss={() => setTimePickerOpen(false)}
+                  />
+                )}
+              </ThemedView>
+            </ThemedView>
+          )}
+          {!isFromTracking && !manualEntry.ok && typedSomething && (
+            <ThemedText type="small" style={{ color: theme.brand.danger }}>
+              {manualEntry.reason}
+            </ThemedText>
+          )}
+          {/* What the numbers add up to, so a mistyped minute or mile shows before it is saved. */}
+          {!isFromTracking && manualEntry.ok && manualEntry.distance > 0 && (
+            <ThemedText type="small" themeColor="textSecondary">
+              Works out to{' '}
+              {formatPaceOrSpeed(
+                activityType,
+                manualEntry.distance,
+                manualEntry.duration,
+                unitSystem
+              )}
+            </ThemedText>
+          )}
 
-          {/* Stats Summary (if from tracking) */}
+          {isFromTracking && polyline !== '' && (
+            // A preview for the athlete only: hiding the route from others changes what is published, not this.
+            <View style={[styles.field, styles.mapPreview]}>
+              <RouteThumbnail polyline={polyline} height={MAP_PREVIEW_HEIGHT} />
+            </View>
+          )}
+
           {isFromTracking && (
             <ThemedView
               style={[styles.field, styles.statsCard, { backgroundColor: theme.backgroundElement }]}
             >
               <ThemedView style={styles.statsRow}>
                 <ThemedView style={styles.stat}>
-                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  <ThemedText type="caption" themeColor="textSecondary">
                     Distance
                   </ThemedText>
                   <ThemedText type="smallBold">{formatDistance(distance, unitSystem)}</ThemedText>
                 </ThemedView>
                 <ThemedView style={styles.stat}>
-                  <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  <ThemedText type="caption" themeColor="textSecondary">
                     Time
                   </ThemedText>
                   <ThemedText type="smallBold">{formatDuration(duration)}</ThemedText>
                 </ThemedView>
                 {territoryArea > 0 && (
                   <ThemedView style={styles.stat}>
-                    <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                    <ThemedText type="caption" themeColor="textSecondary">
                       Territory
                     </ThemedText>
                     <ThemedText type="smallBold">
@@ -495,65 +518,110 @@ export default function CreateActivityScreen() {
             </ThemedView>
           )}
 
-          {/* Photos */}
+          {isFromTracking &&
+            params.noTerritory === '1' &&
+            GPS_DISTANCE_SPORTS.has(activityType) && (
+              <ThemedText type="caption" themeColor="textSecondary">
+                No territory this time. Loop back to where you started to claim the ground you
+                cover.
+              </ThemedText>
+            )}
+
+          {gearOptions.length > 0 && (
+            <ThemedView style={styles.field}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                {activityType === 'ride' ? 'Bike' : 'Shoes'}
+              </ThemedText>
+              <GearPicker options={gearOptions} selected={gearId} onSelect={setGearId} />
+            </ThemedView>
+          )}
+
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Photos
             </ThemedText>
             <PhotoPicker photos={photos} onPhotosChange={setPhotos} />
           </ThemedView>
 
-          {/* Feel */}
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               How did it feel?
             </ThemedText>
-            <ThemedView style={styles.feelRow}>
-              {FEEL_OPTIONS.map((option) => {
-                const isSelected = feel === option.value;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.feelBtn,
-                      {
-                        backgroundColor: isSelected
-                          ? tint(theme.brand.primary, 0.12)
-                          : theme.backgroundElement,
-                        borderColor: isSelected ? theme.brand.primary : theme.border,
-                      },
-                    ]}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      haptics.selection();
-                      setFeel(isSelected ? undefined : option.value);
-                    }}
-                    accessibilityRole="radio"
-                    accessibilityLabel={option.label}
-                    accessibilityState={{ selected: isSelected }}
-                  >
-                    <ThemedText style={{ fontSize: 24 }}>{option.emoji}</ThemedText>
-                    <ThemedText
-                      type="caption"
-                      style={{ color: isSelected ? theme.brand.primary : theme.textSecondary }}
-                    >
-                      {option.label}
-                    </ThemedText>
-                  </TouchableOpacity>
-                );
-              })}
-            </ThemedView>
+            <FeelPicker selected={feel} onSelect={setFeel} />
           </ThemedView>
 
-          {/* Privacy */}
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
+              How hard was it?
+            </ThemedText>
+            <SegmentedChoice<ActivityEffort>
+              options={EFFORT_OPTIONS}
+              selected={effort}
+              onSelect={setEffort}
+              onClear={() => setEffort(undefined)}
+            />
+            {effort && (
+              <ThemedText type="caption" themeColor="textSecondary">
+                {EFFORT_OPTIONS.find((o) => o.value === effort)?.description}
+              </ThemedText>
+            )}
+          </ThemedView>
+
+          <View style={styles.switchRow}>
+            <ThemedText style={styles.switchLabel}>This was a commute</ThemedText>
+            <AppSwitch checked={isCommute} onChange={setIsCommute} label="This was a commute" />
+          </View>
+
+          <ThemedView style={styles.field}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
+              Private note
+            </ThemedText>
+            <TextField
+              value={privateNote}
+              onChangeText={setPrivateNote}
+              maxLength={PRIVATE_NOTE_MAX}
+              placeholder="Only you can see this"
+              multiline
+            />
+          </ThemedView>
+
+          <ThemedView style={styles.field}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Who can see?
             </ThemedText>
-            <PrivacyPicker selected={privacy} onSelect={setPrivacy} />
+            <PrivacyPicker
+              selected={privacy}
+              onSelect={(next) =>
+                next === 'only_me' && privacy !== 'only_me'
+                  ? confirmOnlyMe(() => setPrivacy(next))
+                  : setPrivacy(next)
+              }
+            />
+            {!!privacyCaption && (
+              <ThemedText type="caption" themeColor="textSecondary">
+                {privacyCaption}
+              </ThemedText>
+            )}
           </ThemedView>
 
-          {/* Save CTA */}
+          {/* Map visibility: only a recorded route has a map to hide, and Only Me already hides everything. */}
+          {isFromTracking && privacy !== 'only_me' && (
+            <ThemedView style={styles.field}>
+              <View style={styles.switchRow}>
+                <ThemedText style={styles.switchLabel}>Hide the route map from others</ThemedText>
+                <AppSwitch
+                  checked={hideRoute}
+                  onChange={setHideRoute}
+                  label="Hide the route map from others"
+                />
+              </View>
+              <ThemedText type="caption" themeColor="textSecondary">
+                Your stats and photos still show. The route stays on this phone and no territory is
+                claimed.
+              </ThemedText>
+            </ThemedView>
+          )}
+
           <AppButton onPress={handleSave} disabled={!canSave} style={styles.saveBtn}>
             {isSaving ? 'Saving...' : 'Save Activity'}
           </AppButton>
@@ -566,12 +634,29 @@ export default function CreateActivityScreen() {
 }
 
 const styles = StyleSheet.create({
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  switchLabel: { flex: 1 },
   manualRow: {
     flexDirection: 'row',
     gap: Spacing.three,
   },
   manualField: {
     flex: 1,
+  },
+  timeField: { gap: Spacing.two },
+  timeButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.four,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
   },
   container: { flex: 1 },
   safeArea: { flex: 0 },
@@ -597,37 +682,16 @@ const styles = StyleSheet.create({
   field: {
     gap: Spacing.two,
   },
-  sportSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-  },
   statsCard: {
     borderRadius: BorderRadius.md,
     padding: Spacing.three,
   },
+  mapPreview: { borderRadius: BorderRadius.lg, overflow: 'hidden' },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
   },
-  stat: { alignItems: 'center', gap: 2 },
-  feelRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    justifyContent: 'space-between',
-  },
-  feelBtn: {
-    flex: 1,
-    alignItems: 'center',
-    gap: Spacing.one,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-  },
+  stat: { alignItems: 'center', gap: Spacing.half },
   saveBtn: {
     marginTop: Spacing.two,
     borderRadius: BorderRadius.full,

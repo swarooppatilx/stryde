@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ITerritoryRegistry} from "./interfaces/ITerritoryRegistry.sol";
 
-contract TerritoryRegistry is ITerritoryRegistry, Ownable, Pausable {
+contract TerritoryRegistry is ITerritoryRegistry, Ownable2Step, Pausable {
     uint256 public constant MAX_STRENGTH = 1000;
     uint256 public constant DECAY_INTERVAL = 7 days;
     uint256 public constant DECAY_AMOUNT = 100;

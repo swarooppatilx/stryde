@@ -1,11 +1,6 @@
-import {
-  getActiveConfig,
-  getChainMode,
-  getContracts,
-  getPublicClient,
-  type getWalletClient,
-} from './client';
+import { getContracts, getPublicClient, type getWalletClient } from './client';
 import { relayMintTerritoryNFT } from './relay';
+import { writeAndConfirm } from './tx';
 
 export async function isMinted(polygonHash: `0x${string}`): Promise<boolean> {
   const client = getPublicClient();
@@ -14,17 +9,17 @@ export async function isMinted(polygonHash: `0x${string}`): Promise<boolean> {
     ...contracts.territoryNFT,
     functionName: 'isMinted',
     args: [polygonHash],
-  }) as Promise<boolean>;
+  });
 }
 
-export async function getOwnedTerritoryIds(owner: `0x${string}`): Promise<bigint[]> {
+export async function getOwnedTerritoryIds(owner: `0x${string}`): Promise<readonly bigint[]> {
   const client = getPublicClient();
   const contracts = getContracts();
   return client.readContract({
     ...contracts.territoryNFT,
     functionName: 'getTokenIds',
     args: [owner],
-  }) as Promise<bigint[]>;
+  });
 }
 
 /** Which of the given polygon hashes already have a minted, soulbound territory NFT. */
@@ -56,38 +51,13 @@ export async function getMintedTerritoryIds(
   return minted;
 }
 
-/**
- * Mints a soulbound territory NFT to the caller's own wallet for a captured polygon.
- *
- * `mintTerritory` is role-gated on-chain (MINTER_ROLE). This only succeeds when the
- * calling wallet holds that role — true today only in local dev, where every user
- * shares the deployer account. A real multi-user deployment needs a backend holding
- * the minter key instead.
- */
+/** Asks the relayer to mint a soulbound territory NFT for a captured polygon: `mintTerritory` is MINTER_ROLE-gated, which an athlete's own wallet is not, on any chain. */
 export async function mintTerritoryNFT(
-  wallet: ReturnType<typeof getWalletClient>,
+  _wallet: ReturnType<typeof getWalletClient>,
   polygonHash: `0x${string}`,
   recipient: `0x${string}`
 ): Promise<{ confirmed: boolean }> {
-  if (getChainMode() !== 'local') {
-    return relayMintTerritoryNFT(recipient, polygonHash);
-  }
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.territoryNFT,
-    functionName: 'mintTerritory',
-    args: [recipient, polygonHash],
-    account,
-    chain: config.chain,
-  });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success' };
+  return relayMintTerritoryNFT(recipient, polygonHash);
 }
 
 /** Burns a territory NFT once TerritoryRegistry reports the territory as lost to decay. */
@@ -95,20 +65,9 @@ export async function burnTerritoryNFT(
   wallet: ReturnType<typeof getWalletClient>,
   polygonHash: `0x${string}`
 ): Promise<{ confirmed: boolean }> {
-  const contracts = getContracts();
-  const config = getActiveConfig();
-  const client = getPublicClient();
-  const account = wallet.account?.address;
-  if (!account) throw new Error('No wallet account found');
-
-  const hash = await wallet.writeContract({
-    ...contracts.territoryNFT,
+  const { confirmed } = await writeAndConfirm(wallet, 'territoryNFT', {
     functionName: 'burnTerritory',
     args: [polygonHash],
-    account,
-    chain: config.chain,
   });
-
-  const receipt = await client.waitForTransactionReceipt({ hash });
-  return { confirmed: receipt.status === 'success' };
+  return { confirmed };
 }

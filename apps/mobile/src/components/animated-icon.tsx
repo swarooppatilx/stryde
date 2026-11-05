@@ -6,6 +6,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { BrandMark } from '@/components/brand';
 import { Brand } from '@/constants/theme';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { logger } from '@/utils/logger';
 
 const DURATION = 600;
 
@@ -29,6 +31,7 @@ const splashKeyframe = new Keyframe({
 });
 
 export function AnimatedSplashOverlay() {
+  const reduceMotion = useReduceMotion();
   const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
 
@@ -51,9 +54,13 @@ export function AnimatedSplashOverlay() {
   ) : (
     <View
       onLayout={() => {
-        SplashScreen.hideAsync().finally(() => {
-          setAnimate(true);
-        });
+        SplashScreen.hideAsync()
+          .finally(() => {
+            // No fade when motion is reduced: the overlay just goes once the native splash has.
+            if (reduceMotion) setVisible(false);
+            else setAnimate(true);
+          })
+          .catch((error) => logger.warn('[Splash] Hiding the splash screen failed', error));
       }}
       style={styles.splashOverlay}
     >

@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { BorderRadius, Spacing } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
-
+import { useShake } from '@/hooks/useShake';
 import { ThemedText } from './themed-text';
 
 interface OtpInputProps {
@@ -11,19 +13,35 @@ interface OtpInputProps {
   value: string;
   onChange: (value: string) => void;
   autoFocus?: boolean;
+  /** Goes up by one each time the code was refused; the boxes shake and buzz once per change. */
+  rejectedCount?: number;
 }
 
-export function OtpInput({ length = 6, value, onChange, autoFocus = true }: OtpInputProps) {
+export function OtpInput({
+  length = 6,
+  value,
+  onChange,
+  autoFocus = true,
+  rejectedCount = 0,
+}: OtpInputProps) {
   const theme = useTheme();
   const inputRef = useRef<TextInput>(null);
   const [focused, setFocused] = useState(false);
+  const { style: shakeStyle, shake } = useShake();
+  // Only a rise shakes: mounting with an old count (Resend, back and return) is not a new refusal.
+  const seenCount = useRef(rejectedCount);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: shake exactly when the count goes up
+  useEffect(() => {
+    if (rejectedCount > seenCount.current) shake();
+    seenCount.current = rejectedCount;
+  }, [rejectedCount]);
 
   const digits = Array.from({ length }, (_, i) => value[i] ?? '');
   const activeIndex = Math.min(value.length, length - 1);
 
   return (
     <View style={styles.wrapper}>
-      <View style={styles.boxRow}>
+      <Animated.View style={[styles.boxRow, shakeStyle]}>
         {digits.map((digit, i) => {
           const isActive = focused && i === activeIndex;
           return (
@@ -39,13 +57,13 @@ export function OtpInput({ length = 6, value, onChange, autoFocus = true }: OtpI
                 },
               ]}
             >
-              <ThemedText type="subtitle" style={styles.digit}>
+              <ThemedText type="headline" style={styles.digit}>
                 {digit}
               </ThemedText>
             </View>
           );
         })}
-      </View>
+      </Animated.View>
       <TextInput
         ref={inputRef}
         value={value}
@@ -79,7 +97,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   digit: {
-    fontSize: 22,
+    ...textStyle(TypeScale.headline),
   },
   hiddenInput: {
     ...StyleSheet.absoluteFill,

@@ -1,34 +1,12 @@
-import * as Haptics from 'expo-haptics';
+import { getPlatform } from '@/platform';
 
-/**
- * Thin, named wrapper around expo-haptics so call sites read by intent
- * (tap/selection/success/...) instead of picking an ImpactFeedbackStyle by hand.
- */
+/** Haptic feedback named by intent; the device (or a test fake) decides how it feels. */
 export const haptics = {
-  tap: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
-  impactMedium: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
-  impactHeavy: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy),
-  selection: () => Haptics.selectionAsync(),
-  success: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
-  warning: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning),
+  tap: () => getPlatform().haptics.tap(),
+  impactMedium: () => getPlatform().haptics.impactMedium(),
+  impactHeavy: () => getPlatform().haptics.impactHeavy(),
+  selection: () => getPlatform().haptics.selection(),
+  success: () => getPlatform().haptics.success(),
+  warning: () => getPlatform().haptics.warning(),
+  error: () => getPlatform().haptics.error(),
 };
-
-export function impactLight() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-}
-
-export function impactMedium() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-}
-
-export function impactHeavy() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-}
-
-export function notificationSuccess() {
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-}
-
-export function notificationError() {
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-}

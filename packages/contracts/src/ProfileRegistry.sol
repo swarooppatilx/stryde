@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IProfileRegistry} from "./interfaces/IProfileRegistry.sol";
 
-contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
+contract ProfileRegistry is IProfileRegistry, Ownable2Step, Pausable {
     uint256 private _nextProfileId = 1;
 
     mapping(address => uint256) private _profileIdOf;
@@ -13,6 +14,9 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
     mapping(string => bool) private _usernameTaken;
     mapping(uint256 => string) private _usernameOf;
     mapping(address => bool) private _verified;
+    /// @dev Which wallet each World ID nullifier verified. A nullifier is one human, so it may
+    /// verify one wallet only: without this one person could verify any number of accounts.
+    mapping(bytes32 => address) private _nullifierOwner;
 
     /// @dev Address authorized to call verify() — the backend's relayer
     /// wallet, which calls this after a confirmed World ID Selfie Check.
@@ -35,7 +39,9 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
         if (bytes(username).length > 32) revert UsernameTooLong();
         if (_usernameTaken[username]) revert UsernameTaken();
 
-        unchecked { profileId = _nextProfileId++; }
+        unchecked {
+            profileId = _nextProfileId++;
+        }
         _profileIdOf[msg.sender] = profileId;
         _walletOf[profileId] = msg.sender;
         _usernameTaken[username] = true;
@@ -49,7 +55,7 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
         emit AvatarUpdated(msg.sender, cid);
     }
 
-    function setUsername(string calldata newUsername) external whenNotPaused override {
+    function setUsername(string calldata newUsername) external override whenNotPaused {
         uint256 profileId = _profileIdOf[msg.sender];
         if (profileId == 0) revert NotRegistered();
         if (bytes(newUsername).length == 0) revert EmptyUsername();
@@ -87,8 +93,11 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
     }
 
     function verify(address wallet, bytes32 nullifierHash) external override onlyVerifier {
+        if (_profileIdOf[wallet] == 0) revert NotRegistered();
         if (_verified[wallet]) revert AlreadyVerified();
+        if (_nullifierOwner[nullifierHash] != address(0)) revert NullifierAlreadyUsed();
         _verified[wallet] = true;
+        _nullifierOwner[nullifierHash] = wallet;
         emit ProfileVerified(wallet, nullifierHash, block.timestamp);
     }
 
@@ -97,6 +106,7 @@ contract ProfileRegistry is IProfileRegistry, Ownable, Pausable {
     }
 
     function setVerifier(address newVerifier) external override onlyOwner {
+        if (newVerifier == address(0)) revert ZeroAddress();
         verifierAddress = newVerifier;
         emit VerifierUpdated(newVerifier);
     }

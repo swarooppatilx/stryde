@@ -6,9 +6,9 @@ dataSources:
     name: ProfileRegistry
     network: sepolia
     source:
-      address: "0x7F7C12C204229A76815470707De2384cd369bA23"
+      address: "0x348CE6aF8eA0C50fb44F284dCCA73b7EE5112314"
       abi: ProfileRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -21,6 +21,8 @@ dataSources:
       eventHandlers:
         - event: ProfileCreated(indexed uint256,indexed address,string,uint256)
           handler: handleProfileCreated
+        - event: ProfileUpdated(indexed uint256,string)
+          handler: handleProfileUpdated
         - event: AvatarUpdated(indexed address,string)
           handler: handleAvatarUpdated
         - event: ProfileVerified(indexed address,bytes32,uint256)
@@ -30,9 +32,9 @@ dataSources:
     name: ActivityRegistry
     network: sepolia
     source:
-      address: "0x569dFFc017a0040E381AE859dCfd34Ff7fB94b1c"
+      address: "0x30a910fc25F0977907Af86345c0B26C34e7d2439"
       abi: ActivityRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -54,9 +56,9 @@ dataSources:
     name: TerritoryRegistry
     network: sepolia
     source:
-      address: "0x47A345474256c297eB78e28F1Eb5026269b8220a"
+      address: "0x22802b1C6fda5CA6FBC519830879a17214DbA1e2"
       abi: TerritoryRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -82,9 +84,9 @@ dataSources:
     name: SeasonManager
     network: sepolia
     source:
-      address: "0xE4a98F8eEe705a9114d8BED7a9064Cc00be14CcD"
+      address: "0xfc42018ea93384FA6703d0Eb72656C67261D1732"
       abi: SeasonManager
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -110,9 +112,9 @@ dataSources:
     name: AchievementRegistry
     network: sepolia
     source:
-      address: "0x545945D83ff0dee4dBE993884E6951eA994Bbe8E"
+      address: "0x537F289b59b9944e14978a23f57133B738747f81"
       abi: AchievementRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -133,9 +135,9 @@ dataSources:
     name: ChallengeRegistry
     network: sepolia
     source:
-      address: "0x0a149740740927270326C7014e7c04Aa5A0A299D"
+      address: "0x6E196c21292E0eDE7748A04A5a62bE0b6ae6004c"
       abi: ChallengeRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -161,9 +163,9 @@ dataSources:
     name: GroupRegistry
     network: sepolia
     source:
-      address: "0x314C216c504CEC6A2ccC0621Fc3E25Ff3487FFdD"
+      address: "0xeeBBd3aAADcC95919e6f3a78E3A2cdA57D0a3241"
       abi: GroupRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -194,9 +196,9 @@ dataSources:
     name: SocialRegistry
     network: sepolia
     source:
-      address: "0x0E8b3Ca753D64809a2fE3982952bd86f9fF301AC"
+      address: "0xfc97445a56b61471720EF9e2bb0759d8d3c76561"
       abi: SocialRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -220,9 +222,9 @@ dataSources:
     name: EventRegistry
     network: sepolia
     source:
-      address: "0x3B7dc2CFFf7b9c14817a550441A32AF8D2C04fc5"
+      address: "0xDead8aA0b3840f272c8293E6DD34932cF5a7f027"
       abi: EventRegistry
-      startBlock: 11697363
+      startBlock: 12063931
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -243,3 +245,47 @@ dataSources:
         - event: EventCancelled(indexed uint256,indexed address,uint256)
           handler: handleEventCancelled
       file: src/mappings/EventRegistry.ts
+  - kind: ethereum/contract
+    name: MoveToEarnToken
+    network: sepolia
+    source:
+      address: "0x6Cc5211470De17d69B3208e26B08fFAD0b6260F6"
+      abi: MoveToEarnToken
+      startBlock: 12063931
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - TokenReward
+        - Profile
+      abis:
+        - name: MoveToEarnToken
+          file: ../contracts/out/MoveToEarnToken.sol/MoveToEarnToken.json
+      eventHandlers:
+        - event: ActivityRewarded(indexed address,indexed bytes32,uint256,uint256)
+          handler: handleActivityRewarded
+      file: src/mappings/MoveToEarnToken.ts
+  - kind: ethereum/contract
+    name: TerritoryNFT
+    network: sepolia
+    source:
+      address: "0xfC9044241B4edA72779d9F9876426D256048531B"
+      abi: TerritoryNFT
+      startBlock: 12063931
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - TerritoryNft
+        - Profile
+      abis:
+        - name: TerritoryNFT
+          file: ../contracts/out/TerritoryNFT.sol/TerritoryNFT.json
+      eventHandlers:
+        - event: TerritoryMinted(indexed uint256,indexed address,indexed bytes32)
+          handler: handleTerritoryMinted
+        - event: TerritoryBurned(indexed uint256,indexed bytes32)
+          handler: handleTerritoryBurned
+      file: src/mappings/TerritoryNFT.ts

@@ -1,23 +1,26 @@
 import { services, setLocalRpcUrl } from '@repo/shared';
 import { useEffect, useRef, useState } from 'react';
-import { ENV, getLocalRpcUrl } from '@/constants/config';
+import { getActiveProfileId } from '@/backends/activeProfile';
+import { PROFILES } from '@/backends/profiles';
+import { getChainMode, getLocalRpcUrl } from '@/constants/config';
+import { DEV_TOOLS } from '@/constants/devTools';
+import { mergeChainActivities } from '@/services/chainSync';
+import { ownAboutDeps } from '@/services/ownAbout';
+import { syncOwnAbout } from '@/services/syncOwnAbout';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
+import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
-import { ensureLocalWalletFunded } from '@/utils/anvilFaucet';
+import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
 import { useViemWallet } from './useViemWallet';
 
 export function useChainSync() {
-  const { wallet, address, isLoading: walletLoading } = useViemWallet(ENV.CHAIN_MODE);
+  const { wallet, address, isLoading: walletLoading } = useViemWallet();
   const [syncing, setSyncing] = useState(true);
   const syncedAddress = useRef<string | null>(null);
 
-  // The sync effect below only runs once a wallet exists — for a logged-out
-  // user (no wallet to sync), it never runs at all, so `syncing` would stay
-  // true forever. Since RootLayoutNav gates the whole navigator (including
-  // the login/onboarding screens) behind `!syncing`, that left a logged-out
-  // user stuck on the splash screen permanently, unable to even reach login.
+  // No wallet means no sync will ever run, so don't report "syncing" forever.
   useEffect(() => {
     if (!walletLoading && !wallet) {
       setSyncing(false);
@@ -25,8 +28,15 @@ export function useChainSync() {
   }, [walletLoading, wallet]);
 
   useEffect(() => {
-    if (ENV.CHAIN_MODE === 'local') {
+    // Sandbox has no node to fund the wallet on; the faucet call would only fail.
+    if (
+      DEV_TOOLS.enabled &&
+      getChainMode() === 'local' &&
+      !PROFILES[getActiveProfileId()].fakeChain
+    ) {
       setLocalRpcUrl(getLocalRpcUrl());
+      const { ensureLocalWalletFunded } =
+        require('@/utils/anvilFaucet') as typeof import('@/utils/anvilFaucet');
       ensureLocalWalletFunded().then((result) => {
         if (result === 'funded') {
           Toast.info('Funded with 100 ETH for local testing', 2);
@@ -38,19 +48,13 @@ export function useChainSync() {
   useEffect(() => {
     if (!wallet || !address) return;
     if (syncedAddress.current === address) return;
-    syncedAddress.current = address;
     const walletAddress = address as `0x${string}`;
 
     let cancelled = false;
 
     async function sync() {
       try {
-        // Prefer a single composed subgraph query (Profile + Activity +
-        // Territory + Season/Achievement in one round trip) over the three
-        // separate per-registry calls below. Falls back to those calls when
-        // no subgraph is configured for the active chain mode (e.g. local
-        // Anvil) or the composite query itself fails/returns nothing (e.g. a
-        // wallet with no indexed profile yet).
+        // Prefer one composed subgraph query over the per-registry calls below; falls back to them when no subgraph exists for the mode (local Anvil) or it fails or returns nothing.
         type NormalizedTerritory = {
           id: string;
           areaSqm: number;
@@ -60,89 +64,59 @@ export function useChainSync() {
         };
 
         let activities: services.sync.SyncedActivity[];
-        let territories: NormalizedTerritory[];
+        // null = couldn't be read, which must not be mistaken for "owns none".
+        let territories: NormalizedTerritory[] | null;
         let profile: services.sync.SyncedProfile;
 
         const composite = await services.subgraph.getAthleteComposite(walletAddress).catch((e) => {
-          console.warn('[ChainSync] Composite subgraph query failed, falling back:', e);
+          logger.warn('[ChainSync] Composite subgraph query failed, falling back:', e);
           return null;
         });
 
         if (composite) {
           activities = composite.activities;
-          territories = composite.territories;
+          // Decayed or lost territories stay in the index flagged inactive.
+          territories = composite.territories.filter((t) => t.isActive);
           profile = { isRegistered: true, profileId: composite.profileId };
         } else {
-          // allSettled: one registry read failing (e.g. territories) must not
-          // throw away the activities/profile that did sync fine.
+          // allSettled: one failing registry read must not discard the activities/profile that synced.
           const [activitiesResult, territoriesResult, profileResult] = await Promise.allSettled([
             services.sync.syncActivitiesFromChain(walletAddress),
             services.sync.syncTerritoriesFromChain(walletAddress),
             services.sync.syncProfileFromChain(walletAddress),
           ]);
           for (const r of [activitiesResult, territoriesResult, profileResult]) {
-            if (r.status === 'rejected')
-              console.warn('[ChainSync] Partial sync failure:', r.reason);
+            if (r.status === 'rejected') logger.warn('[ChainSync] Partial sync failure:', r.reason);
           }
           const rawActivities =
             activitiesResult.status === 'fulfilled' ? activitiesResult.value : [];
           const rawTerritories =
-            territoriesResult.status === 'fulfilled' ? territoriesResult.value : [];
+            territoriesResult.status === 'fulfilled' ? territoriesResult.value : null;
           const rawProfile =
             profileResult.status === 'fulfilled'
               ? profileResult.value
               : { isRegistered: false, profileId: null };
           activities = rawActivities;
-          territories = rawTerritories.map((t) => ({
-            id: t.id,
-            areaSqm: t.areaSqm,
-            strength: t.controlStrength,
-            capturedAt: t.capturedAt,
-            lastReinforced: t.lastReinforced,
-          }));
+          territories =
+            rawTerritories?.map((t) => ({
+              id: t.id,
+              areaSqm: t.areaSqm,
+              strength: t.controlStrength,
+              capturedAt: t.capturedAt,
+              lastReinforced: t.lastReinforced,
+            })) ?? null;
           profile = rawProfile;
         }
         if (cancelled) return;
 
         if (activities.length > 0) {
           const store = useActivityStore.getState();
-          const localActivities = store.activities;
-          const localByHash = new Map(
-            localActivities.filter((a) => a.activityHash).map((a) => [a.activityHash, a])
+          store.setActivities(
+            mergeChainActivities(store.activities, activities, new Set(store.deletedHashes))
           );
-
-          const merged = activities.map((a) => {
-            const local = localByHash.get(a.activityHash);
-            return {
-              id: local?.id ?? a.activityHash,
-              userId: a.owner,
-              name: local?.name || a.metadataName || '',
-              description: local?.description || a.metadataDescription,
-              activityType: local?.activityType || a.activityType,
-              distance: local?.distance ?? a.distance,
-              duration: local?.duration ?? a.duration,
-              polyline: local?.polyline || a.metadataPolyline || '',
-              territory: local?.territory || a.metadataTerritory || null,
-              territoryArea: local?.territoryArea ?? a.territoryArea,
-              createdAt: local?.createdAt || new Date(a.timestamp * 1000),
-              txHash: local?.txHash,
-              metadataCid: local?.metadataCid ?? a.metadataCid,
-              image: local?.image ?? a.metadataPhotos?.[0],
-              images: local?.images ?? a.metadataPhotos,
-              activityHash: a.activityHash,
-              elevationGain: local?.elevationGain,
-            };
-          });
-
-          const chainHashes = new Set(activities.map((a) => a.activityHash));
-          const localOnly = localActivities.filter(
-            (a) => !(a.activityHash && chainHashes.has(a.activityHash))
-          );
-
-          store.setActivities([...merged, ...localOnly]);
         }
 
-        if (territories.length > 0) {
+        if (territories) {
           useTerritoryStore.getState().setTerritories(walletAddress, territories);
         }
 
@@ -151,14 +125,21 @@ export function useChainSync() {
             profileId: profile.profileId.toString(),
           });
         }
+
+        void useSocialStore.getState().syncFollowing(walletAddress);
+        void syncOwnAbout(ownAboutDeps(), walletAddress);
       } catch (err) {
-        console.warn('[ChainSync] Sync failed:', err);
+        logger.warn('[ChainSync] Sync failed:', err);
       } finally {
-        if (!cancelled) setSyncing(false);
+        if (!cancelled) {
+          // Marking synced up front would block the re-run after a cancelled attempt and leave the splash up forever.
+          syncedAddress.current = walletAddress;
+          setSyncing(false);
+        }
       }
     }
 
-    sync();
+    void sync();
     return () => {
       cancelled = true;
     };

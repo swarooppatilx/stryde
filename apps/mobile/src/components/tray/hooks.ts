@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import type { ITrayNavigation } from './types';
 
 function useTrayNavigation(
@@ -10,31 +10,29 @@ function useTrayNavigation(
     direction: 1,
   });
 
-  const view = state.stack[state.stack.length - 1];
+  const view = state.stack.at(-1) ?? defaultView;
 
-  const setView = useCallback(
-    (next: string) => {
-      setState((current) => {
-        if (current.stack[current.stack.length - 1] === next) return current;
-        return { stack: [...current.stack, next], direction: 1 };
-      });
-      onViewChange?.(next);
-    },
-    [onViewChange]
-  );
+  const setView = (next: string) => {
+    setState((current) => {
+      if (current.stack[current.stack.length - 1] === next) return current;
+      return { stack: [...current.stack, next], direction: 1 };
+    });
+    onViewChange?.(next);
+  };
 
-  const goBack = useCallback(() => {
+  const goBack = () => {
     setState((current) => {
       if (current.stack.length < 2) return current;
       const stack = current.stack.slice(0, -1);
-      onViewChange?.(stack[stack.length - 1]);
+      const previous = stack.at(-1);
+      if (previous) onViewChange?.(previous);
       return { stack, direction: -1 };
     });
-  }, [onViewChange]);
+  };
 
-  const reset = useCallback((next: string) => {
+  const reset = (next: string) => {
     setState({ stack: [next], direction: 1 });
-  }, []);
+  };
 
   return {
     view,

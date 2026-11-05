@@ -1,13 +1,12 @@
-import type { ActivityType } from '@repo/shared/types';
+import type { ActivityType, Location, Ring, Territory } from '@repo/shared/types';
 
-export type { ActivityType };
+export type { ActivityType, Location, Ring, Territory };
 
 export type ActivityFeel = 'great' | 'good' | 'ok' | 'bad' | 'terrible';
 
-export type ActivityPrivacy = 'everyone' | 'followers' | 'only_me';
+export type ActivityEffort = 'easy' | 'moderate' | 'hard' | 'max';
 
-/** A closed [lng, lat] ring - first and last points equal. */
-export type Ring = [number, number][];
+export type ActivityPrivacy = 'everyone' | 'followers' | 'only_me';
 
 export type Gender = 'man' | 'woman' | 'non_binary' | 'prefer_not_to_say';
 
@@ -37,6 +36,70 @@ export interface Comment {
   likedBy: string[];
 }
 
+export interface Split {
+  /** 1-based; the last one may cover less than a full split. */
+  index: number;
+  distance: number;
+  /** Time spent moving, in ms; stops are left out. */
+  movingTime: number;
+  /** Net metres climbed (negative: descended) over the split; absent without a usable altitude. */
+  elevation?: number;
+}
+
+export interface Lap {
+  index: number;
+  /** Meters. */
+  distance: number;
+  /** Moving time in ms. */
+  duration: number;
+}
+
+export interface BestEffort {
+  /** Meters: 1000, 5000 or 10000. */
+  distance: number;
+  /** Time spent moving over that stretch, in ms. */
+  movingTime: number;
+}
+
+/** A place the athlete keeps private: where a published route starts or ends inside it, those points are cut. */
+export interface PrivacyZone {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  /** Meters. */
+  radius: number;
+}
+
+export type GearKind = 'shoes' | 'bike';
+
+export interface Gear {
+  id: string;
+  name: string;
+  kind: GearKind;
+  /** Meters already covered before it was added here. */
+  startingDistance: number;
+  retired?: boolean;
+}
+
+/** Speed over time for a recording; kept on this device, never published. */
+export interface ActivityStream {
+  /** Seconds since the first fix, ascending. */
+  t: number[];
+  /** Metres per second at each `t`. */
+  speed: number[];
+  /** Metres covered by each `t`; absent in streams saved before this was kept. */
+  d?: number[];
+  /** When the first fix arrived, in ms since 1970; absent in streams saved before this was kept. */
+  startedAt?: number;
+  /** Heart rate readings from a watch or band: seconds since the start and bpm at each. */
+  heartRate?: { t: number[]; bpm: number[] };
+  /** Metres above sea level at each `t`; absent when the phone gave no usable altitude. */
+  alt?: number[];
+  /** Pedometer cadence per second since the first step sample; absent while motion sensors are off. */
+  cadence?: { t: number[]; spm: number[] };
+}
+
 export interface Activity {
   id: string;
   userId: string;
@@ -45,46 +108,56 @@ export interface Activity {
   distance: number;
   duration: number;
   polyline: string;
+  /** Per-kilometre (or per-mile) times from the recording; absent for manual entries and older runs. */
+  splits?: Split[];
+  /** Speed over time for the pace curve; absent for manual entries and older runs. */
+  stream?: ActivityStream;
+  gearId?: string;
+  /** Fastest 1 km / 5 km / 10 km within the recording; absent for manual entries and older runs. */
+  bestEfforts?: BestEffort[];
+  /** The route published for others had its first and last stretch left out; kept so an edit republishes it the same way. */
+  hideRouteEnds?: boolean;
+  /** Shared without its route map or territory outline; this device keeps both. */
+  hideRoute?: boolean;
+  /** Recorded with a simulated location: anchored, but never counts for rewards, territory or records. */
+  mocked?: boolean;
+  /** The athlete's privacy zones when this was saved; a later edit republishes the route cut the same way. */
+  privacyZones?: PrivacyZone[];
+  /** Laps marked during the recording; absent when none were, and for manual entries. */
+  laps?: Lap[];
   /** The polygon enclosed by this run, or null if the route never closed a loop. */
   territory: Ring | null;
   /** Area of `territory` in square meters, 0 when there's no territory. */
   territoryArea: number;
   activityHash?: string;
   elevationGain?: number;
+  /** Metres descended, worked out from the recording's own altitude; absent for older activities. */
+  elevationLoss?: number;
+  /** Average and highest heart rate (bpm), from a watch or band; absent when none was recorded. */
+  heartRate?: { avg: number; max: number };
+  /** Calories as the watch measured them (kcal); preferred over the estimate. */
+  caloriesBurned?: number;
   image?: string;
   images?: string[];
   description?: string;
   feel?: ActivityFeel;
+  /** How hard it felt; kept on this device. */
+  effort?: ActivityEffort;
+  isCommute?: boolean;
+  /** A note only the athlete sees; kept on this device, never published. */
+  privateNote?: string;
   privacy?: ActivityPrivacy;
-  /** True when activity was entered manually (no GPS tracking). */
   isManual?: boolean;
   kudos?: string[];
   comments?: Comment[];
   txHash?: string;
   /** STRD tokens earned for this activity's distance, once the mint confirms. */
   strdEarned?: number;
-  /** On-chain activityId returned by recordActivity, as a string (bigint
-   * doesn't survive AsyncStorage's JSON persistence). Needed to later call
-   * setActivityMetadata for this activity. */
+  /** Decimal string: bigint does not survive AsyncStorage's JSON persistence. */
   onchainActivityId?: string;
-  /** IPFS CID of this activity's off-chain metadata (name/description/
-   * photos), once successfully uploaded and attached on-chain via
-   * setActivityMetadata — lets this device confirm it doesn't need to
-   * re-upload, and lets other devices resolve the same metadata after a
-   * chain sync. */
+  /** IPFS CID of the off-chain metadata once attached on-chain; skips re-upload and lets other devices resolve it. */
   metadataCid?: string;
+  /** Automatic retry bookkeeping for an activity the chain does not hold yet. */
+  sync?: { attempts: number; nextAttemptAt: number; lastError?: string };
   createdAt: Date;
-}
-
-export interface Territory {
-  polygon: Ring;
-  owner: string;
-  capturedAt: Date;
-}
-
-export interface Location {
-  latitude: number;
-  longitude: number;
-  timestamp: number;
-  accuracy: number;
 }

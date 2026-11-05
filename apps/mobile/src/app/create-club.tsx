@@ -2,25 +2,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
-import { SportTypePicker } from '@/components/sport-type-picker';
+import { SportField } from '@/components/sport-field';
+import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ENV } from '@/constants/config';
+import { CLUB_DESCRIPTION_MAX, CLUB_LOCATION_MAX, CLUB_NAME_MAX } from '@/constants/limits';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useTransactor } from '@/hooks/useTransactor';
-import { useViemWallet } from '@/hooks/useViemWallet';
+import { useChainAction } from '@/hooks/useChainAction';
+import { useDiscardGuard } from '@/hooks/useDiscardGuard';
+import { useGoBack } from '@/hooks/useGoBack';
 import { sportTypeToOnchain, useCommunityStore } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
 import { Alert } from '@/utils/alert';
@@ -28,33 +23,34 @@ import { haptics } from '@/utils/haptics';
 
 export default function CreateClubScreen() {
   const router = useRouter();
+  const goBack = useGoBack();
   const theme = useTheme();
-  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
-  const { transact } = useTransactor();
+  const { address, run } = useChainAction();
   const fetchClubs = useCommunityStore((s) => s.fetchClubs);
   const fetchJoinedClubs = useCommunityStore((s) => s.fetchJoinedClubs);
 
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
+  const { allowLeave } = useDiscardGuard(
+    name.trim() !== '' || location.trim() !== '' || description.trim() !== ''
+  );
   const [sportType, setSportType] = useState<ActivityType>('run');
-  const [showSportPicker, setShowSportPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canSubmit = name.trim().length > 0 && !isSubmitting;
 
   const handleSubmit = async () => {
-    if (!wallet || !address) return;
     if (!name.trim()) {
       Alert.alert('Name required', 'Give your club a name.');
       return;
     }
 
-    haptics.success();
+    haptics.impactMedium();
     setIsSubmitting(true);
     try {
-      const result = await transact(
-        () =>
+      const result = await run(
+        (wallet) =>
           services.group.createGroup(wallet, {
             name: name.trim(),
             location: location.trim(),
@@ -63,11 +59,12 @@ export default function CreateClubScreen() {
           }),
         { pending: 'Creating club...', success: 'Club created' }
       );
-      if (!result?.confirmed) return;
+      if (!result?.confirmed || !address) return;
 
       await Promise.all([fetchClubs(), fetchJoinedClubs(address)]);
+      allowLeave();
       router.replace({
-        pathname: '/club-detail',
+        pathname: '/clubs/[id]',
         params: { id: result.groupId.toString() },
       });
     } finally {
@@ -79,14 +76,14 @@ export default function CreateClubScreen() {
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ThemedView style={[styles.header, { borderBottomColor: theme.border }]}>
-          <TouchableOpacity
-            onPress={() => router.back()}
+          <Tappable
+            onPress={goBack}
             style={styles.headerBtn}
             accessibilityRole="button"
             accessibilityLabel="Cancel"
           >
             <Ionicons name="close" size={24} color={theme.text} />
-          </TouchableOpacity>
+          </Tappable>
           <ThemedText type="sectionTitle">New Club</ThemedText>
           <View style={styles.headerBtn} />
         </ThemedView>
@@ -99,65 +96,43 @@ export default function CreateClubScreen() {
       >
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Club name
             </ThemedText>
-            <TextField value={name} onChangeText={setName} placeholder="e.g. Pune Trail Runners" />
+            <TextField
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Pune Trail Runners"
+              maxLength={CLUB_NAME_MAX}
+            />
           </ThemedView>
 
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Location
             </ThemedText>
-            <TextField value={location} onChangeText={setLocation} placeholder="e.g. Pune, India" />
+            <TextField
+              value={location}
+              onChangeText={setLocation}
+              placeholder="e.g. Pune, India"
+              maxLength={CLUB_LOCATION_MAX}
+            />
           </ThemedView>
 
           <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
               Description
             </ThemedText>
             <TextField
               value={description}
               onChangeText={setDescription}
               placeholder="What's this club about?"
+              maxLength={CLUB_DESCRIPTION_MAX}
               multiline
             />
           </ThemedView>
 
-          <ThemedView style={styles.field}>
-            <ThemedText type="eyebrow" style={{ color: theme.textSecondary }}>
-              Sport
-            </ThemedText>
-            <TouchableOpacity
-              style={[
-                styles.sportSelector,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-              activeOpacity={0.7}
-              onPress={() => {
-                haptics.tap();
-                setShowSportPicker(!showSportPicker);
-              }}
-            >
-              <ThemedText type="smallBold">
-                {sportType.charAt(0).toUpperCase() + sportType.slice(1)}
-              </ThemedText>
-              <Ionicons
-                name={showSportPicker ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={theme.textSecondary}
-              />
-            </TouchableOpacity>
-            {showSportPicker && (
-              <SportTypePicker
-                selected={sportType}
-                onSelect={(type) => {
-                  setSportType(type);
-                  setShowSportPicker(false);
-                }}
-              />
-            )}
-          </ThemedView>
+          <SportField value={sportType} onChange={setSportType} />
 
           <AppButton onPress={handleSubmit} disabled={!canSubmit} style={styles.submitBtn}>
             {isSubmitting ? 'Creating...' : 'Create Club'}
@@ -194,15 +169,6 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: Spacing.two,
-  },
-  sportSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
   },
   submitBtn: {
     marginTop: Spacing.two,

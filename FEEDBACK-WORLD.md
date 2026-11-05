@@ -38,7 +38,7 @@ Selfie Check is used as an **abuse-prevention, risk mitigation, and fairness sig
 1. User taps **Get verified** on profile.
 2. App requests an **RP signature** from our backend (`POST /world/session`).
 3. App builds an IDKit session request with `selfieCheckLegacy({ signal: privyUserId })`.
-4. App opens `connectorURI` in the **World ID app** (`return_to=starvaexpo://verify`).
+4. App opens `connectorURI` in the **World ID app** (`return_to=stryde://verify`).
 5. App **polls** until Selfie Check completes.
 6. App forwards the IDKit result to `POST /world/verify` → Developer Portal `POST /v3/verify/{app_id}`.
 7. On success, app stores `isVerified` + nullifier locally.

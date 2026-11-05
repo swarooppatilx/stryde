@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
 import type { ColorSchemeName } from 'react-native';
 
+import { Shadows } from '@/constants/shadows';
 import { Brand, Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useProfileStore } from '@/stores/profileStore';
@@ -9,7 +9,7 @@ export type ThemeMode = 'light' | 'dark';
 export type ThemePreference = ThemeMode | 'system';
 
 /** Resolve the effective mode from the user's stored preference, falling back to the OS scheme. */
-export function resolveMode(preference: ThemePreference, scheme: ColorSchemeName): ThemeMode {
+function resolveMode(preference: ThemePreference, scheme: ColorSchemeName): ThemeMode {
   if (preference === 'light' || preference === 'dark') {
     return preference;
   }
@@ -21,5 +21,11 @@ export function useTheme() {
   const scheme = useColorScheme();
   const mode = resolveMode(preference, scheme);
 
-  return useMemo(() => ({ ...Colors[mode], brand: Brand, mode, isDark: mode === 'dark' }), [mode]);
+  return {
+    ...Colors[mode],
+    brand: Brand,
+    shadows: Shadows[mode],
+    mode,
+    isDark: mode === 'dark',
+  };
 }

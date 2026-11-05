@@ -22,6 +22,8 @@ interface IEventRegistry {
 
     // Errors
     error EmptyTitle();
+    error TitleTooLong();
+    error DescriptionTooLong();
     error EventNotFound();
     error AlreadyJoined();
     error NotParticipant();

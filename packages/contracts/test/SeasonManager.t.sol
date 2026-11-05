@@ -64,6 +64,37 @@ contract SeasonManagerTest is Test {
         manager.startSeason(30 days);
     }
 
+    function test_Exploit_ContributionsStopAtTheSeasonEnd() public {
+        _startSeason();
+        vm.warp(block.timestamp + 30 days + 1);
+
+        // The season's endTime has passed, but nobody called endSeason: it must not keep counting.
+        vm.expectRevert(ISeasonManager.SeasonNotActive.selector);
+        manager.recordContribution(alice, 5000);
+    }
+
+    function test_StartSeason_AfterTheLastOneExpiredWithoutEndSeason() public {
+        _startSeason();
+        vm.warp(block.timestamp + 30 days + 1);
+
+        vm.expectEmit(true, false, false, false);
+        emit SeasonEnded(1, 0, 0);
+        vm.prank(manager.owner());
+        manager.startSeason(30 days);
+
+        assertEq(manager.getCurrentSeason().id, 2);
+        assertFalse(manager.getSeason(1).isActive);
+    }
+
+    function test_StartSeason_StillRevertsWhileTheCurrentOneRuns() public {
+        _startSeason();
+        vm.warp(block.timestamp + 29 days);
+
+        vm.prank(manager.owner());
+        vm.expectRevert(ISeasonManager.SeasonAlreadyActive.selector);
+        manager.startSeason(30 days);
+    }
+
     // ─── End Season ────────────────────────────────────────────────
 
     function test_EndSeason() public {
@@ -275,5 +306,55 @@ contract SeasonManagerTest is Test {
 
         assertEq(manager.getParticipantContribution(1, alice), uint256(count) * 1000);
         assertEq(manager.getParticipantCount(1), 1);
+    }
+
+    // ─── Recorder access control (SWA-68) ──────────────────────────
+
+    function test_RecordContribution_RevertIfNotRecorder() public {
+        _startSeason();
+
+        vm.prank(alice);
+        vm.expectRevert(ISeasonManager.NotRecorder.selector);
+        manager.recordContribution(alice, 1_000_000);
+
+        assertEq(manager.getParticipantContribution(1, alice), 0);
+        assertEq(manager.getParticipantCount(1), 0);
+    }
+
+    function test_RecordContribution_AllowedRecorder() public {
+        _startSeason();
+        vm.prank(manager.owner());
+        manager.setRecorder(oracle, true);
+
+        vm.prank(oracle);
+        manager.recordContribution(alice, 5000);
+
+        assertEq(manager.getParticipantContribution(1, alice), 5000);
+    }
+
+    function test_RecordContribution_RevokedRecorderReverts() public {
+        _startSeason();
+        vm.startPrank(manager.owner());
+        manager.setRecorder(oracle, true);
+        manager.setRecorder(oracle, false);
+        vm.stopPrank();
+
+        assertFalse(manager.isRecorder(oracle));
+        vm.prank(oracle);
+        vm.expectRevert(ISeasonManager.NotRecorder.selector);
+        manager.recordContribution(alice, 5000);
+    }
+
+    function test_SetRecorder_RevertIfNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        manager.setRecorder(alice, true);
+        assertFalse(manager.isRecorder(alice));
+    }
+
+    function test_SetRecorder_RevertZeroAddress() public {
+        vm.prank(manager.owner());
+        vm.expectRevert(ISeasonManager.ZeroAddress.selector);
+        manager.setRecorder(address(0), true);
     }
 }

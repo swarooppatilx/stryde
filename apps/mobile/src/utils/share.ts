@@ -1,10 +1,11 @@
-import { File, Paths } from 'expo-file-system';
 import type { RefObject } from 'react';
 import Share from 'react-native-share';
 import type Svg from 'react-native-svg';
 
 import { ENV } from '@/constants/config';
+import { getPlatform } from '@/platform';
 import { Alert } from '@/utils/alert';
+import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
 import { buildActivityDeepLink } from './deepLink';
 
@@ -13,11 +14,7 @@ type SvgRef = RefObject<Svg | null>;
 const SHARE_IMAGE_WIDTH = 1080;
 const SHARE_IMAGE_HEIGHT = 1920;
 
-// Rendering straight from the SVG source via toDataURL() rasterizes with a
-// real alpha channel — a react-native-view-shot screenshot of the same
-// content loses transparency on Android even when every layer is
-// transparent, which breaks the "Instagram sticker" use case this image is
-// for.
+// Rendering from the SVG source via toDataURL() keeps a real alpha channel; a view-shot screenshot loses transparency on Android, which breaks the sticker use case.
 function renderPngBase64(svgRef: SvgRef): Promise<string> {
   return new Promise((resolve, reject) => {
     const svg = svgRef.current;
@@ -36,9 +33,8 @@ function renderPngBase64(svgRef: SvgRef): Promise<string> {
 }
 
 function writeTempPng(base64: string): string {
-  const file = new File(Paths.cache, `stryde-route-${Date.now()}.png`);
-  file.write(base64, { encoding: 'base64' });
-  return file.uri;
+  const { clock, files } = getPlatform();
+  return files.writeCache(`stryde-route-${clock.now()}.png`, base64, 'base64');
 }
 
 function buildShareMessage(activityId?: string): string | undefined {
@@ -46,11 +42,23 @@ function buildShareMessage(activityId?: string): string | undefined {
   return `Check out my activity on ${ENV.APP_NAME}: ${buildActivityDeepLink(activityId)}`;
 }
 
-/** Opens the OS share sheet with the transparent stat-card PNG. Any app that
- * accepts an image can be picked, including Instagram — which recognizes a
- * transparent PNG shared to it as story-sticker content. */
-export async function shareRouteImage(svgRef: SvgRef, activityId?: string): Promise<void> {
+/** Runs a share or export step; if it throws, logs it and tells the athlete with one alert. */
+async function withFailureAlert(
+  title: string,
+  message: string,
+  run: () => Promise<void>
+): Promise<void> {
   try {
+    await run();
+  } catch (error) {
+    logger.warn(`[share] ${message}`, error);
+    Alert.alert(title, message);
+  }
+}
+
+/** Opens the OS share sheet with the transparent stat-card PNG; apps that treat a transparent PNG as a story sticker (e.g. Instagram) recognize it. */
+export function shareRouteImage(svgRef: SvgRef, activityId?: string): Promise<void> {
+  return withFailureAlert('Share', 'Failed to generate route image.', async () => {
     const base64 = await renderPngBase64(svgRef);
     const uri = writeTempPng(base64);
 
@@ -60,27 +68,48 @@ export async function shareRouteImage(svgRef: SvgRef, activityId?: string): Prom
       message: buildShareMessage(activityId),
       failOnCancel: false,
     });
-  } catch (error) {
-    console.warn('[shareRouteImage] Failed to render or share', error);
-    Alert.alert('Share', 'Failed to generate route image.');
-  }
+  });
 }
 
-export async function copyRouteImage(svgRef: SvgRef): Promise<void> {
-  try {
+/** Shares the route as a .gpx file, for any app that imports tracks. */
+export function shareGpx(fileStem: string, gpx: string): Promise<void> {
+  return withFailureAlert('Export', 'Could not export this route.', async () => {
+    const safeStem = fileStem.replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 60) || 'activity';
+    const uri = getPlatform().files.writeCache(`${safeStem}.gpx`, gpx);
+    await Share.open({
+      url: uri,
+      type: 'application/gpx+xml',
+      filename: `${safeStem}.gpx`,
+      failOnCancel: false,
+    });
+  });
+}
+
+/** Offers the athlete's data export (JSON) to the system share sheet, so they can save or send it. */
+export function shareDataExport(json: string): Promise<void> {
+  return withFailureAlert('Export', 'Could not export your data.', async () => {
+    const uri = getPlatform().files.writeCache('stryde-data-export.json', json);
+    await Share.open({
+      url: uri,
+      type: 'application/json',
+      filename: 'stryde-data-export.json',
+      failOnCancel: false,
+    });
+  });
+}
+
+export function copyRouteImage(svgRef: SvgRef): Promise<void> {
+  return withFailureAlert('Copy', 'Failed to copy route image.', async () => {
     const base64 = await renderPngBase64(svgRef);
     // Lazy import — keeps this rarely-hit path off the module's initial load.
     const Clipboard = await import('expo-clipboard');
     await Clipboard.setImageAsync(base64);
     Toast.success('Image copied', 1);
-  } catch (error) {
-    console.warn('[copyRouteImage] Failed to render or copy', error);
-    Alert.alert('Copy', 'Failed to copy route image.');
-  }
+  });
 }
 
-export async function saveRouteImage(svgRef: SvgRef): Promise<void> {
-  try {
+export function saveRouteImage(svgRef: SvgRef): Promise<void> {
+  return withFailureAlert('Save', 'Failed to save route image.', async () => {
     // Lazy import — native module may be absent until dev client is rebuilt.
     const MediaLibrary = await import('expo-media-library');
     const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
@@ -96,8 +125,12 @@ export async function saveRouteImage(svgRef: SvgRef): Promise<void> {
     const uri = writeTempPng(base64);
     await MediaLibrary.Asset.create(uri);
     Toast.success('Saved to Photos', 1);
-  } catch (error) {
-    console.warn('[saveRouteImage] Failed to render or save', error);
-    Alert.alert('Save', 'Failed to save route image.');
-  }
+  });
+}
+
+/** Shares a line of text, such as a badge just earned, through the system share sheet. */
+export function shareText(message: string): Promise<void> {
+  return withFailureAlert('Share', 'Could not share this.', () =>
+    Share.open({ message, failOnCancel: false }).then(() => undefined)
+  );
 }

@@ -10,7 +10,7 @@ bash "$SCRIPT_DIR/generate-abis.sh"
 
 echo ""
 echo "=== Step 2: Generating inline ABI TypeScript ==="
-bash "$SHARED_DIR/scripts/generate-abis-inline.sh"
+node "$SHARED_DIR/scripts/generate-abis.mjs"
 
 echo ""
 echo "=== All generation complete ==="

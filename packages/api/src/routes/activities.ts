@@ -18,9 +18,7 @@ export function computeActivityHash(
   return keccak256(toBytes(data));
 }
 
-// Generous ceilings, not real anti-cheat — just enough to reject obviously
-// malformed/absurd input (negative, NaN, or physically-impossible values).
-// Full GPS/speed-plausibility validation is a separate piece of work.
+// Generous ceilings, not anti-cheat: they only reject malformed or absurd input (negative, NaN, physically impossible values).
 const MAX_DISTANCE_METERS = 1_000_000; // 1000km
 const MAX_DURATION_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const MAX_TERRITORY_AREA_SQM = 1_000_000_000; // 1000 sq km

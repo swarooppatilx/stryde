@@ -1,34 +1,60 @@
-import { Ionicons } from '@expo/vector-icons';
+import type { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  TouchableOpacity,
-} from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
-
-import { AppButton } from '@/components/button';
-import { FilterChips, type SportFilter } from '@/components/filter-chips';
+import { getActiveProfileId } from '@/backends/activeProfile';
+import { clubKey, eventKey, setClubMember, setEventMember } from '@/backends/membership';
+import { PROFILES } from '@/backends/profiles';
+import { CommunityCard, JoinButton } from '@/components/community-card';
+import { EventCard } from '@/components/event-card';
+import { ChipRow, FilterChips, type SportFilter } from '@/components/filter-chips';
+import { ListLoading, ListMessage } from '@/components/list-message';
+import { OutlinePill } from '@/components/outline-pill';
 import { SearchBar } from '@/components/search-bar';
+import { StaleBanner } from '@/components/stale-banner';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { TopBarAction } from '@/components/top-bar-action';
+import { UnderlineTabs } from '@/components/underline-tabs';
 import { SPORT_ICONS } from '@/constants/activity';
-import { ENV } from '@/constants/config';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { COMMUNITY_COPY } from '@/constants/copy';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useTransactor } from '@/hooks/useTransactor';
-import { useViemWallet } from '@/hooks/useViemWallet';
-import { type Club, useCommunityStore } from '@/stores/communityStore';
-import { useSocialStore } from '@/stores/socialStore';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useChainAction } from '@/hooks/useChainAction';
+import { useOutboxEntries } from '@/hooks/useOutbox';
+import { useUserResolver } from '@/hooks/useSocialUser';
+import {
+  type Club,
+  filterClubs,
+  filterEvents,
+  orderClubs,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
 import type { ChallengeEvent } from '@/types/event';
-import { formatDistance as formatActivityDistance, getDisplayName } from '@/utils/format';
+import { sameAddress } from '@/utils/address';
+import {
+  CHALLENGE_FILTERS,
+  CHALLENGE_STATUS_LABEL,
+  type ChallengeFilter,
+  challengeTimeLeft,
+  matchesChallengeFilter,
+  orderChallenges,
+} from '@/utils/challengeFilter';
+import { confirmLeave } from '@/utils/confirmLeave';
+import { formatDateRange, formatDayYear } from '@/utils/dates';
+import { deliveryOf } from '@/utils/deliveryState';
+import { eventStatus } from '@/utils/eventStatus';
+import { formatDistance, formatMemberCount, getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { loadFailureView } from '@/utils/loadFailureView';
+import { logger } from '@/utils/logger';
+import { orderEvents } from '@/utils/otherEvents';
+import { isStale } from '@/utils/staleness';
 
 const TABS = ['Clubs', 'Events', 'Challenges'] as const;
 type TabKey = (typeof TABS)[number];
@@ -40,33 +66,43 @@ type Row =
   | { kind: 'event'; event: ChallengeEvent }
   | { kind: 'challenge'; challenge: ChallengeItem };
 
-const CHALLENGE_STATUS_LABEL = ['Open', 'Accepted', 'Settled', 'Cancelled'];
+function communityRows({
+  tab,
+  clubs,
+  events,
+  challenges,
+  challengeFilter,
+  me,
+}: {
+  tab: TabKey;
+  clubs: Club[];
+  events: ChallengeEvent[];
+  challenges: ChallengeItem[] | null;
+  challengeFilter: ChallengeFilter;
+  me: string | undefined;
+}): Row[] {
+  if (tab === 'Clubs') return clubs.map((club) => ({ kind: 'club', club }));
+  if (tab === 'Events') return events.map((event) => ({ kind: 'event', event }));
+  return orderChallenges(
+    (challenges ?? []).filter((challenge) =>
+      matchesChallengeFilter(challenge, challengeFilter, me)
+    ),
+    me
+  ).map((challenge) => ({ kind: 'challenge', challenge }));
+}
 
 const SPORT_ICON_NAME = (sport: ActivityType | 'multi'): keyof typeof Ionicons.glyphMap => {
   if (sport === 'multi') return 'fitness';
   return (SPORT_ICONS[sport] ?? 'walk') as keyof typeof Ionicons.glyphMap;
 };
 
-const formatMemberCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
-
-const formatDistance = (meters: number) => {
-  if (meters >= 1000) return `${(meters / 1000).toFixed(0)}km`;
-  return `${meters}m`;
-};
-
-const formatDateRange = (start: Date, end: Date) => {
-  const s = new Date(start);
-  const e = new Date(end);
-  const sameDay = s.toDateString() === e.toDateString();
-  if (sameDay) {
-    return s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-  return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-};
+/** How long a Groups list counts as fresh when the tab regains focus. */
+const FOCUS_REFRESH_MS = 30_000;
 
 export default function CommunityScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const unitSystem = useUnitSystem();
   const listRef = useRef<FlatList<Row>>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>('Clubs');
@@ -75,70 +111,91 @@ export default function CommunityScreen() {
   const [sportFilter, setSportFilter] = useState<SportFilter>('all');
   const [eventSportFilter, setEventSportFilter] = useState<SportFilter>('all');
 
-  const searchClubs = useCommunityStore((s) => s.searchClubs);
-  const searchEvents = useCommunityStore((s) => s.searchEvents);
   const joinedEvents = useCommunityStore((s) => s.joinedEvents);
   const clubs = useCommunityStore((s) => s.clubs);
   const events = useCommunityStore((s) => s.events);
   const clubsLoading = useCommunityStore((s) => s.clubsLoading);
+  const clubsError = useCommunityStore((s) => s.clubsError);
+  const eventsError = useCommunityStore((s) => s.eventsError);
   const eventsLoading = useCommunityStore((s) => s.eventsLoading);
   const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
   const fetchClubs = useCommunityStore((s) => s.fetchClubs);
   const fetchJoinedClubs = useCommunityStore((s) => s.fetchJoinedClubs);
-  const applyClubMembership = useCommunityStore((s) => s.applyClubMembership);
   const fetchEvents = useCommunityStore((s) => s.fetchEvents);
   const fetchJoinedEvents = useCommunityStore((s) => s.fetchJoinedEvents);
-  const applyEventJoin = useCommunityStore((s) => s.applyEventJoin);
 
-  // searchClubs/searchEvents read the store via get(), so the data arrays must
-  // be dependencies too — otherwise the lists never update after a fetch.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: clubs drives searchClubs' result
-  const filteredClubs = useMemo(
-    () => searchClubs(clubQuery, sportFilter),
-    [clubs, clubQuery, sportFilter, searchClubs]
-  );
-  // biome-ignore lint/correctness/useExhaustiveDependencies: events drives searchEvents' result
-  const filteredEvents = useMemo(
-    () => searchEvents(eventQuery, eventSportFilter),
-    [events, eventQuery, eventSportFilter, searchEvents]
+  const filteredClubs = orderClubs(filterClubs(clubs, clubQuery, sportFilter), joinedClubIds);
+  const filteredEvents = orderEvents(
+    filterEvents(events, eventQuery, eventSportFilter),
+    new Date()
   );
 
-  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
-  const { transact } = useTransactor();
-  const getUserById = useSocialStore((s) => s.getUserById);
+  const { address } = useChainAction();
+  const isEventHost = useCommunityStore((s) => s.isEventHost);
+  const getUserById = useUserResolver();
   const [challenges, setChallenges] = useState<Awaited<
     ReturnType<typeof services.challenge.getUserChallenges>
   > | null>(null);
+  const [challengesError, setChallengesError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingClubId, setPendingClubId] = useState<string | null>(null);
-  const [pendingEventId, setPendingEventId] = useState<string | null>(null);
+  const [challengeFilter, setChallengeFilter] = useState<ChallengeFilter>('all');
+  // A join or leave still on its way to the chain: shown on the card, but never blocks it.
+  const outboxEntries = useOutboxEntries();
+  const isSending = (key: string) => deliveryOf(outboxEntries, key) !== undefined;
+
+  // A profile with no chain cannot read challenges, and a retry would fail the same way.
+  const noChain = PROFILES[getActiveProfileId()].fakeChain;
 
   const loadChallenges = useCallback(async () => {
-    if (!address) {
+    if (!address || noChain) {
       setChallenges([]);
       return;
     }
     try {
       const list = await services.challenge.getUserChallenges(address);
       setChallenges(list.slice().reverse());
-    } catch {
-      setChallenges([]);
+      setChallengesError(null);
+    } catch (e) {
+      // Keep any challenges already shown: a failed read is not "you have none".
+      logger.warn('[Groups] Failed to load challenges:', e);
+      setChallengesError(e instanceof Error ? e.message : 'Could not load challenges');
+      setChallenges((previous) => previous ?? []);
     }
+  }, [address, noChain]);
+
+  // A different wallet must not see the last one's challenges while loading.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: address is the trigger
+  useEffect(() => {
+    setChallenges(null);
+    setChallengesError(null);
   }, [address]);
+
+  // Refresh when the tab is opened, but not on every flick between tabs: the lists only change
+  // when someone acts, and each read goes to the chain. Pull-to-refresh always reloads.
+  const loadedAt = useRef<Record<'challenges' | 'clubs' | 'events', number | null>>({
+    challenges: null,
+    clubs: null,
+    events: null,
+  });
+  const dueFor = useCallback((list: 'challenges' | 'clubs' | 'events') => {
+    const now = Date.now();
+    if (!isStale(loadedAt.current[list], now, FOCUS_REFRESH_MS)) return false;
+    loadedAt.current[list] = now;
+    return true;
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      if (activeTab !== 'Challenges' || !address) return;
-      setChallenges(null);
-      loadChallenges();
-    }, [activeTab, address, loadChallenges])
+      if (activeTab !== 'Challenges' || !address || !dueFor('challenges')) return;
+      void loadChallenges();
+    }, [activeTab, address, loadChallenges, dueFor])
   );
 
   useFocusEffect(
     useCallback(() => {
-      if (activeTab !== 'Clubs') return;
+      if (activeTab !== 'Clubs' || !dueFor('clubs')) return;
       fetchClubs();
-    }, [activeTab, fetchClubs])
+    }, [activeTab, fetchClubs, dueFor])
   );
 
   useFocusEffect(
@@ -150,9 +207,9 @@ export default function CommunityScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (activeTab !== 'Events') return;
+      if (activeTab !== 'Events' || !dueFor('events')) return;
       fetchEvents();
-    }, [activeTab, fetchEvents])
+    }, [activeTab, fetchEvents, dueFor])
   );
 
   useFocusEffect(
@@ -162,30 +219,22 @@ export default function CommunityScreen() {
     }, [activeTab, address, fetchJoinedEvents])
   );
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = () => {
     if (activeTab === 'Challenges') {
       setRefreshing(true);
-      loadChallenges().finally(() => setRefreshing(false));
+      void loadChallenges().finally(() => setRefreshing(false));
     } else if (activeTab === 'Clubs') {
       setRefreshing(true);
-      Promise.all([fetchClubs(), address ? fetchJoinedClubs(address) : null]).finally(() =>
+      void Promise.all([fetchClubs(), address ? fetchJoinedClubs(address) : null]).finally(() =>
         setRefreshing(false)
       );
     } else {
       setRefreshing(true);
-      Promise.all([fetchEvents(), address ? fetchJoinedEvents(address) : null]).finally(() =>
+      void Promise.all([fetchEvents(), address ? fetchJoinedEvents(address) : null]).finally(() =>
         setRefreshing(false)
       );
     }
-  }, [
-    activeTab,
-    loadChallenges,
-    fetchClubs,
-    fetchJoinedClubs,
-    fetchEvents,
-    fetchJoinedEvents,
-    address,
-  ]);
+  };
 
   const isClubs = activeTab === 'Clubs';
   const isEvents = activeTab === 'Events';
@@ -199,239 +248,114 @@ export default function CommunityScreen() {
   };
 
   const handleJoinClub = async (club: Club) => {
-    if (!wallet || !address || pendingClubId) return;
     haptics.impactMedium();
-
-    const isJoined = joinedClubIds.includes(club.id);
-    setPendingClubId(club.id);
-    try {
-      await transact(
-        () =>
-          isJoined
-            ? services.group.leaveGroup(wallet, BigInt(club.id))
-            : services.group.joinGroup(wallet, BigInt(club.id)),
-        {
-          pending: isJoined ? 'Leaving club...' : 'Joining club...',
-          success: isJoined ? 'Left club' : 'Joined club',
-        },
-        {
-          apply: () => applyClubMembership(club.id, !isJoined),
-          revert: () => applyClubMembership(club.id, isJoined),
-        }
-      );
-    } finally {
-      setPendingClubId(null);
+    if (joinedClubIds.includes(club.id)) {
+      confirmLeave('club', club.name, () => void setClubMember(club.id, false));
+      return;
     }
+    await setClubMember(club.id, true);
   };
 
-  const handleJoinEvent = async (eventId: string) => {
-    if (!wallet || !address || pendingEventId) return;
+  const handleJoinEvent = async (event: ChallengeEvent) => {
     haptics.impactMedium();
-
-    const isJoined = joinedEvents.includes(eventId);
-    setPendingEventId(eventId);
-    try {
-      await transact(
-        () =>
-          isJoined
-            ? services.event.leaveEvent(wallet, BigInt(eventId))
-            : services.event.joinEvent(wallet, BigInt(eventId)),
-        {
-          pending: isJoined ? 'Leaving event...' : 'Joining event...',
-          success: isJoined ? 'Left event' : 'Joined event',
-        },
-        {
-          apply: () => applyEventJoin(eventId, !isJoined),
-          revert: () => applyEventJoin(eventId, isJoined),
-        }
-      );
-    } finally {
-      setPendingEventId(null);
+    if (joinedEvents.includes(event.id)) {
+      confirmLeave('event', event.title, () => void setEventMember(event.id, false));
+      return;
     }
+    await setEventMember(event.id, true);
   };
 
-  const renderClub = (item: Club) => {
-    const isJoined = joinedClubIds.includes(item.id);
-    const isPending = pendingClubId === item.id;
-    return (
-      <TouchableOpacity
-        key={item.id}
-        style={[styles.card, { backgroundColor: theme.backgroundElement }]}
-        onPress={() => router.push(`/club-detail?id=${item.id}`)}
-        activeOpacity={0.7}
-      >
-        <ThemedView style={styles.cardRow}>
-          <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
-            <Ionicons
-              name={SPORT_ICON_NAME(item.sportType)}
-              size={22}
-              color={theme.brand.primary}
-            />
-          </ThemedView>
-          <ThemedView style={styles.cardInfo}>
-            <ThemedText type="smallBold" numberOfLines={1}>
-              {item.name}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }} numberOfLines={1}>
-              {item.location}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {formatMemberCount(item.memberCount)} {item.memberCount === 1 ? 'member' : 'members'}
-            </ThemedText>
-          </ThemedView>
-          <TouchableOpacity
-            style={[
-              styles.joinBtn,
-              {
-                backgroundColor: isJoined ? 'transparent' : theme.brand.primary,
-                borderColor: isJoined ? theme.border : theme.brand.primary,
-              },
-            ]}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleJoinClub(item);
-            }}
-            activeOpacity={0.7}
-            disabled={isPending || !wallet}
-            accessibilityRole="button"
-            accessibilityLabel={isJoined ? `Leave ${item.name}` : `Join ${item.name}`}
-          >
-            {isPending ? (
-              <ActivityIndicator
-                size="small"
-                color={isJoined ? theme.textSecondary : Brand.white}
-              />
-            ) : (
-              <ThemedText
-                type="small"
-                style={{ color: isJoined ? theme.textSecondary : Brand.white, fontWeight: '600' }}
-              >
-                {isJoined ? 'Joined' : 'Join'}
-              </ThemedText>
-            )}
-          </TouchableOpacity>
-        </ThemedView>
-      </TouchableOpacity>
-    );
-  };
+  const renderClub = (item: Club) => (
+    <CommunityCard
+      icon={SPORT_ICON_NAME(item.sportType)}
+      title={item.name}
+      lines={[
+        item.location,
+        `${formatMemberCount(item.memberCount)} ${item.memberCount === 1 ? 'member' : 'members'}`,
+        sameAddress(item.owner, address ?? undefined) ? 'You run this club' : '',
+      ]}
+      onPress={() => router.push(`/clubs/${item.id}`)}
+      trailing={
+        <JoinButton
+          joined={joinedClubIds.includes(item.id)}
+          pending={isSending(clubKey(item.id))}
+          name={item.name}
+          onPress={() => handleJoinClub(item)}
+          disabled={sameAddress(item.owner, address ?? undefined)}
+        />
+      }
+    />
+  );
 
-  const renderEvent = (item: ChallengeEvent) => {
-    const isJoined = joinedEvents.includes(item.id);
-    const isPending = pendingEventId === item.id;
-    return (
-      <TouchableOpacity
-        key={item.id}
-        style={[styles.card, { backgroundColor: theme.backgroundElement }]}
-        onPress={() => router.push(`/event-detail?id=${item.id}`)}
-        activeOpacity={0.7}
-      >
-        <ThemedView style={styles.cardRow}>
-          <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
-            <Ionicons
-              name={SPORT_ICON_NAME(item.sportType)}
-              size={22}
-              color={theme.brand.primary}
-            />
-          </ThemedView>
-          <ThemedView style={styles.cardInfo}>
-            <ThemedText type="smallBold" numberOfLines={1}>
-              {item.title}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {formatDateRange(item.startDate, item.endDate)}
-              {item.distanceGoal > 0 ? ` · ${formatDistance(item.distanceGoal)}` : ''}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {formatMemberCount(item.participantCount)} participants
-            </ThemedText>
-          </ThemedView>
-          <TouchableOpacity
-            style={[
-              styles.joinBtn,
-              {
-                backgroundColor: isJoined ? 'transparent' : theme.brand.primary,
-                borderColor: isJoined ? theme.border : theme.brand.primary,
-              },
-            ]}
-            onPress={(e) => {
-              e.stopPropagation();
-              handleJoinEvent(item.id);
-            }}
-            activeOpacity={0.7}
-            disabled={isPending || !wallet}
-            accessibilityRole="button"
-            accessibilityLabel={isJoined ? `Leave ${item.title}` : `Join ${item.title}`}
-          >
-            {isPending ? (
-              <ActivityIndicator
-                size="small"
-                color={isJoined ? theme.textSecondary : Brand.white}
-              />
-            ) : (
-              <ThemedText
-                type="small"
-                style={{ color: isJoined ? theme.textSecondary : Brand.white, fontWeight: '600' }}
-              >
-                {isJoined ? 'Joined' : 'Join'}
-              </ThemedText>
-            )}
-          </TouchableOpacity>
-        </ThemedView>
-      </TouchableOpacity>
-    );
-  };
+  const renderEvent = (item: ChallengeEvent) => (
+    <EventCard
+      sport={item.sportType}
+      icon={SPORT_ICON_NAME(item.sportType)}
+      title={item.title}
+      badge={formatDayYear(item.startDate)}
+      lines={[
+        eventStatus(item.startDate, item.endDate).label,
+        formatDateRange(item.startDate, item.endDate) +
+          (item.distanceGoal > 0 ? ` · ${formatDistance(item.distanceGoal, unitSystem)}` : ''),
+        `${formatMemberCount(item.participantCount)} ${item.participantCount === 1 ? 'participant' : 'participants'}`,
+        ...(isEventHost(item.id, address ?? undefined) ? ['You host this event'] : []),
+      ]}
+      onPress={() => router.push(`/events/${item.id}`)}
+      trailing={
+        <JoinButton
+          joined={joinedEvents.includes(item.id)}
+          pending={isSending(eventKey(item.id))}
+          name={item.title}
+          onPress={() => handleJoinEvent(item)}
+          disabled={isEventHost(item.id, address ?? undefined)}
+        />
+      }
+    />
+  );
 
   const renderChallenge = (
     item: Awaited<ReturnType<typeof services.challenge.getUserChallenges>>[number]
   ) => {
-    const currentUserId = address?.toLowerCase();
-    const isChallenger = item.challenger.toLowerCase() === currentUserId;
+    const isChallenger = sameAddress(item.challenger, address ?? undefined);
     const opponentAddress = isChallenger ? item.opponent : item.challenger;
     const opponentUser = getUserById(opponentAddress);
     const opponentName = opponentUser
       ? getDisplayName(opponentUser)
       : `${opponentAddress.slice(0, 6)}...${opponentAddress.slice(-4)}`;
-
     return (
-      <TouchableOpacity
-        key={item.id.toString()}
-        style={[styles.card, { backgroundColor: theme.backgroundElement }]}
-        onPress={() => router.push(`/challenge-detail?id=${item.id.toString()}`)}
-        activeOpacity={0.7}
-      >
-        <ThemedView style={styles.cardRow}>
-          <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
-            <Ionicons name="flag" size={22} color={theme.brand.primary} />
-          </ThemedView>
-          <ThemedView style={styles.cardInfo}>
-            <ThemedText type="smallBold" numberOfLines={1}>
-              vs {opponentName}
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {formatActivityDistance(Number(item.targetMetric))} · {formatEther(item.stake)} ETH
-              stake
-            </ThemedText>
-            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-              {CHALLENGE_STATUS_LABEL[item.status] ?? 'Unknown'}
-            </ThemedText>
-          </ThemedView>
-          <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-        </ThemedView>
-      </TouchableOpacity>
+      <CommunityCard
+        icon="flag"
+        title={`vs ${opponentName}`}
+        lines={[
+          `${formatDistance(Number(item.targetMetric), unitSystem)} · ${formatEther(item.stake)} ETH stake`,
+          [
+            matchesChallengeFilter(item, 'needs-you', address ?? undefined)
+              ? 'Waiting for you to accept'
+              : (CHALLENGE_STATUS_LABEL[item.status] ?? 'Unknown'),
+            challengeTimeLeft(item.deadline, item.status, new Date()),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        ]}
+        onPress={() => router.push(`/challenges/${item.id.toString()}`)}
+      />
     );
   };
 
-  const listData = useMemo<Row[]>(() => {
-    if (isClubs) return filteredClubs.map((club) => ({ kind: 'club', club }));
-    if (isEvents) return filteredEvents.map((event) => ({ kind: 'event', event }));
-    return (challenges ?? []).map((challenge) => ({ kind: 'challenge', challenge }));
-  }, [isClubs, isEvents, filteredClubs, filteredEvents, challenges]);
+  const listData: Row[] = communityRows({
+    tab: activeTab,
+    clubs: filteredClubs,
+    events: filteredEvents,
+    challenges,
+    challengeFilter,
+    me: address ?? undefined,
+  });
 
-  const keyExtractor = useCallback((item: Row) => {
+  const keyExtractor = (item: Row) => {
     if (item.kind === 'club') return item.club.id;
     if (item.kind === 'event') return item.event.id;
     return item.challenge.id.toString();
-  }, []);
+  };
 
   const renderRow = ({ item }: { item: Row }) => {
     if (item.kind === 'club') return renderClub(item.club);
@@ -439,84 +363,88 @@ export default function CommunityScreen() {
     return renderChallenge(item.challenge);
   };
 
-  const renderSkeleton = () => (
-    <ThemedView style={styles.loadingContainer}>
-      <ActivityIndicator size="small" color={theme.brand.primary} />
-    </ThemedView>
+  const loadError = (what: string) => (
+    <ListMessage
+      icon="cloud-offline-outline"
+      text={`Couldn't load ${what}. Check your connection and try again.`}
+      action={{ label: 'Retry', onPress: onRefresh }}
+    />
   );
 
   const renderEmpty = () => {
     if (isClubs) {
-      if (clubsLoading && clubs.length === 0) return renderSkeleton();
+      if (clubsLoading && clubs.length === 0) return <ListLoading />;
+      if (clubsError && clubs.length === 0) return loadError('clubs');
       return (
-        <ThemedView style={styles.empty}>
-          <Ionicons name="people-outline" size={32} color={theme.textSecondary} />
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            {clubs.length === 0 ? 'No clubs yet. Create the first one!' : 'No clubs found'}
-          </ThemedText>
-        </ThemedView>
+        <ListMessage
+          icon="people-outline"
+          text={clubs.length === 0 ? 'No clubs yet. Create the first one!' : 'No clubs found'}
+        />
       );
     }
     if (isEvents) {
-      if (eventsLoading && events.length === 0) return renderSkeleton();
+      if (eventsLoading && events.length === 0) return <ListLoading />;
+      if (eventsError && events.length === 0) return loadError('events');
       return (
-        <ThemedView style={styles.empty}>
-          <Ionicons name="trophy-outline" size={32} color={theme.textSecondary} />
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            {services.event.isEventRegistryDeployed()
+        <ListMessage
+          icon="trophy-outline"
+          text={
+            services.event.isEventRegistryDeployed()
               ? 'No events yet'
-              : "Events aren't live on this network yet"}
-          </ThemedText>
-        </ThemedView>
+              : "Events aren't live on this network yet"
+          }
+        />
       );
     }
-    if (challenges === null) return renderSkeleton();
-    return (
-      <ThemedView style={styles.empty}>
-        <Ionicons name="flag-outline" size={32} color={theme.textSecondary} />
-        <ThemedText type="small" style={{ color: theme.textSecondary }}>
-          No challenges yet. Challenge a friend!
-        </ThemedText>
-      </ThemedView>
-    );
+    if (noChain) return <ListMessage icon="flag-outline" text={COMMUNITY_COPY.challengesSandbox} />;
+    if (challenges === null) return <ListLoading />;
+    if (challengesError && challenges.length === 0) return loadError('challenges');
+    if (challengeFilter !== 'all' && challenges.length > 0) {
+      return (
+        <ListMessage
+          icon="flag-outline"
+          text="No challenges here."
+          action={{ label: 'Show all', onPress: () => setChallengeFilter('all') }}
+        />
+      );
+    }
+    return <ListMessage icon="flag-outline" text={COMMUNITY_COPY.challengesEmpty} />;
   };
+
+  // Fixed above the list: the title and tabs stay put while the content scrolls.
+  const pageHeader = (
+    <ThemedView style={[styles.pageHeader, { backgroundColor: theme.backgroundElement }]}>
+      <ThemedView style={[styles.header, { backgroundColor: theme.backgroundElement }]}>
+        <ThemedText type="title">Groups</ThemedText>
+        <ThemedView style={[styles.headerActions, { backgroundColor: theme.backgroundElement }]}>
+          <TopBarAction
+            icon="search-outline"
+            label="Search"
+            onPress={() => router.push('/search')}
+          />
+        </ThemedView>
+      </ThemedView>
+      <UnderlineTabs
+        tabs={TABS}
+        active={activeTab}
+        onChange={handleTabChange}
+        style={styles.tabs}
+      />
+    </ThemedView>
+  );
+
+  // A refresh that fails over a list already on screen keeps the list and says so above it.
+  const activeLoadState = () => {
+    if (isClubs) return { failed: !!clubsError, hasCached: clubs.length > 0 };
+    if (isEvents) return { failed: !!eventsError, hasCached: events.length > 0 };
+    return { failed: !!challengesError, hasCached: (challenges?.length ?? 0) > 0 };
+  };
+  const failedOverCache = loadFailureView(activeLoadState());
 
   const listHeader = (
     <>
-      {/* Header */}
-      <ThemedView style={styles.header}>
-        <ThemedText type="headline">Groups</ThemedText>
-      </ThemedView>
-
-      {/* Sub-Tab Bar */}
-      <ThemedView style={[styles.tabBar, { borderBottomColor: theme.border }]}>
-        {TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[
-              styles.tabItem,
-              activeTab === tab && { borderBottomColor: theme.brand.primary },
-            ]}
-            onPress={() => handleTabChange(tab)}
-            activeOpacity={0.7}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === tab }}
-          >
-            <ThemedText
-              type="small"
-              style={{
-                fontWeight: activeTab === tab ? '700' : '500',
-                color: activeTab === tab ? theme.brand.primary : theme.textSecondary,
-              }}
-            >
-              {tab}
-            </ThemedText>
-          </TouchableOpacity>
-        ))}
-      </ThemedView>
-
-      {/* Search Bar */}
-      {(isClubs || isEvents) && (
+      {failedOverCache === 'banner' && <StaleBanner onRetry={onRefresh} />}
+      {((isClubs && clubs.length > 0) || (isEvents && events.length > 0)) && (
         <SearchBar
           value={query}
           onChangeText={setQuery}
@@ -525,53 +453,61 @@ export default function CommunityScreen() {
         />
       )}
 
-      {/* Sport Filter Chips */}
-      {isClubs && <FilterChips value={sportFilter} onChange={setSportFilter} />}
-      {isEvents && <FilterChips value={eventSportFilter} onChange={setEventSportFilter} />}
+      {isClubs && clubs.length > 0 && <FilterChips value={sportFilter} onChange={setSportFilter} />}
+      {isEvents && events.length > 0 && (
+        <FilterChips value={eventSportFilter} onChange={setEventSportFilter} />
+      )}
 
-      {/* Create buttons */}
+      {activeTab === 'Challenges' && (challenges?.length ?? 0) > 0 && (
+        <ChipRow
+          options={CHALLENGE_FILTERS}
+          value={challengeFilter}
+          onChange={setChallengeFilter}
+        />
+      )}
+
       {isClubs && (
-        <AppButton
-          variant="secondary"
+        <OutlinePill
+          style={styles.action}
           onPress={() => {
             haptics.tap();
             router.push('/create-club');
           }}
-          style={styles.newChallengeBtn}
         >
-          + Create Club
-        </AppButton>
+          Create club
+        </OutlinePill>
       )}
       {isEvents && services.event.isEventRegistryDeployed() && (
-        <AppButton
-          variant="secondary"
+        <OutlinePill
+          style={styles.action}
           onPress={() => {
             haptics.tap();
             router.push('/create-event');
           }}
-          style={styles.newChallengeBtn}
         >
-          + Create Event
-        </AppButton>
+          Create event
+        </OutlinePill>
       )}
-      {activeTab === 'Challenges' && (
-        <AppButton
-          variant="secondary"
+      {activeTab === 'Challenges' && !noChain && (
+        <OutlinePill
+          style={styles.action}
           onPress={() => {
             haptics.tap();
             router.push('/create-challenge');
           }}
-          style={styles.newChallengeBtn}
         >
-          + New Challenge
-        </AppButton>
+          New challenge
+        </OutlinePill>
       )}
     </>
   );
 
   return (
     <ThemedView type="background" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <ThemedView style={{ backgroundColor: theme.backgroundElement }}>
+        <SafeAreaView edges={['top']}>{pageHeader}</SafeAreaView>
+      </ThemedView>
+      <View style={styles.safeArea}>
         <FlatList
           ref={listRef}
           data={listData}
@@ -583,11 +519,13 @@ export default function CommunityScreen() {
             activeTab,
             clubsLoading,
             eventsLoading,
+            clubsError,
+            eventsError,
+            challengesError,
             challenges,
             joinedClubIds,
             joinedEvents,
-            pendingClubId,
-            pendingEventId,
+            outboxEntries,
           ]}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
@@ -599,12 +537,14 @@ export default function CommunityScreen() {
             />
           }
         />
-      </SafeAreaView>
+      </View>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  tabs: { marginTop: Spacing.one },
+  pageHeader: { paddingHorizontal: Spacing.four },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scroll: {
@@ -613,62 +553,14 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingTop: Spacing.two,
   },
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    marginTop: Spacing.one,
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
+  headerActions: { flexDirection: 'row', gap: Spacing.two },
   searchBar: {
     marginTop: Spacing.three,
   },
-  card: {
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.three,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  loadingContainer: {
-    paddingVertical: Spacing.six,
-    alignItems: 'center',
-  },
-  joinBtn: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1.5,
-    minWidth: 72,
-    alignItems: 'center',
-  },
-  empty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.six,
-    gap: Spacing.two,
-  },
-  newChallengeBtn: {
-    borderRadius: BorderRadius.full,
-  },
+  action: { marginTop: Spacing.three },
 });

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ActivityType } from '@/types';
 import type { ChallengeEvent } from '@/types/event';
+import { logger } from '@/utils/logger';
 import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
 
 export interface Club {
@@ -32,9 +33,7 @@ function toClub(group: Awaited<ReturnType<typeof services.group.getAllGroups>>[n
   };
 }
 
-/** Maps an on-chain StrydeEvent to the shared app-side ChallengeEvent shape
- * (which the UI reads as startDate/endDate Dates). Fallbacks mirror the old
- * mock rows so the list/detail screens render unchanged. */
+/** Maps an onchain StrydeEvent to the app's ChallengeEvent shape (startDate/endDate as Dates). */
 function toChallengeEvent(
   event: Awaited<ReturnType<typeof services.event.getAllEvents>>[number]
 ): ChallengeEvent {
@@ -57,25 +56,25 @@ function toChallengeEvent(
 interface CommunityState {
   clubs: Club[];
   clubsLoading: boolean;
-  /** Ids of clubs the currently-connected wallet belongs to, refreshed by
-   * fetchJoinedClubs(). Kept separate from `clubs` (which is the same list
-   * for every viewer) since membership is per-wallet. */
+  /** Why the last clubs refresh failed; null when it worked. The list itself is left as it was. */
+  clubsError: string | null;
+  /** Ids of clubs the connected wallet belongs to; separate from `clubs` because membership is per-wallet. */
   joinedClubIds: string[];
 
   events: ChallengeEvent[];
   eventsLoading: boolean;
+  eventsError: string | null;
   joinedEvents: string[];
 
   fetchClubs: () => Promise<void>;
   fetchJoinedClubs: (wallet: `0x${string}`) => Promise<void>;
-  /** Optimistic local update after a joinGroup/leaveGroup tx confirms, so the
-   * UI doesn't have to wait on a full fetchClubs() round-trip to reflect it. */
+  /** Applies a join/leave locally once the tx confirms, without waiting for a `fetchClubs()` round-trip. */
   applyClubMembership: (clubId: string, joined: boolean) => void;
   upsertClub: (club: Club) => void;
 
   fetchEvents: () => Promise<void>;
   fetchJoinedEvents: (wallet: `0x${string}`) => Promise<void>;
-  /** Optimistic local update after a joinEvent/leaveEvent tx confirms. */
+  /** Applies a join/leave locally once the tx confirms. */
   applyEventJoin: (eventId: string, joined: boolean) => void;
   upsertEvent: (event: ChallengeEvent) => void;
   removeEvent: (eventId: string) => void;
@@ -83,19 +82,58 @@ interface CommunityState {
   isClubJoined: (clubId: string) => boolean;
   isEventJoined: (eventId: string) => boolean;
   isEventHost: (eventId: string, wallet?: `0x${string}`) => boolean;
-  searchClubs: (query: string, sportFilter?: string) => Club[];
-  searchEvents: (query: string, sportFilter?: string) => ChallengeEvent[];
-  getClubById: (id: string) => Club | undefined;
-  getEventById: (id: string) => ChallengeEvent | undefined;
   reset: () => void;
+}
+
+const matchesSport = (sportType: string, filter?: string) =>
+  !filter || filter === 'all' || sportType === filter;
+
+/** Clubs whose name, location or description contains `query`, in one sport (or all). */
+export function filterClubs(clubs: readonly Club[], query: string, sportFilter?: string): Club[] {
+  const q = query.toLowerCase();
+  return clubs.filter(
+    (c) =>
+      (!q ||
+        c.name.toLowerCase().includes(q) ||
+        c.location.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q)) &&
+      matchesSport(c.sportType, sportFilter)
+  );
+}
+
+/** Clubs as the list shows them: the ones you are in first, then the rest with the most members first. */
+export function orderClubs(clubs: readonly Club[], joinedIds: readonly string[]): Club[] {
+  const joined = new Set(joinedIds);
+  return [...clubs].sort(
+    (a, b) =>
+      Number(joined.has(b.id)) - Number(joined.has(a.id)) ||
+      b.memberCount - a.memberCount ||
+      a.name.localeCompare(b.name)
+  );
+}
+
+/** Events whose title or description contains `query`, in one sport (or all). */
+export function filterEvents(
+  events: readonly ChallengeEvent[],
+  query: string,
+  sportFilter?: string
+): ChallengeEvent[] {
+  const q = query.toLowerCase();
+  return events.filter(
+    (e) =>
+      (!q || e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q)) &&
+      matchesSport(e.sportType, sportFilter)
+  );
 }
 
 const INITIAL_STATE = {
   clubs: [] as Club[],
   clubsLoading: false,
+  clubsError: null as string | null,
   joinedClubIds: [] as string[],
   events: [] as ChallengeEvent[],
   eventsLoading: false,
+  eventsError: null as string | null,
   joinedEvents: [] as string[],
 };
 
@@ -108,9 +146,11 @@ export const useCommunityStore = create<CommunityState>()(
         set({ clubsLoading: true });
         try {
           const groups = await services.group.getAllGroups();
-          set({ clubs: groups.map(toClub) });
+          set({ clubs: groups.map(toClub), clubsError: null });
         } catch (e) {
-          console.warn('[Community] Failed to fetch clubs:', e);
+          // Keep what is already loaded: a failed read is not "there are no clubs".
+          logger.warn('[Community] Failed to fetch clubs:', e);
+          set({ clubsError: e instanceof Error ? e.message : 'Could not load clubs' });
         } finally {
           set({ clubsLoading: false });
         }
@@ -121,7 +161,7 @@ export const useCommunityStore = create<CommunityState>()(
           const groups = await services.group.getUserGroups(wallet);
           set({ joinedClubIds: groups.map((g) => g.id.toString()) });
         } catch (e) {
-          console.warn('[Community] Failed to fetch joined clubs:', e);
+          logger.warn('[Community] Failed to fetch joined clubs:', e);
         }
       },
 
@@ -157,9 +197,10 @@ export const useCommunityStore = create<CommunityState>()(
         set({ eventsLoading: true });
         try {
           const events = await services.event.getAllEvents();
-          set({ events: events.map(toChallengeEvent) });
+          set({ events: events.map(toChallengeEvent), eventsError: null });
         } catch (e) {
-          console.warn('[Community] Failed to fetch events:', e);
+          logger.warn('[Community] Failed to fetch events:', e);
+          set({ eventsError: e instanceof Error ? e.message : 'Could not load events' });
         } finally {
           set({ eventsLoading: false });
         }
@@ -171,7 +212,7 @@ export const useCommunityStore = create<CommunityState>()(
           const userEvents = await services.event.getUserEvents(wallet);
           set({ joinedEvents: userEvents.map((e) => e.id.toString()) });
         } catch (e) {
-          console.warn('[Community] Failed to fetch joined events:', e);
+          logger.warn('[Community] Failed to fetch joined events:', e);
         }
       },
 
@@ -215,30 +256,6 @@ export const useCommunityStore = create<CommunityState>()(
         );
       },
 
-      searchClubs: (query: string, sportFilter?: string) => {
-        const { clubs } = get();
-        const q = query.toLowerCase();
-        return clubs.filter((c) => {
-          const matchesQuery =
-            !q || c.name.toLowerCase().includes(q) || c.location.toLowerCase().includes(q);
-          const matchesSport = !sportFilter || sportFilter === 'all' || c.sportType === sportFilter;
-          return matchesQuery && matchesSport;
-        });
-      },
-
-      searchEvents: (query: string, sportFilter?: string) => {
-        const { events } = get();
-        const q = query.toLowerCase();
-        return events.filter((e) => {
-          const matchesQuery = !q || e.title.toLowerCase().includes(q);
-          const matchesSport = !sportFilter || sportFilter === 'all' || e.sportType === sportFilter;
-          return matchesQuery && matchesSport;
-        });
-      },
-
-      getClubById: (id: string) => get().clubs.find((c) => c.id === id),
-      getEventById: (id: string) => get().events.find((e) => e.id === id),
-
       reset: () => set({ ...INITIAL_STATE }),
     }),
     {
@@ -259,9 +276,7 @@ export const useCommunityStore = create<CommunityState>()(
   )
 );
 
-/** sportType value to send to GroupRegistry.createGroup() for a single
- * activity type. Multi-sport creation isn't exposed in the UI yet — see
- * MULTI_SPORT_TYPE above for the sentinel a group would use if it were. */
+/** sportType to send to GroupRegistry.createGroup() for a single activity type; multi-sport groups would use MULTI_SPORT_TYPE. */
 export function sportTypeToOnchain(sportType: ActivityType): number {
   return ACTIVITY_TYPE_MAP[sportType];
 }

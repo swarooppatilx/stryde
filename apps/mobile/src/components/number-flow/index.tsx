@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { NUMBER_FLOW_FONT_SIZE } from './const';
@@ -22,8 +22,8 @@ const NumberFlow = memo(
     const safeValue = Number.isFinite(value) ? value : 0;
     const absValue = Math.abs(safeValue);
 
-    const formatted = decimals != null ? absValue.toFixed(decimals) : absValue.toString();
-    const [integerPart, decimalPart = ''] = formatted.split('.');
+    const formatted = decimals == null ? absValue.toString() : absValue.toFixed(decimals);
+    const [integerPart = '0', decimalPart = ''] = formatted.split('.');
 
     const integerValue = parseInt(integerPart, 10) || 0;
     const liveIntCount = Math.max(integerPart.length, padStart ? 2 : 1);

@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IGroupRegistry} from "./interfaces/IGroupRegistry.sol";
 
-contract GroupRegistry is IGroupRegistry, Ownable, Pausable {
+contract GroupRegistry is IGroupRegistry, Ownable2Step, Pausable {
     uint256 private _nextGroupId = 1;
 
     mapping(uint256 => Group) private _groups;
@@ -17,6 +18,10 @@ contract GroupRegistry is IGroupRegistry, Ownable, Pausable {
     mapping(address => mapping(uint256 => uint256)) private _userGroupIndex;
     mapping(uint256 => uint256) private _treasuryBalance;
 
+    uint256 public constant MAX_NAME_LENGTH = 64;
+    uint256 public constant MAX_LOCATION_LENGTH = 64;
+    uint256 public constant MAX_DESCRIPTION_LENGTH = 500;
+
     constructor() Ownable(msg.sender) {}
 
     function createGroup(string calldata name, string calldata location, string calldata description, uint8 sportType)
@@ -26,6 +31,9 @@ contract GroupRegistry is IGroupRegistry, Ownable, Pausable {
         returns (uint256 groupId)
     {
         if (bytes(name).length == 0) revert EmptyName();
+        if (bytes(name).length > MAX_NAME_LENGTH) revert NameTooLong();
+        if (bytes(location).length > MAX_LOCATION_LENGTH) revert LocationTooLong();
+        if (bytes(description).length > MAX_DESCRIPTION_LENGTH) revert DescriptionTooLong();
 
         unchecked {
             groupId = _nextGroupId++;
@@ -74,6 +82,16 @@ contract GroupRegistry is IGroupRegistry, Ownable, Pausable {
             g.memberCount = 0;
 
             emit GroupDissolved(groupId, msg.sender, block.timestamp);
+
+            // An inactive group has no owner to withdraw from the treasury, so whatever is left
+            // would be locked forever. The last member is the only one it can belong to.
+            uint256 remaining = _treasuryBalance[groupId];
+            if (remaining > 0) {
+                _treasuryBalance[groupId] = 0;
+                (bool success,) = msg.sender.call{value: remaining}("");
+                if (!success) revert TreasuryTransferFailed();
+                emit TreasuryWithdrawn(groupId, msg.sender, remaining, 0);
+            }
             return;
         }
 

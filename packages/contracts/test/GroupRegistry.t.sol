@@ -203,6 +203,43 @@ contract GroupRegistryTest is Test {
         registry.leaveGroup(groupId);
     }
 
+    function test_Exploit_DissolvingAGroupDoesNotLockItsTreasury() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 1 ether}(groupId);
+
+        // The owner is the only member and leaves: the group dissolves.
+        uint256 aliceBefore = alice.balance;
+        vm.prank(alice);
+        registry.leaveGroup(groupId);
+
+        // The treasury is paid out to them, not stranded behind an inactive group with no owner.
+        assertEq(registry.getGroupTreasury(groupId), 0);
+        assertEq(alice.balance, aliceBefore + 1 ether);
+        assertEq(address(registry).balance, 0);
+    }
+
+    function test_LeaveGroup_DissolveWithEmptyTreasuryPaysNothing() public {
+        uint256 groupId = _createGroup();
+
+        uint256 aliceBefore = alice.balance;
+        vm.prank(alice);
+        registry.leaveGroup(groupId);
+
+        assertEq(alice.balance, aliceBefore);
+    }
+
+    function test_LeaveGroup_DissolvePayoutEmitsTreasuryWithdrawn() public {
+        uint256 groupId = _createGroup();
+        vm.prank(bob);
+        registry.depositToTreasury{value: 0.5 ether}(groupId);
+
+        vm.expectEmit(true, true, false, true);
+        emit TreasuryWithdrawn(groupId, alice, 0.5 ether, 0);
+        vm.prank(alice);
+        registry.leaveGroup(groupId);
+    }
+
     function test_LeaveGroup_OwnerAsLastMemberDissolves() public {
         uint256 groupId = _createGroup();
 

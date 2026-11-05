@@ -1,24 +1,5 @@
-import type { ActivityType } from '@/types';
-
 export type LngLatPair = [number, number];
 export type Ring = LngLatPair[];
-
-/** Per-sport route colors for the map's "everyone's activities" layer, so a
- * glance at the map separates runs from rides from hikes even at a glance. */
-export const SPORT_ROUTE_COLORS: Record<ActivityType, string> = {
-  run: '#22c55e',
-  ride: '#3b82f6',
-  walk: '#a3e635',
-  hike: '#f59e0b',
-  swim: '#06b6d4',
-  yoga: '#a855f7',
-  workout: '#ef4444',
-  hiit: '#f97316',
-  dance: '#ec4899',
-  climb: '#94a3b8',
-  skate: '#14b8a6',
-  row: '#0ea5e9',
-};
 
 export interface MapRouteInput {
   id: string;
@@ -46,19 +27,17 @@ interface Feature {
   properties: Record<string, unknown>;
 }
 
-/** Downsample a dense GPS trace to at most `maxPoints` evenly-spaced points —
- * enough to keep the route's shape at map zoom but light enough to render a
- * dozen routes without a gl into the frame-budget. */
+/** Downsamples a dense GPS trace to at most `maxPoints` evenly spaced points: keeps the route shape at map zoom while staying light enough to render many routes. */
 export function sampleRoute(coordinates: LngLatPair[], maxPoints = 400): LngLatPair[] {
   if (coordinates.length <= maxPoints) return coordinates;
   const step = coordinates.length / maxPoints;
   const sampled: LngLatPair[] = [];
   for (let i = 0; i < coordinates.length; i += step) {
-    sampled.push(coordinates[Math.min(Math.floor(i), coordinates.length - 1)]);
+    const point = coordinates[Math.min(Math.floor(i), coordinates.length - 1)];
+    if (point) sampled.push(point);
   }
-  if ((sampled[sampled.length - 1]?.[0] ?? 0) !== coordinates[coordinates.length - 1][0]) {
-    sampled.push(coordinates[coordinates.length - 1]);
-  }
+  const last = coordinates.at(-1);
+  if (last && sampled.at(-1) !== last) sampled.push(last);
   return sampled;
 }
 
@@ -80,8 +59,9 @@ export function heatmapPoints(
   for (const route of routes) {
     const step = Math.max(1, Math.floor(route.coordinates.length / maxPerRoute));
     for (let i = 0; i < route.coordinates.length && points.length < maxTotal; i += step) {
-      const [lng, lat] = route.coordinates[i];
-      if (points.length >= maxTotal) break;
+      const point = route.coordinates[i];
+      if (!point || points.length >= maxTotal) break;
+      const [lng, lat] = point;
       const k = key(lng, lat);
       if (seen.has(k)) continue;
       seen.add(k);
@@ -121,9 +101,7 @@ export function territoryFeatureCollection(
   };
 }
 
-/** The bounding-box corner ring for a territory we only have bounds for
- * (subgraph-sourced, no full polygon) — a rounded-rectangle approximation of
- * the territory's footprint. */
+/** Bounding-box corner ring for a territory with only bounds (subgraph-sourced, no full polygon): a rounded-rectangle approximation. */
 export function territoryBoundsRing(b: {
   minLng: number;
   minLat: number;

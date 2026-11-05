@@ -1,32 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
-import { usePrivy } from '@privy-io/expo';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { services } from '@repo/shared';
 import { useState } from 'react';
-import { Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { BirthdayField } from '@/components/birthday-field';
 import { AppButton } from '@/components/button';
+import { GenderPicker } from '@/components/gender-picker';
+import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BorderRadius, Brand, Spacing } from '@/constants/theme';
+import { PERSON_NAME_MAX } from '@/constants/limits';
+import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useAboutSave } from '@/hooks/useAboutSave';
+import { useAuth } from '@/hooks/useAuth';
+import { useDiscardGuard } from '@/hooks/useDiscardGuard';
+import { useGoBack } from '@/hooks/useGoBack';
+import { saveWeight } from '@/services/bodyProfile';
 import { updatePrivyMetadata } from '@/services/profileService';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Gender } from '@/types';
-
-const GENDER_OPTIONS: { value: Gender; label: string; icon: string }[] = [
-  { value: 'man', label: 'Man', icon: 'male' },
-  { value: 'woman', label: 'Woman', icon: 'female' },
-  { value: 'non_binary', label: 'Non-binary', icon: 'male-female' },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say', icon: 'person' },
-];
+import { MIN_AGE, meetsMinimumAge } from '@/utils/age';
+import { formatWeight, parseWeightKg, weightRangeText } from '@/utils/calories';
+import { parseCalendarDay, toCalendarDay } from '@/utils/dates';
+import { logger } from '@/utils/logger';
 
 export default function ProfileEditScreen() {
-  const router = useRouter();
+  const goBack = useGoBack();
   const theme = useTheme();
-  const { user } = usePrivy();
+  const { user } = useAuth();
 
   const storedFirstName = useProfileStore((s) => s.firstName);
   const storedLastName = useProfileStore((s) => s.lastName);
@@ -41,71 +45,116 @@ export default function ProfileEditScreen() {
   const [lastName, setLastName] = useState(storedLastName);
   const [gender, setGender] = useState<Gender>(storedGender);
   const [birthday, setBirthday] = useState<Date | null>(
-    storedBirthday ? new Date(storedBirthday) : null
+    storedBirthday ? parseCalendarDay(storedBirthday) : null
   );
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const unitSystem = useUnitSystem();
+  const storedWeightKg = useProfileStore((s) => s.settings.weightKg);
+  const _updateSettings = useProfileStore((s) => s.updateSettings);
+  const [weight, setWeight] = useState(
+    storedWeightKg ? formatWeight(storedWeightKg, unitSystem) : ''
+  );
+  const storedBio = useProfileStore((s) => s.bio);
+  const storedLocation = useProfileStore((s) => s.location);
+  const saveAbout = useAboutSave();
+  const [bio, setBio] = useState(storedBio);
+  const [location, setLocation] = useState(storedLocation);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
+  const enteredWeightKg = parseWeightKg(weight, unitSystem);
+  const weightBlank = weight.trim() === '';
+  const weightInvalid = !weightBlank && enteredWeightKg === null;
+  const weightChanged = weightBlank
+    ? storedWeightKg !== undefined
+    : enteredWeightKg !== null && enteredWeightKg !== storedWeightKg;
   const hasChanges =
     firstName.trim() !== storedFirstName ||
     lastName.trim() !== storedLastName ||
     gender !== storedGender ||
-    birthday?.toISOString().split('T')[0] !== storedBirthday;
+    (birthday ? toCalendarDay(birthday) : null) !== storedBirthday ||
+    bio.trim() !== storedBio ||
+    location.trim() !== storedLocation ||
+    weightChanged;
 
-  const handleSave = () => {
+  const { allowLeave } = useDiscardGuard(hasChanges);
+
+  const handleSave = async () => {
     if (!firstName.trim()) {
       setError('First name is required');
       return;
     }
+    if (birthday && !meetsMinimumAge(birthday, new Date())) {
+      setError(`You need to be at least ${MIN_AGE} to use Stryde.`);
+      return;
+    }
+    if (weightInvalid) {
+      setError(`Enter a weight ${weightRangeText(unitSystem)}`);
+      return;
+    }
+    setSaving(true);
+    let about: Awaited<ReturnType<typeof saveAbout>>;
+    try {
+      about = await saveAbout({ bio, location });
+    } catch (e) {
+      logger.warn('[ProfileEdit] Saving about failed', e);
+      setSaving(false);
+      setError("Couldn't save your profile. Try again.");
+      return;
+    }
+    if (!about.ok) {
+      setSaving(false);
+      setError(about.error);
+      return;
+    }
     setError(null);
+    saveWeight(enteredWeightKg);
     saveFirstName(firstName.trim());
     saveLastName(lastName.trim());
     saveGender(gender);
     if (birthday) {
-      saveBirthday(birthday.toISOString().split('T')[0]);
+      saveBirthday(toCalendarDay(birthday));
     }
-    if (user?.id) {
+    if (user?.kind === 'privy') {
       updatePrivyMetadata(user.id, {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
       }).catch((err) => {
-        console.warn('[ProfileEdit] Failed to sync to Privy', err);
+        logger.warn('[ProfileEdit] Failed to sync to Privy', err);
       });
     }
-    router.back();
-  };
-
-  const handleDateChange = (_event: unknown, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setBirthday(selectedDate);
-    }
-  };
-
-  const getMaxDate = () => {
-    const now = new Date();
-    now.setFullYear(now.getFullYear() - 13);
-    return now;
+    allowLeave();
+    goBack();
   };
 
   return (
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={styles.backButton}>
+          <Tappable
+            onPress={goBack}
+            hitSlop={12}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
             <Ionicons name="chevron-back" size={20} color={theme.text} />
-          </TouchableOpacity>
+          </Tappable>
           <ThemedText type="sectionTitle">Edit Profile</ThemedText>
           <View style={styles.backButton} />
         </ThemedView>
 
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.form}>
             <ThemedText type="eyebrow" style={[styles.label, { color: theme.textSecondary }]}>
               Name
             </ThemedText>
             <TextField
               placeholder="First name"
+              maxLength={PERSON_NAME_MAX}
               value={firstName}
               onChangeText={(t) => {
                 setFirstName(t);
@@ -116,6 +165,7 @@ export default function ProfileEditScreen() {
             />
             <TextField
               placeholder="Last name"
+              maxLength={PERSON_NAME_MAX}
               value={lastName}
               onChangeText={setLastName}
               autoCorrect={false}
@@ -125,41 +175,32 @@ export default function ProfileEditScreen() {
               type="eyebrow"
               style={[styles.label, { color: theme.textSecondary, marginTop: Spacing.three }]}
             >
+              About
+            </ThemedText>
+            <TextField
+              placeholder="Bio (optional)"
+              value={bio}
+              // One paragraph: line breaks would be refused, so they become spaces as you type.
+              onChangeText={(t) => setBio(t.replace(/[\r\n]+/g, ' '))}
+              maxLength={services.profileAbout.MAX_BIO_LENGTH}
+              multiline
+              error={error?.startsWith('Bio') ? error : null}
+            />
+            <TextField
+              placeholder="Location (optional)"
+              value={location}
+              onChangeText={(t) => setLocation(t.replace(/[\r\n]+/g, ' '))}
+              maxLength={services.profileAbout.MAX_LOCATION_LENGTH}
+              error={error?.startsWith('Location') ? error : null}
+            />
+
+            <ThemedText
+              type="eyebrow"
+              style={[styles.label, { color: theme.textSecondary, marginTop: Spacing.three }]}
+            >
               Birthday
             </ThemedText>
-            <TouchableOpacity
-              style={[
-                styles.dateButton,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-              onPress={() => setShowDatePicker(true)}
-              activeOpacity={0.7}
-            >
-              <ThemedText
-                style={{ color: birthday ? theme.text : theme.textSecondary, fontSize: 16 }}
-              >
-                {birthday
-                  ? birthday.toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })
-                  : 'Select your birthday'}
-              </ThemedText>
-              <Ionicons name="calendar-outline" size={20} color={theme.textSecondary} />
-            </TouchableOpacity>
-
-            {showDatePicker && (
-              <DateTimePicker
-                value={birthday || getMaxDate()}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onValueChange={handleDateChange}
-                onDismiss={() => setShowDatePicker(false)}
-                maximumDate={getMaxDate()}
-                minimumDate={new Date(1920, 0, 1)}
-              />
-            )}
+            <BirthdayField value={birthday} onChange={setBirthday} />
 
             <ThemedText
               type="eyebrow"
@@ -167,42 +208,31 @@ export default function ProfileEditScreen() {
             >
               Gender
             </ThemedText>
-            <View style={styles.genderGrid}>
-              {GENDER_OPTIONS.map((option) => {
-                const selected = gender === option.value;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.genderCard,
-                      {
-                        backgroundColor: selected ? Brand.primary : theme.backgroundElement,
-                        borderColor: selected ? Brand.primary : theme.border,
-                      },
-                    ]}
-                    onPress={() => setGender(option.value)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={option.icon as keyof typeof Ionicons.glyphMap}
-                      size={20}
-                      color={selected ? Brand.white : theme.text}
-                    />
-                    <ThemedText
-                      style={{
-                        color: selected ? Brand.white : theme.text,
-                        fontWeight: '600',
-                        fontSize: 14,
-                      }}
-                    >
-                      {option.label}
-                    </ThemedText>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <GenderPicker selected={gender} onSelect={setGender} />
 
-            <AppButton onPress={handleSave} disabled={!hasChanges} style={styles.saveButton}>
+            <ThemedText
+              type="eyebrow"
+              style={[styles.label, { color: theme.textSecondary, marginTop: Spacing.three }]}
+            >
+              {`Weight (${unitSystem === 'imperial' ? 'lb' : 'kg'})`}
+            </ThemedText>
+            <TextField
+              placeholder="Optional, used for calories"
+              value={weight}
+              onChangeText={(t) => {
+                setWeight(t);
+                setError(null);
+              }}
+              keyboardType="decimal-pad"
+              error={error && weightInvalid ? error : null}
+            />
+
+            <AppButton
+              onPress={handleSave}
+              disabled={!hasChanges}
+              loading={saving}
+              style={styles.saveButton}
+            >
               Save Changes
             </AppButton>
           </View>
@@ -234,7 +264,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scroll: {
-    paddingHorizontal: Spacing.five,
+    paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
     paddingBottom: Spacing.six,
   },
@@ -243,27 +273,6 @@ const styles = StyleSheet.create({
   },
   label: {
     marginBottom: Spacing.one,
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-  },
-  genderGrid: {
-    gap: Spacing.two,
-  },
-  genderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
   },
   saveButton: {
     borderRadius: BorderRadius.full,

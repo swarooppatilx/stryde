@@ -5,10 +5,7 @@ interface IShimmerEffect {
   readonly isLoading?: boolean;
   readonly shimmerColors?: string[];
   readonly duration?: number;
-  /**
-   * @deprecated
-   */
-  readonly className?: string;
+  /** @deprecated */
   readonly style?: ViewStyle;
   readonly variant?: 'shimmer' | 'pulse';
   readonly direction?: ShimmerDirection;
@@ -17,24 +14,13 @@ interface IShimmerEffect {
   readonly children?: ReactNode;
 }
 
-interface IShimmerGroup {
-  readonly isLoading?: boolean;
-  readonly children: ReactNode;
-  readonly preset?: ShimmerPreset;
-  readonly shimmerColors?: string[];
-  readonly duration?: number;
-  readonly direction?: ShimmerDirection;
-  readonly variant?: 'shimmer' | 'pulse';
-  readonly opacity?: number;
-}
-
 type ShimmerDirection = 'leftToRight' | 'rightToLeft' | 'topToBottom' | 'bottomToTop';
 
-type ShimmerPreset = 'dark' | 'light' | 'twitter' | 'neutral' | 'custom';
+type ShimmerPreset = 'onDark' | 'onLight' | 'twitter' | 'neutral' | 'custom';
 
 interface IShimmerColorTheme {
   colors: string[];
   readonly backgroundColor?: string;
 }
 
-export type { IShimmerColorTheme, IShimmerEffect, IShimmerGroup, ShimmerDirection, ShimmerPreset };
+export type { IShimmerColorTheme, IShimmerEffect, ShimmerDirection, ShimmerPreset };

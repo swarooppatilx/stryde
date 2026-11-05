@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IMoveToEarnToken} from "./interfaces/IMoveToEarnToken.sol";
@@ -10,7 +11,7 @@ import {IMoveToEarnToken} from "./interfaces/IMoveToEarnToken.sol";
 /// @notice Move-to-earn ERC-20 reward token. Minted per completed activity,
 /// proportional to distance traveled, deduped by the same activityHash
 /// ActivityRegistry.recordActivity uses.
-contract MoveToEarnToken is IMoveToEarnToken, ERC20, Ownable, Pausable, AccessControl {
+contract MoveToEarnToken is IMoveToEarnToken, ERC20, Ownable2Step, Pausable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     /// @dev wei-per-meter. Default 1e15 => 1e18 (1 STRD) per 1000 meters.

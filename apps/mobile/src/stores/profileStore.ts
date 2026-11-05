@@ -19,6 +19,9 @@ interface ProfileState {
   headerImageCid: string | null;
   createdAt: number | null;
   settings: ProfileSettings;
+  /** Shown on the profile; published through the social API, so other athletes can read it. */
+  bio: string;
+  location: string;
   setUsername: (username: string) => void;
   setFirstName: (firstName: string) => void;
   setLastName: (lastName: string) => void;
@@ -29,6 +32,7 @@ interface ProfileState {
   setProfileId: (profileId: string) => void;
   setAvatar: (avatar: string) => void;
   setAvatarCid: (cid: string) => void;
+  setAbout: (about: { bio: string; location: string }) => void;
   setHeaderImage: (headerImage: string) => void;
   setHeaderImageCid: (cid: string) => void;
   updateSettings: (updates: Partial<ProfileSettings>) => void;
@@ -51,14 +55,9 @@ const INITIAL_STATE = {
   headerImageCid: null as string | null,
   createdAt: null as number | null,
   settings: DEFAULT_SETTINGS,
+  bio: '',
+  location: '',
 };
-
-export function getCurrentUserId(): string {
-  // Lazy import to avoid circular deps
-  const { useProfileStore } = require('@/stores/profileStore');
-  const state = useProfileStore.getState();
-  return state.wallet || state.username || 'anonymous';
-}
 
 export const useProfileStore = create<ProfileState>()(
   persist(
@@ -78,6 +77,7 @@ export const useProfileStore = create<ProfileState>()(
       setProfileId: (profileId) => set({ profileId }),
       setAvatar: (avatar) => set({ avatar }),
       setAvatarCid: (cid) => set({ avatarCid: cid }),
+      setAbout: ({ bio, location }) => set({ bio: bio.trim(), location: location.trim() }),
       setHeaderImage: (headerImage) => set({ headerImage }),
       setHeaderImageCid: (cid) => set({ headerImageCid: cid }),
       updateSettings: (updates) =>

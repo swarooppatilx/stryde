@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from 'react';
+import type { Ref } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, {
   Circle,
@@ -7,17 +7,163 @@ import Svg, {
   G,
   Path,
   Rect,
+  Image as SvgImage,
   Text as SvgText,
   TSpan,
 } from 'react-native-svg';
-
+import { Palette } from '@/constants/palette';
 import { Brand } from '@/constants/theme';
-import type { Ring } from '@/types';
-import { formatArea, formatDistance, formatDurationLong, formatPace } from '@/utils/format';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import type { ActivityType, Ring } from '@/types';
+import {
+  formatArea,
+  formatDistance,
+  formatDurationLong,
+  formatPaceOrSpeed,
+  showsSpeed,
+} from '@/utils/format';
+import type { ShareDesign } from '@/utils/shareDesigns';
+import { shareCardStats } from '@/utils/shareDesigns';
 
 const WIDTH = 1080;
 const STATS_HEIGHT = 220;
 const LOGO_HEIGHT = 150;
+
+interface RouteShapes {
+  routePath: string | null;
+  routeDot: { cx: number; cy: number } | null;
+  start: { cx: number; cy: number } | null;
+  end: { cx: number; cy: number } | null;
+  territoryPath: string | null;
+}
+
+function routeShapes(
+  coordinates: [number, number][],
+  territory: Ring | null | undefined,
+  routeTop: number,
+  routeHeight: number
+): RouteShapes | null {
+  const all: [number, number][] = [...coordinates, ...(territory ?? [])];
+  if (all.length === 0) return null;
+
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of all) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  if (maxLng - minLng < 1e-7) {
+    minLng -= 5e-4;
+    maxLng += 5e-4;
+  }
+  if (maxLat - minLat < 1e-7) {
+    minLat -= 5e-4;
+    maxLat += 5e-4;
+  }
+
+  const padLng = (maxLng - minLng) * 0.3;
+  const padLat = (maxLat - minLat) * 0.3;
+  const bMinLng = minLng - padLng;
+  const bMaxLng = maxLng + padLng;
+  const bMinLat = minLat - padLat;
+  const bMaxLat = maxLat + padLat;
+
+  const lngSpan = bMaxLng - bMinLng;
+  const latSpan = bMaxLat - bMinLat;
+
+  // A degree of longitude covers less ground away from the equator, so scale
+  // it by cos(latitude), then letterbox into the route band — mapping each
+  // axis independently stretched routes to the canvas aspect ratio.
+  const lngScale = Math.max(Math.cos(((bMinLat + bMaxLat) / 2) * (Math.PI / 180)), 1e-6);
+  const lngSpanEq = lngSpan * lngScale;
+  const routeInsetX = 80;
+  const fit = Math.min((WIDTH - routeInsetX * 2) / lngSpanEq, routeHeight / latSpan);
+  const offsetX = (WIDTH - lngSpanEq * fit) / 2;
+  const offsetY = routeTop + (routeHeight - latSpan * fit) / 2;
+
+  const toX = (lng: number) => offsetX + (lng - bMinLng) * lngScale * fit;
+  const toY = (lat: number) => offsetY + (bMaxLat - lat) * fit;
+
+  const toPath = (pts: [number, number][]) =>
+    pts
+      .map(([lng, lat], i) => `${i === 0 ? 'M' : 'L'}${toX(lng).toFixed(1)},${toY(lat).toFixed(1)}`)
+      .join(' ');
+
+  const dot = (p: [number, number] | undefined) => (p ? { cx: toX(p[0]), cy: toY(p[1]) } : null);
+
+  return {
+    routePath: coordinates.length > 1 ? toPath(coordinates) : null,
+    routeDot: coordinates.length === 1 ? dot(coordinates[0]) : null,
+    start: coordinates.length > 1 ? dot(coordinates[0]) : null,
+    end: coordinates.length > 1 ? dot(coordinates.at(-1)) : null,
+    territoryPath: territory && territory.length > 2 ? toPath(territory) : null,
+  };
+}
+
+function RouteLayer({ shapes, clipId }: { shapes: RouteShapes | null; clipId: string }) {
+  // Omitted entirely for manual entries with no coordinates, e.g. a treadmill run.
+  if (!shapes) return null;
+  return (
+    <G clipPath={`url(#${clipId})`}>
+      {shapes.territoryPath && (
+        <Path
+          d={shapes.territoryPath}
+          fill={Brand.primaryTint}
+          stroke={Brand.success}
+          strokeWidth={4}
+        />
+      )}
+      {shapes.routePath && (
+        <>
+          <Path
+            d={shapes.routePath}
+            fill="none"
+            stroke={Brand.primary}
+            strokeWidth={16}
+            strokeOpacity={0.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <Path
+            d={shapes.routePath}
+            fill="none"
+            stroke={Brand.primary}
+            strokeWidth={6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      )}
+      {shapes.routeDot && (
+        <Circle cx={shapes.routeDot.cx} cy={shapes.routeDot.cy} r={12} fill={Brand.primary} />
+      )}
+      {shapes.start && (
+        <Circle
+          cx={shapes.start.cx}
+          cy={shapes.start.cy}
+          r={10}
+          fill={Brand.success}
+          stroke={Palette.white}
+          strokeWidth={3}
+        />
+      )}
+      {shapes.end && (
+        <Circle
+          cx={shapes.end.cx}
+          cy={shapes.end.cy}
+          r={10}
+          fill={Brand.primary}
+          stroke={Palette.white}
+          strokeWidth={3}
+        />
+      )}
+    </G>
+  );
+}
 
 interface ShareRouteImageProps {
   coordinates: [number, number][];
@@ -25,91 +171,34 @@ interface ShareRouteImageProps {
   territoryArea: number;
   distance: number;
   duration: number;
-  /** Canvas height in px — 1080 for a square feed/share card, 1920 for a
-   * full-bleed 9:16 Instagram Story. Defaults to a square. */
+  /** Decides pace or speed; a run if omitted. */
+  activityType?: ActivityType;
+  /** Canvas height in px: 1080 for a square card (default), 1920 for a full-bleed 9:16 story. */
   height?: number;
+  /** Which card to draw; the plain route card if omitted. */
+  design?: ShareDesign;
+  /** The picture the photo card is built on; without one that card falls back to the stats card. */
+  photoUri?: string;
+  ref?: Ref<Svg>;
 }
 
-export const ShareRouteImage = forwardRef<Svg, ShareRouteImageProps>(function ShareRouteImage(
-  { coordinates, territory, territoryArea, distance, duration, height = WIDTH },
-  ref
-) {
+function RouteCard({
+  coordinates,
+  territory,
+  territoryArea,
+  distance,
+  duration,
+  activityType = 'run',
+  height = WIDTH,
+  ref,
+}: ShareRouteImageProps) {
+  const unitSystem = useUnitSystem();
   const HEIGHT = height;
   const ROUTE_TOP = STATS_HEIGHT;
   const ROUTE_BOTTOM = HEIGHT - LOGO_HEIGHT;
   const ROUTE_HEIGHT = ROUTE_BOTTOM - ROUTE_TOP;
 
-  const shapes = useMemo(() => {
-    const all: [number, number][] = [...coordinates, ...(territory ?? [])];
-    if (all.length === 0) return null;
-
-    let minLng = Infinity;
-    let maxLng = -Infinity;
-    let minLat = Infinity;
-    let maxLat = -Infinity;
-    for (const [lng, lat] of all) {
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    }
-    if (maxLng - minLng < 1e-7) {
-      minLng -= 5e-4;
-      maxLng += 5e-4;
-    }
-    if (maxLat - minLat < 1e-7) {
-      minLat -= 5e-4;
-      maxLat += 5e-4;
-    }
-
-    const padLng = (maxLng - minLng) * 0.3;
-    const padLat = (maxLat - minLat) * 0.3;
-    const bMinLng = minLng - padLng;
-    const bMaxLng = maxLng + padLng;
-    const bMinLat = minLat - padLat;
-    const bMaxLat = maxLat + padLat;
-
-    const lngSpan = bMaxLng - bMinLng;
-    const latSpan = bMaxLat - bMinLat;
-
-    // A degree of longitude covers less ground away from the equator, so scale
-    // it by cos(latitude), then letterbox into the route band — mapping each
-    // axis independently stretched routes to the canvas aspect ratio.
-    const lngScale = Math.max(Math.cos(((bMinLat + bMaxLat) / 2) * (Math.PI / 180)), 1e-6);
-    const lngSpanEq = lngSpan * lngScale;
-    const routeInsetX = 80;
-    const fit = Math.min((WIDTH - routeInsetX * 2) / lngSpanEq, ROUTE_HEIGHT / latSpan);
-    const offsetX = (WIDTH - lngSpanEq * fit) / 2;
-    const offsetY = ROUTE_TOP + (ROUTE_HEIGHT - latSpan * fit) / 2;
-
-    const toX = (lng: number) => offsetX + (lng - bMinLng) * lngScale * fit;
-    const toY = (lat: number) => offsetY + (bMaxLat - lat) * fit;
-
-    const toPath = (pts: [number, number][]) =>
-      pts
-        .map(
-          ([lng, lat], i) => `${i === 0 ? 'M' : 'L'}${toX(lng).toFixed(1)},${toY(lat).toFixed(1)}`
-        )
-        .join(' ');
-
-    return {
-      routePath: coordinates.length > 1 ? toPath(coordinates) : null,
-      routeDot:
-        coordinates.length === 1
-          ? { cx: toX(coordinates[0][0]), cy: toY(coordinates[0][1]) }
-          : null,
-      start:
-        coordinates.length > 1 ? { cx: toX(coordinates[0][0]), cy: toY(coordinates[0][1]) } : null,
-      end:
-        coordinates.length > 1
-          ? {
-              cx: toX(coordinates[coordinates.length - 1][0]),
-              cy: toY(coordinates[coordinates.length - 1][1]),
-            }
-          : null,
-      territoryPath: territory && territory.length > 2 ? toPath(territory) : null,
-    };
-  }, [coordinates, territory, ROUTE_HEIGHT, ROUTE_TOP]);
+  const shapes = routeShapes(coordinates, territory, ROUTE_TOP, ROUTE_HEIGHT);
 
   const colWidth = WIDTH / 3;
 
@@ -122,7 +211,6 @@ export const ShareRouteImage = forwardRef<Svg, ShareRouteImageProps>(function Sh
           </ClipPath>
         </Defs>
 
-        {/* Top stats section */}
         <SvgText x={colWidth * 0.5} y={55} textAnchor="middle">
           <TSpan fontSize={24} fontWeight="600" fill={Brand.white} fillOpacity={0.5}>
             TIME
@@ -136,12 +224,12 @@ export const ShareRouteImage = forwardRef<Svg, ShareRouteImageProps>(function Sh
 
         <SvgText x={colWidth * 1.5} y={55} textAnchor="middle">
           <TSpan fontSize={24} fontWeight="600" fill={Brand.white} fillOpacity={0.5}>
-            PACE
+            {showsSpeed(activityType) ? 'SPEED' : 'PACE'}
           </TSpan>
         </SvgText>
         <SvgText x={colWidth * 1.5} y={105} textAnchor="middle">
           <TSpan fontSize={42} fontWeight="700" fill={Brand.white}>
-            {formatPace(distance, duration)}
+            {formatPaceOrSpeed(activityType, distance, duration, unitSystem)}
           </TSpan>
         </SvgText>
 
@@ -152,77 +240,18 @@ export const ShareRouteImage = forwardRef<Svg, ShareRouteImageProps>(function Sh
         </SvgText>
         <SvgText x={colWidth * 2.5} y={105} textAnchor="middle">
           <TSpan fontSize={42} fontWeight="700" fill={Brand.white}>
-            {territoryArea > 0 ? formatArea(territoryArea) : '\u2014'}
+            {territoryArea > 0 ? formatArea(territoryArea, unitSystem) : '\u2014'}
           </TSpan>
         </SvgText>
 
-        {/* Route (clipped to middle zone) — omitted entirely for manual
-            entries with no coordinates, e.g. a treadmill run. */}
-        {shapes && (
-          <G clipPath="url(#routeClip)">
-            {shapes.territoryPath && (
-              <Path
-                d={shapes.territoryPath}
-                fill={Brand.primaryTint}
-                stroke={Brand.success}
-                strokeWidth={4}
-              />
-            )}
-            {shapes.routePath && (
-              <>
-                <Path
-                  d={shapes.routePath}
-                  fill="none"
-                  stroke={Brand.primary}
-                  strokeWidth={16}
-                  strokeOpacity={0.25}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <Path
-                  d={shapes.routePath}
-                  fill="none"
-                  stroke={Brand.primary}
-                  strokeWidth={6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </>
-            )}
-            {shapes.routeDot && (
-              <Circle cx={shapes.routeDot.cx} cy={shapes.routeDot.cy} r={12} fill={Brand.primary} />
-            )}
-            {shapes.start && (
-              <Circle
-                cx={shapes.start.cx}
-                cy={shapes.start.cy}
-                r={10}
-                fill={Brand.success}
-                stroke="#fff"
-                strokeWidth={3}
-              />
-            )}
-            {shapes.end && (
-              <Circle
-                cx={shapes.end.cx}
-                cy={shapes.end.cy}
-                r={10}
-                fill={Brand.primary}
-                stroke="#fff"
-                strokeWidth={3}
-              />
-            )}
-          </G>
-        )}
+        <RouteLayer shapes={shapes} clipId="routeClip" />
 
-        {/* Distance above logo */}
         <SvgText x={WIDTH / 2} y={HEIGHT - 80 - 60 * 1.0 - 50} textAnchor="middle">
           <TSpan fontSize={72} fontWeight="700" fill={Brand.white}>
-            {formatDistance(distance)}
+            {formatDistance(distance, unitSystem)}
           </TSpan>
         </SvgText>
 
-        {/* Logo */}
         <LogoPaths
           logoWidth={262}
           logoScale={1.0}
@@ -232,7 +261,185 @@ export const ShareRouteImage = forwardRef<Svg, ShareRouteImageProps>(function Sh
       </Svg>
     </View>
   );
-});
+}
+
+const CARD_INSET = 40;
+const CARD_RADIUS = 64;
+
+/** Distance, time and pace as columns of label over value, centred on each column of a band. */
+function StatColumns({
+  stats,
+  left,
+  width,
+  labelY,
+  valueY,
+}: {
+  stats: { label: string; value: string }[];
+  left: number;
+  width: number;
+  labelY: number;
+  valueY: number;
+}) {
+  const column = width / Math.max(stats.length, 1);
+  return (
+    <>
+      {stats.map((stat, i) => {
+        const x = left + column * (i + 0.5);
+        return (
+          <G key={stat.label}>
+            <SvgText x={x} y={labelY} textAnchor="middle">
+              <TSpan fontSize={28} fontWeight="600" fill={Brand.white} fillOpacity={0.6}>
+                {stat.label.toUpperCase()}
+              </TSpan>
+            </SvgText>
+            <SvgText x={x} y={valueY} textAnchor="middle">
+              <TSpan fontSize={60} fontWeight="700" fill={Brand.white}>
+                {stat.value}
+              </TSpan>
+            </SvgText>
+          </G>
+        );
+      })}
+    </>
+  );
+}
+
+/** A dark rounded card with the route above and distance, time and pace beneath it. */
+function StatsCard({
+  coordinates,
+  territory,
+  distance,
+  duration,
+  activityType = 'run',
+  height = WIDTH,
+  ref,
+}: ShareRouteImageProps) {
+  const unitSystem = useUnitSystem();
+  const routeTop = 240;
+  const routeHeight = height - 240 - 640;
+  const shapes = routeShapes(coordinates, territory, routeTop, routeHeight);
+  const stats = shareCardStats({ activityType, distance, duration }, unitSystem);
+  const dividerY = routeTop + routeHeight + 40;
+
+  return (
+    <View style={[styles.container, { width: WIDTH, height }]}>
+      <Svg ref={ref} width={WIDTH} height={height} viewBox={`0 0 ${WIDTH} ${height}`}>
+        <Defs>
+          <ClipPath id="statsRouteClip">
+            <Rect x={0} y={routeTop} width={WIDTH} height={routeHeight} />
+          </ClipPath>
+        </Defs>
+        <Rect
+          x={CARD_INSET}
+          y={CARD_INSET * 3}
+          width={WIDTH - CARD_INSET * 2}
+          height={height - CARD_INSET * 6}
+          rx={CARD_RADIUS}
+          fill={Palette.black}
+          fillOpacity={0.82}
+        />
+        <RouteLayer shapes={shapes} clipId="statsRouteClip" />
+        <Rect
+          x={CARD_INSET * 3}
+          y={dividerY}
+          width={WIDTH - CARD_INSET * 6}
+          height={2}
+          fill={Brand.white}
+          fillOpacity={0.2}
+        />
+        <StatColumns
+          stats={stats}
+          left={CARD_INSET * 2}
+          width={WIDTH - CARD_INSET * 4}
+          labelY={dividerY + 90}
+          valueY={dividerY + 170}
+        />
+        <LogoPaths logoWidth={262} logoScale={0.8} logoY={dividerY + 280} canvasWidth={WIDTH} />
+      </Svg>
+    </View>
+  );
+}
+
+/** The athlete's photo full-bleed under a scrim, with the route and stats laid over it. */
+function PhotoCard({
+  coordinates,
+  territory,
+  distance,
+  duration,
+  activityType = 'run',
+  height = WIDTH,
+  photoUri,
+  ref,
+}: ShareRouteImageProps) {
+  const unitSystem = useUnitSystem();
+  const routeTop = 200;
+  const routeHeight = height - 200 - 620;
+  const shapes = routeShapes(coordinates, territory, routeTop, routeHeight);
+  const stats = shareCardStats({ activityType, distance, duration }, unitSystem);
+  const statsTop = height - 560;
+
+  return (
+    <View style={[styles.container, { width: WIDTH, height }]}>
+      <Svg ref={ref} width={WIDTH} height={height} viewBox={`0 0 ${WIDTH} ${height}`}>
+        <Defs>
+          <ClipPath id="photoRouteClip">
+            <Rect x={0} y={routeTop} width={WIDTH} height={routeHeight} />
+          </ClipPath>
+        </Defs>
+        {photoUri ? (
+          <SvgImage
+            x={0}
+            y={0}
+            width={WIDTH}
+            height={height}
+            href={{ uri: photoUri }}
+            preserveAspectRatio="xMidYMid slice"
+          />
+        ) : null}
+        <Rect x={0} y={0} width={WIDTH} height={height} fill={Palette.black} fillOpacity={0.3} />
+        <Rect
+          x={0}
+          y={statsTop - 60}
+          width={WIDTH}
+          height={height - statsTop + 60}
+          fill={Palette.black}
+          fillOpacity={0.35}
+        />
+        <RouteLayer shapes={shapes} clipId="photoRouteClip" />
+        <StatColumns
+          stats={stats}
+          left={CARD_INSET}
+          width={WIDTH - CARD_INSET * 2}
+          labelY={statsTop + 40}
+          valueY={statsTop + 120}
+        />
+        <LogoPaths logoWidth={262} logoScale={0.8} logoY={statsTop + 260} canvasWidth={WIDTH} />
+      </Svg>
+    </View>
+  );
+}
+
+/** The share card in the chosen design: route only (transparent), stats card, or photo card. */
+export function ShareRouteImage(props: ShareRouteImageProps) {
+  if (props.design === 'stats') return <StatsCard {...props} />;
+  if (props.design === 'photo' && props.photoUri) return <PhotoCard {...props} />;
+  if (props.design === 'photo') return <StatsCard {...props} />;
+  return <RouteCard {...props} />;
+}
+
+/** Height of the full-bleed 9:16 story card the share flow sends. */
+const STORY_HEIGHT = 1920;
+/** Far enough above the screen that the card is never seen while it is turned into a PNG. */
+const OFF_SCREEN = -10000;
+
+/** The story card mounted out of sight, ready for `shareRouteImage` to render through its ref. */
+export function OffscreenShareImage(props: Omit<ShareRouteImageProps, 'height'>) {
+  return (
+    <View style={styles.offscreen} pointerEvents="none">
+      <ShareRouteImage {...props} height={STORY_HEIGHT} />
+    </View>
+  );
+}
 
 const LogoPaths = ({
   logoWidth,
@@ -281,5 +488,12 @@ const LogoPaths = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: 'transparent',
+  },
+  offscreen: {
+    position: 'absolute',
+    top: OFF_SCREEN,
+    left: 0,
+    width: WIDTH,
+    height: STORY_HEIGHT,
   },
 });

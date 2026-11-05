@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, TextInput, TouchableOpacity, View, type ViewStyle } from 'react-native';
-
+import { StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
+import { Tappable } from '@/components/tappable';
 import { BorderRadius, Spacing } from '@/constants/theme';
+import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 
 interface SearchBarProps {
@@ -9,10 +10,20 @@ interface SearchBarProps {
   onChangeText: (text: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  onSubmit?: () => void;
+  accessibilityLabel?: string;
   style?: ViewStyle;
 }
 
-export function SearchBar({ value, onChangeText, placeholder, autoFocus, style }: SearchBarProps) {
+export function SearchBar({
+  value,
+  onChangeText,
+  placeholder,
+  autoFocus,
+  onSubmit,
+  accessibilityLabel,
+  style,
+}: SearchBarProps) {
   const theme = useTheme();
 
   return (
@@ -27,21 +38,26 @@ export function SearchBar({ value, onChangeText, placeholder, autoFocus, style }
       <TextInput
         style={[styles.input, { color: theme.text }]}
         placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
+        placeholderTextColor={theme.placeholder}
         value={value}
         onChangeText={onChangeText}
         autoFocus={autoFocus}
         returnKeyType="search"
+        autoCapitalize="none"
+        autoCorrect={false}
+        enablesReturnKeyAutomatically
+        onSubmitEditing={onSubmit}
+        accessibilityLabel={accessibilityLabel ?? placeholder}
       />
       {value.length > 0 && (
-        <TouchableOpacity
+        <Tappable
           onPress={() => onChangeText('')}
-          hitSlop={8}
+          hitSlop={13}
           accessibilityRole="button"
           accessibilityLabel="Clear search"
         >
           <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
-        </TouchableOpacity>
+        </Tappable>
       )}
     </View>
   );
@@ -54,12 +70,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.full,
     borderWidth: 1,
   },
   input: {
     flex: 1,
-    fontSize: 15,
+    ...textStyle(TypeScale.callout),
     padding: 0,
   },
 });

@@ -18,6 +18,8 @@ type Profile @entity(immutable: false) {
   commentsAuthored: [ActivityComment!]! @derivedFrom(field: "author")
   eventsHosted: [Event!]! @derivedFrom(field: "host")
   eventParticipations: [EventParticipant!]! @derivedFrom(field: "user")
+  rewards: [TokenReward!]! @derivedFrom(field: "recipient")
+  territoryNfts: [TerritoryNft!]! @derivedFrom(field: "owner")
 }
 
 type Activity @entity(immutable: false) {
@@ -206,4 +208,26 @@ type TerritoryStrengthHistory @entity(immutable: false) {
   changeType: String! # claimed | reinforced | decayed | lost
   blockNumber: BigInt!
   timestamp: BigInt!
+}
+
+# ──────────────────────────────────────────────────────────────
+# STRD rewards and soulbound territory NFTs
+# ──────────────────────────────────────────────────────────────
+
+type TokenReward @entity(immutable: true) {
+  id: Bytes! # tx hash + log index
+  recipient: Profile!
+  activityHash: Bytes!
+  distance: BigInt! # meters the reward was for
+  amount: BigInt! # STRD, 18 decimals
+  timestamp: BigInt!
+}
+
+type TerritoryNft @entity(immutable: false) {
+  id: Bytes! # polygon hash, the same id as the Territory it belongs to
+  tokenId: BigInt!
+  owner: Profile!
+  mintedAt: BigInt!
+  burned: Boolean!
+  burnedAt: BigInt
 }

@@ -1,4 +1,5 @@
 import { getLocalRpcUrl } from '@/constants/config';
+import { logger } from '@/utils/logger';
 
 const ANVIL_ACCOUNT = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 const DEFAULT_BALANCE = '0x56BC75E2D63100000'; // 100 ETH in hex
@@ -39,14 +40,13 @@ export async function ensureLocalWalletFunded(): Promise<FaucetResult> {
 
     const result = await response.json();
     if (result.error) {
-      console.warn('[Anvil] Failed to fund wallet:', result.error);
+      logger.warn('[Anvil] Failed to fund wallet:', result.error);
       return 'failed';
     }
 
-    if (__DEV__) console.log('[Anvil] Wallet funded with 100 ETH');
     return 'funded';
   } catch (error) {
-    console.warn('[Anvil] Could not fund wallet:', error);
+    logger.warn('[Anvil] Could not fund wallet:', error);
     return 'failed';
   }
 }

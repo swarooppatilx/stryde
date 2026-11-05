@@ -28,13 +28,13 @@ import Animated, {
   useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { createCompoundComponent } from '@/utils/create-compound-component';
 import {
   DEFAULT_CLOSE_THRESHOLD,
@@ -108,7 +108,8 @@ const TrayRoot: React.FC<ITray> & React.FunctionComponent<ITray> = ({
     const heights = detents.map((detent) => resolveDetent(detent, available));
     return { offsets: toOffsets(heights), detentHeight: Math.max(...heights) };
   }, [detents, screenHeight, insets.top, insets.bottom]);
-  const reduceMotion = useReducedMotion();
+  // The app's own hook, not Reanimated's: it also honours the Motion setting inside the app.
+  const reduceMotion = useReduceMotion();
   const motion = useMemo<ITrayMotion>(() => ({ ...DEFAULT_MOTION, ...motionProp }), [motionProp]);
 
   const navigation = useTrayNavigation(defaultView, onViewChange);
@@ -296,7 +297,7 @@ const TrayRoot: React.FC<ITray> & React.FunctionComponent<ITray> = ({
           if (!owns.value) return;
 
           const projected = projectPosition(offset.value, event.velocityY, motion.flickProjection);
-          const last = offsets[offsets.length - 1];
+          const last = offsets[offsets.length - 1] ?? 0;
 
           if (
             projected > last + closeThreshold ||
@@ -308,7 +309,7 @@ const TrayRoot: React.FC<ITray> & React.FunctionComponent<ITray> = ({
 
           const index = nearestOffsetIndex(offsets, projected);
           detentIndex.value = index;
-          offset.value = withSpring(offsets[index], {
+          offset.value = withSpring(offsets[index] ?? 0, {
             ...motion.detentSpring,
             velocity: event.velocityY,
           });
@@ -663,8 +664,7 @@ const TrayScrollView: React.FC<ITrayScrollView> & React.FunctionComponent<ITrayS
   contentContainerStyle,
   style,
 }: ITrayScrollView): React.JSX.Element => {
-  const { scrollY, isDragging, hasScrollable, offset, pan, motion } =
-    useTrayContext('Tray.ScrollView');
+  const { scrollY, isDragging, hasScrollable, pan, motion } = useTrayContext('Tray.ScrollView');
   const { height: screenHeight } = useWindowDimensions();
   const listRef = useAnimatedRef<Animated.ScrollView>();
   const resolvedMax = maxHeight ?? screenHeight * 0.55;

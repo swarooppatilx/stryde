@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 import { Animated } from 'react-native';
-import { HEADER_HEIGHT } from '../constants';
 
 export const useAnimateScrollView = (imageHeight: number, disableScale?: boolean) => {
   const scroll = useRef(new Animated.Value(0)).current;

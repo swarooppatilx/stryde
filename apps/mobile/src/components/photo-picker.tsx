@@ -1,54 +1,33 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
-import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
+import { Palette } from '@/constants/palette';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { Alert } from '@/utils/alert';
+import { MAX_PHOTOS, usePhotoPick } from '@/hooks/usePhotoPick';
 import { haptics } from '@/utils/haptics';
-
-const MAX_PHOTOS = 4;
+import { uniqueKeys } from '@/utils/uniqueKeys';
 
 interface PhotoPickerProps {
   photos: string[];
   onPhotosChange: (photos: string[]) => void;
   maxPhotos?: number;
+  /** Called with a thumbnail's index when it is tapped, to look at it full screen. */
+  onOpen?: (index: number) => void;
 }
 
-export function PhotoPicker({ photos, onPhotosChange, maxPhotos = MAX_PHOTOS }: PhotoPickerProps) {
+export function PhotoPicker({
+  photos,
+  onPhotosChange,
+  maxPhotos = MAX_PHOTOS,
+  onOpen,
+}: PhotoPickerProps) {
   const theme = useTheme();
-  const [_loading, setLoading] = useState(false);
+  const pickImage = usePhotoPick(photos, onPhotosChange, maxPhotos);
 
-  const pickImage = async () => {
-    haptics.tap();
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Permission needed',
-        'Photo library access is required to add photos to your activity.'
-      );
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        selectionLimit: maxPhotos - photos.length,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets.length > 0) {
-        const newUris = result.assets.map((a) => a.uri);
-        onPhotosChange([...photos, ...newUris].slice(0, maxPhotos));
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const keys = uniqueKeys(photos);
   const removePhoto = (index: number) => {
     haptics.selection();
     onPhotosChange(photos.filter((_, i) => i !== index));
@@ -56,7 +35,7 @@ export function PhotoPicker({ photos, onPhotosChange, maxPhotos = MAX_PHOTOS }: 
 
   if (photos.length === 0) {
     return (
-      <TouchableOpacity
+      <Tappable
         style={[
           styles.addButton,
           { backgroundColor: theme.backgroundElement, borderColor: theme.border },
@@ -67,13 +46,13 @@ export function PhotoPicker({ photos, onPhotosChange, maxPhotos = MAX_PHOTOS }: 
         accessibilityLabel="Add photos"
       >
         <Ionicons name="camera-outline" size={28} color={theme.textSecondary} />
-        <ThemedText type="small" style={{ color: theme.textSecondary }}>
+        <ThemedText type="small" themeColor="textSecondary">
           Add Photos
         </ThemedText>
-        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+        <ThemedText type="caption" themeColor="textSecondary">
           Up to {maxPhotos}
         </ThemedText>
-      </TouchableOpacity>
+      </Tappable>
     );
   }
 
@@ -85,21 +64,34 @@ export function PhotoPicker({ photos, onPhotosChange, maxPhotos = MAX_PHOTOS }: 
         contentContainerStyle={styles.scroll}
       >
         {photos.map((uri, index) => (
-          <View key={`${uri}-${index}`} style={[styles.thumbnail, { borderColor: theme.border }]}>
-            <Image source={{ uri }} style={styles.image} />
-            <TouchableOpacity
+          <View key={keys[index]} style={[styles.thumbnail, { borderColor: theme.border }]}>
+            <Tappable
+              style={styles.image}
+              onPress={() => onOpen?.(index)}
+              disabled={!onOpen}
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`Photo ${index + 1} of ${photos.length}. Open full screen`}
+            >
+              <Image
+                source={{ uri }}
+                style={styles.image}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            </Tappable>
+            <Tappable
               style={[styles.removeBtn, { backgroundColor: theme.brand.primary }]}
               onPress={() => removePhoto(index)}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               accessibilityRole="button"
               accessibilityLabel="Remove photo"
             >
-              <Ionicons name="close" size={14} color="#fff" />
-            </TouchableOpacity>
+              <Ionicons name="close" size={14} color={Palette.white} />
+            </Tappable>
           </View>
         ))}
         {photos.length < maxPhotos && (
-          <TouchableOpacity
+          <Tappable
             style={[styles.addButtonSmall, { backgroundColor: tint(theme.brand.primary, 0.1) }]}
             activeOpacity={0.7}
             onPress={pickImage}
@@ -107,7 +99,7 @@ export function PhotoPicker({ photos, onPhotosChange, maxPhotos = MAX_PHOTOS }: 
             accessibilityLabel="Add more photos"
           >
             <Ionicons name="camera-outline" size={24} color={theme.brand.primary} />
-          </TouchableOpacity>
+          </Tappable>
         )}
       </ScrollView>
       <ThemedText type="caption" style={{ color: theme.textSecondary, marginTop: Spacing.one }}>
@@ -159,7 +151,7 @@ const styles = StyleSheet.create({
     right: 4,
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },

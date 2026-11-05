@@ -1,49 +1,65 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEmbeddedEthereumWallet, usePrivy } from '@privy-io/expo';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/shallow';
+import { BirthdayField } from '@/components/birthday-field';
 import { AppButton } from '@/components/button';
-import { Card } from '@/components/card';
+import { GenderPicker } from '@/components/gender-picker';
+import { SegmentedChoice } from '@/components/segmented-choice';
+import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { ENV } from '@/constants/config';
-import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
+import { PERSON_NAME_MAX } from '@/constants/limits';
+import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '@/hooks/useAuth';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
+import { saveHeight, saveWeight } from '@/services/bodyProfile';
 import { updatePrivyMetadata } from '@/services/profileService';
+import { isRegisteredOnChain } from '@/services/registration';
 import { useProfileStore } from '@/stores/profileStore';
+import { useSetupStore } from '@/stores/setupStore';
 import type { Gender } from '@/types';
+import { birthdayStep, MIN_AGE } from '@/utils/age';
+import { parseHeightCm } from '@/utils/body';
+import { parseWeightKg, weightRangeText } from '@/utils/calories';
+import { toCalendarDay } from '@/utils/dates';
 import { getParsedError } from '@/utils/errors';
+import type { UnitSystem } from '@/utils/format';
+import { logger } from '@/utils/logger';
+import { USERNAME_MAX_LENGTH, validateUsername } from '@/utils/username';
 
-const STEPS = ['name', 'birthday', 'gender', 'verify'] as const;
-type Step = (typeof STEPS)[number];
-
-const GENDER_OPTIONS: { value: Gender; label: string; icon: string }[] = [
-  { value: 'man', label: 'Man', icon: 'male' },
-  { value: 'woman', label: 'Woman', icon: 'female' },
-  { value: 'non_binary', label: 'Non-binary', icon: 'male-female' },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say', icon: 'person' },
+const STEPS = ['name', 'birthday', 'gender', 'body', 'verify'] as const;
+const UNIT_OPTIONS: { value: UnitSystem; label: string }[] = [
+  { value: 'metric', label: 'Kilometres' },
+  { value: 'imperial', label: 'Miles' },
 ];
 
+type Step = (typeof STEPS)[number];
+
+function submitLabel(isSubmitting: boolean, step: string): string {
+  if (isSubmitting) return 'Creating your profile…';
+  return step === 'verify' ? 'Continue' : 'Next';
+}
+
 export default function ProfileSetupScreen() {
-  const { user } = usePrivy();
-  const { wallets } = useEmbeddedEthereumWallet();
-  const { wallet, address } = useViemWallet(ENV.CHAIN_MODE);
-  const hasWallet = wallets && wallets.length > 0;
+  const { user } = useAuth();
+  const { wallet, address } = useViemWallet();
+  const accountId = useCurrentUserId();
+  const beginSetup = useSetupStore((s) => s.begin);
   const router = useRouter();
   const theme = useTheme();
   const [checking, setChecking] = useState(true);
@@ -54,29 +70,25 @@ export default function ProfileSetupScreen() {
     async function check() {
       if (!wallet?.account) return;
       try {
-        const registered = await services.profile.isRegistered(wallet.account.address);
+        const registered = await isRegisteredOnChain(wallet.account.address);
         if (registered && !cancelled) {
           router.replace('/(tabs)');
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        logger.warn('[profile-setup] Registration check failed', error);
       } finally {
         if (!cancelled) setChecking(false);
       }
     }
-    check();
+    void check();
     return () => {
       cancelled = true;
     };
   }, [wallet, router.replace]);
 
   const suggestedUsername = useMemo(() => {
-    if (!user) return '';
-    const emailAccount = user.linked_accounts?.find((a) => a.type === 'email');
-    if (emailAccount && 'address' in emailAccount) {
-      return emailAccount.address.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
-    }
-    return '';
+    if (!user?.email) return '';
+    return (user.email.split('@')[0] ?? '').replace(/[^a-zA-Z0-9_]/g, '');
   }, [user]);
 
   const [username, setUsername] = useState(suggestedUsername);
@@ -84,7 +96,9 @@ export default function ProfileSetupScreen() {
   const [lastName, setLastName] = useState('');
   const [birthday, setBirthday] = useState<Date | null>(null);
   const [gender, setGender] = useState<Gender>('prefer_not_to_say');
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [units, setUnits] = useState<UnitSystem>('metric');
+  const [weight, setWeight] = useState('');
+  const [height, setHeight] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {
@@ -95,6 +109,7 @@ export default function ProfileSetupScreen() {
     setGender: saveGender,
     setWallet,
     setProfileId,
+    updateSettings,
   } = useProfileStore(
     useShallow((s) => ({
       setUsername: s.setUsername,
@@ -104,50 +119,60 @@ export default function ProfileSetupScreen() {
       setGender: s.setGender,
       setWallet: s.setWallet,
       setProfileId: s.setProfileId,
+      updateSettings: s.updateSettings,
     }))
   );
 
   const worldVerification = useWorldVerification();
 
+  // The username and a birthday (13 or older) are required; gender and verification can be skipped past.
+  const weightKg = parseWeightKg(weight, units);
+  const weightInvalid = weight.trim() !== '' && weightKg === null;
+  const heightCm = parseHeightCm(height, units);
+  const heightInvalid = height.trim() !== '' && heightCm === null;
+  const birthdayState = birthdayStep(birthday, new Date());
+  const tooYoung = birthdayState === 'too-young';
   const canContinue = () => {
-    if (step === 'name') return username.trim().length >= 2;
-    if (step === 'birthday') return true;
-    if (step === 'gender') return true;
-    if (step === 'verify') return true;
-    return false;
+    if (step === 'name') return validateUsername(username).ok;
+    if (step === 'body') return !weightInvalid && !heightInvalid;
+    // No birthday, or one that says the athlete is under the minimum age, stops here.
+    if (step === 'birthday') return birthdayState === 'ok';
+    return true;
   };
 
   const handleNext = () => {
-    const idx = STEPS.indexOf(step);
-    if (idx < STEPS.length - 1) {
-      setStep(STEPS[idx + 1]);
+    // The keyboard from the previous field would otherwise stay up and crowd the next step.
+    Keyboard.dismiss();
+    const next = STEPS[STEPS.indexOf(step) + 1];
+    if (next) {
+      setStep(next);
     } else {
-      handleFinish();
+      handleFinish().catch((error) => logger.warn('[ProfileSetup] Finishing setup failed', error));
     }
   };
 
   const handleBack = () => {
+    Keyboard.dismiss();
     const idx = STEPS.indexOf(step);
-    if (idx > 0) {
-      setStep(STEPS[idx - 1]);
-    }
+    const previous = idx > 0 ? STEPS[idx - 1] : undefined;
+    if (previous) setStep(previous);
   };
 
   const handleFinish = async () => {
-    const trimmed = username.trim();
-    if (trimmed.length < 2) {
-      setError('Username must be at least 2 characters');
+    const check = validateUsername(username);
+    if (!check.ok) {
+      setError(check.error);
       return;
     }
-    if (trimmed.length > 20) {
-      setError('Username must be 20 characters or less');
-      return;
-    }
+    const trimmed = check.username;
     setError(null);
     setIsSubmitting(true);
 
     try {
-      if (wallet && hasWallet) {
+      // A profile with no chain has nothing to register on: the profile is kept on this device.
+      // The wallet state covers Privy and the Local profile's dev wallet alike; counting only Privy's
+      // embedded wallets used to skip registration silently for a dev login on the local chain.
+      if (wallet && !services.client.isChainOffline()) {
         try {
           const { profileId, confirmed } = await services.profile.register(wallet, trimmed);
 
@@ -161,7 +186,7 @@ export default function ProfileSetupScreen() {
           }
           setProfileId(profileId.toString());
         } catch (writeError) {
-          console.warn('[ProfileSetup] Onchain registration failed:', writeError);
+          logger.warn('[ProfileSetup] Onchain registration failed:', writeError);
           setError(getParsedError(writeError));
           return;
         }
@@ -171,30 +196,28 @@ export default function ProfileSetupScreen() {
       saveFirstName(firstName.trim());
       saveLastName(lastName.trim());
       saveGender(gender);
+      updateSettings({ units });
+      saveWeight(weightKg);
+      saveHeight(heightCm);
       if (birthday) {
-        saveBirthday(birthday.toISOString().split('T')[0]);
+        saveBirthday(toCalendarDay(birthday));
       }
 
-      if (user?.id) {
+      if (user?.kind === 'privy') {
         updatePrivyMetadata(user.id, {
           username: trimmed,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
         }).catch((err) => {
-          console.warn('[ProfileSetup] Failed to sync to Privy', err);
+          logger.warn('[ProfileSetup] Failed to sync to Privy', err);
         });
       }
 
-      router.replace('/(tabs)');
+      beginSetup(accountId);
+      router.replace('/make-it-yours');
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const getMaxDate = () => {
-    const now = new Date();
-    now.setFullYear(now.getFullYear() - 13);
-    return now;
   };
 
   if (checking) {
@@ -219,14 +242,19 @@ export default function ProfileSetupScreen() {
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          {/* Header */}
           <ThemedView style={styles.header}>
-            {step !== 'name' ? (
-              <TouchableOpacity onPress={handleBack} hitSlop={8} style={styles.backBtn}>
-                <Ionicons name="chevron-back" size={24} color={theme.brand.primary} />
-              </TouchableOpacity>
-            ) : (
+            {step === 'name' ? (
               <View style={styles.backBtn} />
+            ) : (
+              <Tappable
+                onPress={handleBack}
+                hitSlop={8}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Back"
+              >
+                <Ionicons name="chevron-back" size={24} color={theme.brand.primary} />
+              </Tappable>
             )}
             <View
               style={styles.progressRow}
@@ -252,11 +280,11 @@ export default function ProfileSetupScreen() {
           <View style={styles.content}>
             {step === 'name' && (
               <>
-                <ThemedText type="title" style={styles.title}>
-                  {hasWallet ? 'Welcome back!' : 'Welcome!'}
+                <ThemedText type="display" style={styles.title}>
+                  Welcome!
                 </ThemedText>
                 <ThemedText numberOfLines={2} themeColor="textSecondary" style={styles.subtitle}>
-                  {hasWallet ? 'Set up your profile to continue' : 'Choose your username'}
+                  Choose your username to set up your profile
                 </ThemedText>
 
                 <View style={styles.form}>
@@ -269,17 +297,19 @@ export default function ProfileSetupScreen() {
                     }}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    maxLength={20}
+                    maxLength={USERNAME_MAX_LENGTH}
                     error={error}
                   />
                   <TextField
                     placeholder="First name"
+                    maxLength={PERSON_NAME_MAX}
                     value={firstName}
                     onChangeText={setFirstName}
                     autoCorrect={false}
                   />
                   <TextField
                     placeholder="Last name (optional)"
+                    maxLength={PERSON_NAME_MAX}
                     value={lastName}
                     onChangeText={setLastName}
                     autoCorrect={false}
@@ -290,107 +320,84 @@ export default function ProfileSetupScreen() {
 
             {step === 'birthday' && (
               <>
-                <ThemedText type="title" style={styles.title}>
+                <ThemedText type="display" style={styles.title}>
                   When's your birthday?
                 </ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.subtitle}>
-                  This helps us personalize your experience
+                  We need it to make sure Stryde is right for you
                 </ThemedText>
 
-                <TouchableOpacity
-                  style={[
-                    styles.dateButton,
-                    {
-                      backgroundColor: tint(theme.brand.primary, 0.06),
-                      borderColor: theme.brand.primary,
-                    },
-                  ]}
-                  onPress={() => setShowDatePicker(true)}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select your birthday"
-                >
+                <BirthdayField
+                  value={birthday}
+                  onChange={setBirthday}
+                  tone="brand"
+                  style={styles.fieldWidth}
+                />
+                {tooYoung ? (
                   <ThemedText
-                    style={{
-                      color: birthday ? theme.brand.primary : tint(theme.brand.primary, 0.5),
-                      fontSize: 16,
-                    }}
+                    themeColor="dangerText"
+                    style={styles.subtitle}
+                    accessibilityLiveRegion="polite"
                   >
-                    {birthday
-                      ? birthday.toLocaleDateString('en-US', {
-                          month: 'long',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })
-                      : 'Select your birthday'}
+                    {`You need to be at least ${MIN_AGE} to use Stryde.`}
                   </ThemedText>
-                  <Ionicons name="calendar-outline" size={20} color={theme.brand.primary} />
-                </TouchableOpacity>
-
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={birthday || getMaxDate()}
-                    mode="date"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_, selectedDate) => {
-                      setShowDatePicker(Platform.OS === 'ios');
-                      if (selectedDate) setBirthday(selectedDate);
-                    }}
-                    maximumDate={getMaxDate()}
-                    minimumDate={new Date(1920, 0, 1)}
-                  />
-                )}
+                ) : null}
               </>
             )}
 
             {step === 'gender' && (
               <>
-                <ThemedText type="title" style={styles.title}>
+                <ThemedText type="display" style={styles.title}>
                   What's your gender?
                 </ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.subtitle}>
                   This helps with leaderboards and insights
                 </ThemedText>
 
-                <View style={styles.genderGrid} accessibilityRole="radiogroup">
-                  {GENDER_OPTIONS.map((option) => {
-                    const selected = gender === option.value;
-                    return (
-                      <TouchableOpacity
-                        key={option.value}
-                        style={[
-                          styles.genderCard,
-                          {
-                            backgroundColor: selected
-                              ? theme.brand.primary
-                              : tint(theme.brand.primary, 0.06),
-                            borderColor: selected
-                              ? theme.brand.primary
-                              : tint(theme.brand.primary, 0.19),
-                          },
-                        ]}
-                        onPress={() => setGender(option.value)}
-                        activeOpacity={0.7}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected }}
-                      >
-                        <Ionicons
-                          name={option.icon as keyof typeof Ionicons.glyphMap}
-                          size={20}
-                          color={selected ? Brand.white : theme.brand.primary}
-                        />
-                        <ThemedText
-                          style={{
-                            color: selected ? Brand.white : theme.brand.primary,
-                            fontWeight: '600',
-                            fontSize: 14,
-                          }}
-                        >
-                          {option.label}
-                        </ThemedText>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <GenderPicker
+                  selected={gender}
+                  onSelect={setGender}
+                  tone="brand"
+                  style={styles.fieldWidth}
+                />
+              </>
+            )}
+
+            {step === 'body' && (
+              <>
+                <ThemedText type="display" style={styles.title}>
+                  Units and weight
+                </ThemedText>
+                <ThemedText themeColor="textSecondary" style={styles.subtitle}>
+                  Weight and height are optional. They stay on this phone and are used for calories
+                  and heart-rate estimates.
+                </ThemedText>
+
+                <View style={[styles.form, styles.fieldWidth]}>
+                  <SegmentedChoice<UnitSystem>
+                    options={UNIT_OPTIONS}
+                    selected={units}
+                    onSelect={setUnits}
+                  />
+                  <TextField
+                    placeholder={`Weight in ${units === 'imperial' ? 'lb' : 'kg'} (optional)`}
+                    value={weight}
+                    onChangeText={setWeight}
+                    keyboardType="decimal-pad"
+                    error={weightInvalid ? `Enter a weight ${weightRangeText(units)}` : null}
+                  />
+                  <TextField
+                    placeholder={
+                      units === 'imperial'
+                        ? `Height in ft and in, e.g. 5'10 (optional)`
+                        : 'Height in cm (optional)'
+                    }
+                    value={height}
+                    onChangeText={setHeight}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={7}
+                    error={heightInvalid ? 'Enter a height between 100 and 250 cm' : null}
+                  />
                 </View>
               </>
             )}
@@ -399,11 +406,11 @@ export default function ProfileSetupScreen() {
               <>
                 <Ionicons
                   name={worldVerification.isVerified ? 'checkmark-circle' : 'shield-checkmark'}
-                  size={48}
+                  size={40}
                   color={theme.brand.primary}
                   style={{ marginBottom: Spacing.two }}
                 />
-                <ThemedText type="title" style={styles.title}>
+                <ThemedText type="display" style={styles.title}>
                   {worldVerification.isVerified ? "You're verified" : 'Verify with World ID'}
                 </ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.subtitle}>
@@ -412,52 +419,58 @@ export default function ProfileSetupScreen() {
                     : 'Optional: prove you’re a real person with World ID Selfie Check. Verified athletes get a badge and fairer leaderboards/territory claims.'}
                 </ThemedText>
 
-                {!worldVerification.isVerified && (
-                  <Card style={{ width: '100%', maxWidth: 400, gap: Spacing.two }}>
-                    <AppButton
-                      onPress={worldVerification.startVerification}
-                      loading={worldVerification.isBusy}
-                      disabled={!worldVerification.isConfigured || worldVerification.isBusy}
-                      icon={<Ionicons name="scan-outline" size={18} color={Brand.white} />}
-                    >
-                      Verify with World ID
-                    </AppButton>
-                    {worldVerification.error && (
-                      <ThemedText type="small" style={{ color: theme.brand.danger }}>
-                        {worldVerification.error.message}
-                      </ThemedText>
-                    )}
-                  </Card>
+                {worldVerification.error && (
+                  <ThemedText type="small" themeColor="dangerText" style={styles.stepError}>
+                    {worldVerification.error.message}
+                  </ThemedText>
+                )}
+                {/* Registration runs when this step finishes; its errors would
+                    otherwise only render under the username field two steps back. */}
+                {error && (
+                  <ThemedText type="small" themeColor="dangerText" style={styles.stepError}>
+                    {error}
+                  </ThemedText>
                 )}
               </>
             )}
           </View>
 
           <View style={styles.footer}>
-            <AppButton
-              onPress={handleNext}
-              style={styles.button}
-              disabled={!canContinue() || isSubmitting}
-            >
-              {isSubmitting
-                ? 'Please wait...'
-                : step === 'verify'
-                  ? hasWallet
-                    ? 'Continue'
-                    : 'Get Started'
-                  : 'Next'}
-            </AppButton>
+            {/* Unverified: the one primary action is verifying; finishing
+                without it is the secondary "Skip for now" link. Verified: the
+                primary action finishes setup. */}
+            {step === 'verify' && !worldVerification.isVerified ? (
+              <AppButton
+                onPress={worldVerification.startVerification}
+                style={styles.button}
+                loading={worldVerification.isBusy}
+                disabled={
+                  !worldVerification.isConfigured || worldVerification.isBusy || isSubmitting
+                }
+                icon={<Ionicons name="scan-outline" size={18} color={Brand.white} />}
+              >
+                Verify with World ID
+              </AppButton>
+            ) : (
+              <AppButton
+                onPress={handleNext}
+                style={styles.button}
+                disabled={!canContinue() || isSubmitting}
+              >
+                {submitLabel(isSubmitting, step)}
+              </AppButton>
+            )}
             {step === 'verify' && !worldVerification.isVerified && (
-              <TouchableOpacity
+              <Tappable
                 onPress={handleNext}
                 hitSlop={8}
                 disabled={isSubmitting}
                 style={styles.skipLink}
               >
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  Skip for now
+                <ThemedText type="small" themeColor="textSecondary">
+                  {isSubmitting ? 'Creating your profile…' : 'Skip for now'}
                 </ThemedText>
-              </TouchableOpacity>
+              </Tappable>
             )}
           </View>
         </KeyboardAvoidingView>
@@ -467,6 +480,11 @@ export default function ProfileSetupScreen() {
 }
 
 const styles = StyleSheet.create({
+  fieldWidth: { width: '100%', maxWidth: 400 },
+  stepError: {
+    textAlign: 'center',
+    marginTop: Spacing.two,
+  },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
@@ -503,27 +521,6 @@ const styles = StyleSheet.create({
   title: { marginBottom: Spacing.two, textAlign: 'center' },
   subtitle: { marginBottom: Spacing.six, textAlign: 'center', paddingHorizontal: Spacing.four },
   form: { width: '100%', maxWidth: 400, gap: Spacing.three },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-    width: '100%',
-    maxWidth: 400,
-  },
-  genderGrid: { gap: Spacing.two, width: '100%', maxWidth: 400 },
-  genderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-  },
   footer: {
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
