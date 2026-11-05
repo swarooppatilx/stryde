@@ -66,6 +66,7 @@
       ]
     },
     "plugins": [
+      "./plugins/withSceneLifecycle.cjs",
       "expo-router",
       "react-native-health-connect",
       [
