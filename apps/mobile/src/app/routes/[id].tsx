@@ -6,15 +6,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { ListMessage } from '@/components/list-message';
 import { MapRoute } from '@/components/map-route';
+import { OfflineMapCard } from '@/components/offline-map-card';
 import { RouteElevationCard } from '@/components/route-elevation-card';
 import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { mapboxStyleUrl } from '@/constants/mapboxStyle';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useGoBack } from '@/hooks/useGoBack';
+import { useOfflineRouteMap } from '@/hooks/useOfflineRouteMap';
 import { useRouteElevation } from '@/hooks/useRouteElevation';
 import { resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRouteStore } from '@/stores/routeStore';
@@ -36,11 +39,14 @@ export default function RouteDetailScreen() {
   const goBack = useGoBack();
   const unitSystem = useUnitSystem();
   const stylePref = useMapPrefsStore((s) => s.style);
+  const mapType = useMapPrefsStore((s) => s.mapType);
+  const dark = resolveMapStyle(stylePref, theme.isDark) === 'dark';
   const route = useRouteStore((s) => s.routes.find((r) => r.id === id));
   const { rename, remove, toggleStar } = useRouteStore.getState();
   const line = useMemo(() => parsePolyline(route?.polyline ?? ''), [route?.polyline]);
   const elevation = useRouteElevation(line);
   const [name, setName] = useState<string | null>(null);
+  const offline = useOfflineRouteMap(id ?? '', line, mapboxStyleUrl(dark, mapType));
 
   if (!route) {
     return (
@@ -128,13 +134,19 @@ export default function RouteDetailScreen() {
                     ]
                   : []
               }
-              dark={resolveMapStyle(stylePref, theme.isDark) === 'dark'}
+              dark={dark}
+              mapType={mapType}
             />
           </View>
           <ThemedText type="small" themeColor="textSecondary">
             {`${formatDistance(route.distance, unitSystem)} · ${SPORT_LABEL[route.sport] ?? route.sport}`}
           </ThemedText>
           <RouteElevationCard line={line} elevation={elevation} />
+          <OfflineMapCard
+            status={offline.status}
+            onDownload={() => void offline.download()}
+            onRemove={() => void offline.remove()}
+          />
           {name === null ? (
             <View style={styles.actions}>
               <AppButton onPress={() => router.push(`/flyover?routeId=${route.id}`)}>
