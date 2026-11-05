@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,6 +20,7 @@ import {
   getApproval,
   getHumanStatus,
   type HumanAction,
+  type HumanAuth,
   type HumanStatus,
   isTerminal,
   listApprovals,
@@ -71,7 +72,11 @@ function LadderStep({ done, title, caption }: { done: boolean; title: string; ca
 export default function CoachScreen() {
   const router = useRouter();
   const theme = useTheme();
-  const { address } = useViemWallet();
+  const { wallet, address } = useViemWallet();
+  const auth = useMemo<HumanAuth | null>(
+    () => (wallet && address ? { wallet, address } : null),
+    [wallet, address]
+  );
   const selfieVerified = useWorldVerificationStore((s) => s.isVerified);
   const [status, setStatus] = useState<HumanStatus | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -82,15 +87,15 @@ export default function CoachScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!address) return;
+    if (!auth) return;
     try {
-      const [nextStatus, list] = await Promise.all([getHumanStatus(address), listApprovals(address)]);
+      const [nextStatus, list] = await Promise.all([getHumanStatus(auth), listApprovals(auth)]);
       // Reading an approval advances it, so an agent request approved in World
       // App completes even if the agent has stopped polling.
       const advanced = await Promise.all(
         list.approvals.map((a) =>
           a.initiator === 'agent' && !isTerminal(a.status)
-            ? getApproval(a.id, address).catch(() => a)
+            ? getApproval(a.id, auth).catch(() => a)
             : Promise.resolve(a)
         )
       );
@@ -100,7 +105,7 @@ export default function CoachScreen() {
     } catch (error) {
       setLoadError((error as Error).message);
     }
-  }, [address]);
+  }, [auth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,10 +116,10 @@ export default function CoachScreen() {
   );
 
   const run = async (action: HumanAction, params: Record<string, unknown> = {}) => {
-    if (!address) return;
+    if (!auth) return;
     setBusy(action);
     try {
-      const result = await requestHumanApproval(address, action, params, setActive);
+      const result = await requestHumanApproval(auth, action, params, setActive);
       if (result.status === 'completed') {
         Toast.success('Approved with World ID', 2);
         const token = result.result?.token;
@@ -132,20 +137,20 @@ export default function CoachScreen() {
   };
 
   const decline = async (approval: Approval) => {
-    if (!address) return;
-    await cancelApproval(approval.id, address).catch(() => undefined);
+    if (!auth) return;
+    await cancelApproval(approval.id, auth).catch(() => undefined);
     refresh();
   };
 
   const revoke = (grantId: string, label: string) => {
-    if (!address) return;
+    if (!auth) return;
     Alert.alert('Disconnect agent?', `${label} will lose access immediately.`, [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Disconnect',
         style: 'destructive',
         onPress: async () => {
-          await revokeAgent(grantId, address).catch(() => undefined);
+          await revokeAgent(grantId, auth).catch(() => undefined);
           refresh();
         },
       },
