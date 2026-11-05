@@ -18,14 +18,14 @@ fn saturating_u32(value: &BigInt) -> u32 {
 
 // Sepolia deployment — must match packages/shared/src/constants.ts and
 // packages/subgraph/subgraph.yaml.
-const PROFILE_REGISTRY: [u8; 20] = hex!("7f7c12c204229a76815470707de2384cd369ba23");
-const ACTIVITY_REGISTRY: [u8; 20] = hex!("569dffc017a0040e381ae859dcfd34ff7fb94b1c");
-const TERRITORY_REGISTRY: [u8; 20] = hex!("47a345474256c297eb78e28f1eb5026269b8220a");
-const SEASON_MANAGER: [u8; 20] = hex!("e4a98f8eee705a9114d8bed7a9064cc00be14ccd");
-const ACHIEVEMENT_REGISTRY: [u8; 20] = hex!("545945d83ff0dee4dbe993884e6951ea994bbe8e");
-const CHALLENGE_REGISTRY: [u8; 20] = hex!("0a149740740927270326c7014e7c04aa5a0a299d");
-const GROUP_REGISTRY: [u8; 20] = hex!("314c216c504cec6a2ccc0621fc3e25ff3487ffdd");
-const SOCIAL_REGISTRY: [u8; 20] = hex!("0e8b3ca753d64809a2fe3982952bd86f9ff301ac");
+const PROFILE_REGISTRY: [u8; 20] = hex!("348ce6af8ea0c50fb44f284dcca73b7ee5112314");
+const ACTIVITY_REGISTRY: [u8; 20] = hex!("30a910fc25f0977907af86345c0b26c34e7d2439");
+const TERRITORY_REGISTRY: [u8; 20] = hex!("22802b1c6fda5ca6fbc519830879a17214dba1e2");
+const SEASON_MANAGER: [u8; 20] = hex!("fc42018ea93384fa6703d0eb72656c67261d1732");
+const ACHIEVEMENT_REGISTRY: [u8; 20] = hex!("537f289b59b9944e14978a23f57133b738747f81");
+const CHALLENGE_REGISTRY: [u8; 20] = hex!("6e196c21292e0ede7748a04a5a62be0b6ae6004c");
+const GROUP_REGISTRY: [u8; 20] = hex!("eebbd3aaadcc95919e6f3a78e3a2cda57d0a3241");
+const SOCIAL_REGISTRY: [u8; 20] = hex!("fc97445a56b61471720ef9e2bb0759d8d3c76561");
 
 /// Decodes every Stryde contract event in the block. Topic hashes and field
 /// layouts come from the ABI-generated bindings in `src/abi` (see build.rs),
