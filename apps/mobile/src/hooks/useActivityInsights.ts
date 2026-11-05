@@ -23,9 +23,13 @@ export function useActivityInsights(activity: Activity | null | undefined, isOwn
       ? timeInZones(heartRateStream, maxHr, restingHr, zoneFloors)
       : [];
   const similar = activity && isOwner ? similarRuns(activity, ownActivities) : null;
+  // Records only compare like with like: a ride must not take the running 5 km badge.
+  const sameSport = activity
+    ? ownActivities.filter((a) => a.activityType === activity.activityType)
+    : [];
   const heldRecords =
     activity && isOwner
-      ? recordsHeldBy(personalRecords(ownActivities), activity.id, ownActivities.length)
+      ? recordsHeldBy(personalRecords(sameSport), activity.id, sameSport.length)
       : [];
 
   return {
