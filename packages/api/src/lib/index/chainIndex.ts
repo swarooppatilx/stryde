@@ -9,6 +9,14 @@ import type {
 
 /** Public Sepolia RPCs reject eth_getLogs spans wider than 50,000 blocks. */
 export const LOG_WINDOW_BLOCKS = 50_000n;
+/** Blocks this far below the head are treated as final (about two Ethereum epochs). */
+export const REORG_DEPTH = 64n;
+/** getLogs windows read at once; more would trip public RPC rate limits. */
+const PARALLEL_WINDOWS = 4;
+/** Distinct queries (one per athlete or challenge) whose settled logs are remembered. */
+const MAX_CACHED_QUERIES = 2000;
+
+type Log = { blockNumber: bigint; args: Record<string, unknown> };
 
 const ACTIVITY_RECORDED = parseAbiItem(
   'event ActivityRecorded(uint256 indexed activityId, address indexed owner, bytes32 indexed activityHash, uint8 activityType, uint256 distance, uint256 duration, uint256 timestamp, uint256 territoryArea)'
@@ -64,26 +72,53 @@ function windows(from: bigint, to: bigint): Array<[bigint, bigint]> {
 
 /**
  * Answers from the chain itself: filtered `getLogs` (the athlete and the challenge id are indexed
- * topics, so each query is narrow) and a few contract reads. Always as fresh as the chain; the cost
- * is one RPC round per 50,000 blocks of history, which the Arkiv-backed index removes.
+ * topics, so each query is narrow) and a few contract reads. Always as fresh as the chain; the first
+ * query costs one RPC round per 50,000 blocks of history, later ones only the blocks since.
  */
 export function createChainIndex(
   client: IndexClient,
   contracts: IndexContracts,
   deployBlock: bigint
 ): ChainIndex {
-  async function logs(
-    address: Address,
-    event: unknown,
-    args: Record<string, unknown>
-  ): Promise<Array<{ blockNumber: bigint; args: Record<string, unknown> }>> {
+  // Logs deeper than REORG_DEPTH never change, so each query remembers them and later calls scan
+  // only the blocks after. The newest blocks are always read again, since a reorg can still drop them.
+  const settledLogs = new Map<string, { upTo: bigint; logs: Log[] }>();
+
+  async function logs(address: Address, event: unknown, args: Record<string, unknown>) {
     // Fresh, not viem's cached head (about four seconds old): a run recorded a moment ago would be missed.
     const head = await client.getBlockNumber({ cacheTime: 0 });
-    const found: Array<{ blockNumber: bigint; args: Record<string, unknown> }> = [];
-    for (const [fromBlock, toBlock] of windows(deployBlock, head)) {
-      found.push(...(await client.getLogs({ address, event, args, fromBlock, toBlock })));
+    const key = `${address}:${(event as { name?: string }).name}:${JSON.stringify(args, (_k, v) =>
+      typeof v === 'bigint' ? v.toString() : v
+    )}`;
+    const known = settledLogs.get(key);
+    const from = known ? known.upTo + 1n : deployBlock;
+
+    const ranges = windows(from, head);
+    const fresh: Log[] = [];
+    for (let i = 0; i < ranges.length; i += PARALLEL_WINDOWS) {
+      const batch = await Promise.all(
+        ranges
+          .slice(i, i + PARALLEL_WINDOWS)
+          .map(([fromBlock, toBlock]) =>
+            client.getLogs({ address, event, args, fromBlock, toBlock })
+          )
+      );
+      for (const found of batch) fresh.push(...found);
     }
-    return found;
+
+    const settled = head - REORG_DEPTH;
+    if (settled >= from) {
+      settledLogs.delete(key);
+      if (settledLogs.size >= MAX_CACHED_QUERIES) {
+        const oldest = settledLogs.keys().next().value;
+        if (oldest !== undefined) settledLogs.delete(oldest);
+      }
+      settledLogs.set(key, {
+        upTo: settled,
+        logs: [...(known?.logs ?? []), ...fresh.filter((l) => l.blockNumber <= settled)],
+      });
+    }
+    return [...(known?.logs ?? []), ...fresh];
   }
 
   return {

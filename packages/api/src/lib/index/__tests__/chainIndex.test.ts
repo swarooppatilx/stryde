@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createChainIndex, LOG_WINDOW_BLOCKS } from '../chainIndex.js';
+import { createChainIndex, LOG_WINDOW_BLOCKS, REORG_DEPTH } from '../chainIndex.js';
 
 const ME = '0x00000000000000000000000000000000000000aa';
 const THEM = '0x00000000000000000000000000000000000000bb';
@@ -115,6 +115,31 @@ describe('activities', () => {
       expect((ranges[i]?.[0] ?? 0n) - (ranges[i - 1]?.[1] ?? 0n)).toBe(1n);
     }
     for (const [from, to] of ranges) expect(to - from + 1n <= LOG_WINDOW_BLOCKS).toBe(true);
+  });
+
+  it('scans only the blocks since the settled part of the last scan', async () => {
+    const head = vi.fn(async () => 120_000n);
+    const onChain = [recorded(1_000n, 100n, 1_000n), recorded(119_990n, 200n, 2_000n)];
+    const client = fakeClient({
+      getBlockNumber: head,
+      getLogs: vi.fn(async (p?: unknown) => {
+        const { fromBlock, toBlock } = p as { fromBlock: bigint; toBlock: bigint };
+        return onChain.filter((l) => l.blockNumber >= fromBlock && l.blockNumber <= toBlock);
+      }),
+    });
+    const index = createChainIndex(client as never, contracts, 0n);
+
+    await index.activities(ME);
+    client.getLogs.mockClear();
+    head.mockResolvedValue(120_010n);
+    const found = await index.activities(ME);
+
+    expect(client.getLogs).toHaveBeenCalledOnce();
+    const call = client.getLogs.mock.calls[0]?.[0] as { fromBlock: bigint; toBlock: bigint };
+    expect(call.fromBlock).toBe(120_000n - REORG_DEPTH + 1n);
+    expect(call.toBlock).toBe(120_010n);
+    // The settled log comes from memory, the recent one from the rescan: each exactly once.
+    expect(found.map((a) => a.distance)).toEqual([100, 200]);
   });
 
   it('starts at the deploy block, not at genesis', async () => {
