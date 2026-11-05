@@ -186,6 +186,18 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
       args: [WALLET, keccak256(toBytes('raw-id-1'))],
     });
   });
+
+  it('does not mirror a proof without a nullifier, which would let one human verify many wallets', async () => {
+    pollStatus.current = { type: 'confirmed', result: { responses: [{}] } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
+    const world = await loadWorld({ skip: false });
+
+    const result = await startAndPoll(world);
+
+    expect(result.status).toBe('confirmed');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
 });
 
 describe('polling a session', () => {

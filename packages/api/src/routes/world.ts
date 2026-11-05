@@ -59,16 +59,21 @@ interface SessionEntry {
 const HEX_BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
 
 /** World returns a bytes32 nullifier; anything else is hashed so distinct values never collide. */
-function toNullifierHash(nullifier: string | null): `0x${string}` {
-  return HEX_BYTES32_RE.test(nullifier ?? '')
+function toNullifierHash(nullifier: string): `0x${string}` {
+  return HEX_BYTES32_RE.test(nullifier)
     ? (nullifier as `0x${string}`)
-    : keccak256(toBytes(nullifier ?? randomUUID()));
+    : keccak256(toBytes(nullifier));
 }
 
 /** Best effort: the caller is already verified by World, so a failed mirror is only logged. */
 async function mirrorVerificationOnchain(wallet: string, nullifier: string | null): Promise<void> {
   if (!isAddress(wallet)) {
     console.warn(`[world] Skipping onchain verify mirror: not a wallet address: ${wallet}`);
+    return;
+  }
+  // The nullifier is what stops one human verifying many wallets; without it there is nothing to bind.
+  if (!nullifier) {
+    console.warn(`[world] Skipping onchain verify mirror: no nullifier in the proof for ${wallet}`);
     return;
   }
   try {
