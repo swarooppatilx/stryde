@@ -8,6 +8,7 @@ import {
 } from '@/services/healthImport';
 import { useActivityStore } from '@/stores/activityStore';
 import { useHealthStore } from '@/stores/healthStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { logger } from '@/utils/logger';
 import { usePostRun } from './usePostRun';
 
@@ -56,7 +57,8 @@ export function useHealthImport() {
         existing: () => useActivityStore.getState().activities,
         // Saved like any other activity: on this device first, then on-chain through the usual queue.
         save: async (workout) => {
-          await save(activityInputFromWorkout(workout));
+          const { hideRouteEnds, privacyZones } = useSettingsStore.getState();
+          await save({ ...activityInputFromWorkout(workout), hideRouteEnds, privacyZones });
         },
       });
       if (outcome.status === 'done') useHealthStore.getState().markImported(clock.now());

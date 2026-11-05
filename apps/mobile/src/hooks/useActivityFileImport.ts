@@ -78,13 +78,13 @@ export function useActivityFileImport() {
   const importSelected = useCallback(async () => {
     if (importing) return;
     setImporting(true);
-    const privacy = useSettingsStore.getState().defaultPrivacy;
+    const { defaultPrivacy: privacy, hideRouteEnds, privacyZones } = useSettingsStore.getState();
     let imported = 0;
     let failed = 0;
     for (const item of items) {
       if (!item.selected) continue;
       try {
-        await save({ ...item.input, privacy });
+        await save({ ...item.input, privacy, hideRouteEnds, privacyZones });
         imported++;
       } catch (error) {
         logger.warn('[Import] Could not save an activity', error);
