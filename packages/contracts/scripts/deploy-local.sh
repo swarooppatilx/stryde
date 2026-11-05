@@ -40,7 +40,7 @@ OUTPUT=$(forge script script/DeployProfileRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-PROFILE_ADDRESS=$(echo "$OUTPUT" | grep -oP 'ProfileRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+PROFILE_ADDRESS=$(echo "$OUTPUT" | grep -oE 'ProfileRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("profileRegistry=$PROFILE_ADDRESS")
 
 echo ""
@@ -49,7 +49,7 @@ OUTPUT=$(forge script script/DeployActivityRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-ACTIVITY_ADDRESS=$(echo "$OUTPUT" | grep -oP 'ActivityRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+ACTIVITY_ADDRESS=$(echo "$OUTPUT" | grep -oE 'ActivityRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("activityRegistry=$ACTIVITY_ADDRESS")
 
 echo ""
@@ -58,7 +58,7 @@ OUTPUT=$(forge script script/DeployTerritoryRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-TERRITORY_ADDRESS=$(echo "$OUTPUT" | grep -oP 'TerritoryRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+TERRITORY_ADDRESS=$(echo "$OUTPUT" | grep -oE 'TerritoryRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("territoryRegistry=$TERRITORY_ADDRESS")
 
 echo ""
@@ -67,7 +67,7 @@ OUTPUT=$(forge script script/DeploySeasonManager.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-SEASON_ADDRESS=$(echo "$OUTPUT" | grep -oP 'SeasonManager deployed at: \K0x[a-fA-F0-9]{40}')
+SEASON_ADDRESS=$(echo "$OUTPUT" | grep -oE 'SeasonManager deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("seasonManager=$SEASON_ADDRESS")
 
 echo ""
@@ -76,7 +76,7 @@ OUTPUT=$(forge script script/DeployAchievementRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-ACHIEVEMENT_ADDRESS=$(echo "$OUTPUT" | grep -oP 'AchievementRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+ACHIEVEMENT_ADDRESS=$(echo "$OUTPUT" | grep -oE 'AchievementRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("achievementRegistry=$ACHIEVEMENT_ADDRESS")
 
 echo ""
@@ -85,7 +85,7 @@ OUTPUT=$(forge script script/DeployChallengeRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-CHALLENGE_ADDRESS=$(echo "$OUTPUT" | grep -oP 'ChallengeRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+CHALLENGE_ADDRESS=$(echo "$OUTPUT" | grep -oE 'ChallengeRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("challengeRegistry=$CHALLENGE_ADDRESS")
 
 echo ""
@@ -94,7 +94,7 @@ OUTPUT=$(forge script script/DeployTerritoryNFT.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-TERRITORY_NFT_ADDRESS=$(echo "$OUTPUT" | grep -oP 'TerritoryNFT deployed at: \K0x[a-fA-F0-9]{40}')
+TERRITORY_NFT_ADDRESS=$(echo "$OUTPUT" | grep -oE 'TerritoryNFT deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("territoryNFT=$TERRITORY_NFT_ADDRESS")
 
 echo ""
@@ -103,7 +103,7 @@ OUTPUT=$(forge script script/DeployMoveToEarnToken.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-MOVE_TO_EARN_ADDRESS=$(echo "$OUTPUT" | grep -oP 'MoveToEarnToken deployed at: \K0x[a-fA-F0-9]{40}')
+MOVE_TO_EARN_ADDRESS=$(echo "$OUTPUT" | grep -oE 'MoveToEarnToken deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("moveToEarnToken=$MOVE_TO_EARN_ADDRESS")
 
 echo ""
@@ -112,7 +112,7 @@ OUTPUT=$(forge script script/DeployGroupRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-GROUP_ADDRESS=$(echo "$OUTPUT" | grep -oP 'GroupRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+GROUP_ADDRESS=$(echo "$OUTPUT" | grep -oE 'GroupRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("groupRegistry=$GROUP_ADDRESS")
 
 echo ""
@@ -121,14 +121,14 @@ OUTPUT=$(forge script script/DeploySocialRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-SOCIAL_ADDRESS=$(echo "$OUTPUT" | grep -oP 'SocialRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+SOCIAL_ADDRESS=$(echo "$OUTPUT" | grep -oE 'SocialRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("socialRegistry=$SOCIAL_ADDRESS")
 echo "--- EventRegistry ---"
 OUTPUT=$(forge script script/DeployEventRegistry.s.sol \
   --rpc-url "$ANVIL_RPC" \
   --broadcast 2>&1)
 echo "$OUTPUT"
-EVENT_ADDRESS=$(echo "$OUTPUT" | grep -oP 'EventRegistry deployed at: \K0x[a-fA-F0-9]{40}')
+EVENT_ADDRESS=$(echo "$OUTPUT" | grep -oE 'EventRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("eventRegistry=$EVENT_ADDRESS")
 
 echo ""
