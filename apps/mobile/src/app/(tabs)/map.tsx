@@ -11,6 +11,7 @@ import { MapLayersSheet } from '@/components/map-layers-sheet';
 import { MapLegend } from '@/components/map-legend';
 import { type MapMarker, MapRoute } from '@/components/map-route';
 import { MapSearchBar } from '@/components/map-search-bar';
+import { PoiCard } from '@/components/poi-card';
 import { Tappable } from '@/components/tappable';
 import { TerritorySheet } from '@/components/territory-sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -31,6 +32,7 @@ import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/map
 import { MEDIUM_MAX, SHORT_MAX } from '@/utils/distanceFilter';
 import { formatDistance, parsePolyline } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import type { MapPoi } from '@/utils/poi';
 import { routeChips } from '@/utils/routeChips';
 import { SHEET_HEIGHTS } from '@/utils/sheetSnap';
 
@@ -96,6 +98,7 @@ export default function MapScreen() {
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   // Map-only: every control, the sheet and the tab bar step aside for an uncluttered map.
   const [mapOnly, setMapOnly] = useState(false);
+  const [poi, setPoi] = useState<MapPoi | null>(null);
   useHideTabBar(mapOnly);
   const router = useRouter();
   const { preview, setPreview, hide: hidePreview } = useRoutePreview();
@@ -251,6 +254,13 @@ export default function MapScreen() {
         onMapPress={() => {
           Keyboard.dismiss();
           dismissResults();
+          setPoi(null);
+        }}
+        onPoiPress={(place) => {
+          Keyboard.dismiss();
+          dismissResults();
+          haptics.selection();
+          setPoi(place);
         }}
         onMapLongPress={([lng, lat]) => {
           haptics.impactMedium();
@@ -527,6 +537,9 @@ export default function MapScreen() {
           onPreviewRoute={setPreview}
           previewId={preview?.id ?? null}
         />
+      )}
+      {poi && !selectedTerritory && (
+        <PoiCard poi={poi} from={location} sport={sportFilter} onClose={() => setPoi(null)} />
       )}
       {/* After the map sheet, so a tapped territory's card sits on top of it instead of behind. */}
       {selectedTerritory && (

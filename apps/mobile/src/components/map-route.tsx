@@ -48,6 +48,7 @@ import {
   type TerritoryFeatureInput,
   territoryFeatureCollection,
 } from '@/utils/mapData';
+import { type MapPoi, poiFromFeature } from '@/utils/poi';
 import type { Bounds } from '@/utils/routeBounds';
 import type { SplitMarker } from '@/utils/splitMarkers';
 
@@ -88,6 +89,8 @@ export interface MapRouteProps {
   onFollowChange?: (following: boolean) => void;
   /** A tap on empty map (a tap on a territory also arrives here). */
   onMapPress?: () => void;
+  /** A tap on a labelled place of the base map (café, toilets, viewpoint…); takes the tap from `onMapPress`. */
+  onPoiPress?: (poi: MapPoi) => void;
   /** A long press, at [lng, lat]. */
   onMapLongPress?: (lngLat: [number, number]) => void;
   initialCenter?: [number, number];
@@ -177,6 +180,9 @@ const TRACKING_MODE = {
   course: UserTrackingMode.FollowWithCourse,
 } as const;
 
+/** How far from a label (in points) a finger can land and still pick it. */
+const POI_TAP_SLOP = 14;
+
 /** Bike lanes widen with zoom like the roads around them. */
 const BIKE_LANE_WIDTH = ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 3.5, 18, 5] as never;
 
@@ -264,6 +270,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   followUser,
   onFollowChange,
   onMapPress,
+  onPoiPress,
   onMapLongPress,
   initialCenter = [73.851074, 18.524209],
   initialZoom = 15,
@@ -294,6 +301,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   onMapReady,
 }: MapRouteProps) {
   const nativeCameraRef = useRef<CameraRef>(null);
+  const mapViewRef = useRef<MapView>(null);
   useImperativeHandle(cameraRef, () => createMapCamera(nativeCameraRef), []);
 
   // A live route grows by one point per fix; only a longer line or a new last point is new geometry.
@@ -352,8 +360,31 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   const streets = !styleFailed && hasStreetData(mapType);
   const darkBase = isDarkBase(dark, mapType);
 
+  /** A tap that lands on a place label opens it; anything else is a plain map tap. */
+  const handlePress = async (screen: { screenPointX: number; screenPointY: number }) => {
+    if (onPoiPress && streets && poi) {
+      const { screenPointX: x, screenPointY: y } = screen;
+      try {
+        const hits = await mapViewRef.current?.queryRenderedFeaturesInRect(
+          [y - POI_TAP_SLOP, x - POI_TAP_SLOP, y + POI_TAP_SLOP, x + POI_TAP_SLOP],
+          [],
+          [POI_LABEL_LAYER]
+        );
+        const place = hits?.features.map(poiFromFeature).find((p) => p !== null);
+        if (place) {
+          onPoiPress(place);
+          return;
+        }
+      } catch {
+        // A failed query is just a tap on the map.
+      }
+    }
+    onMapPress?.();
+  };
+
   return (
     <MapView
+      ref={mapViewRef}
       style={[styles.map, style]}
       {...(styleFailed
         ? { styleJSON: offlineStyleJSON }
@@ -363,7 +394,9 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
       scaleBarEnabled={false}
       onDidFinishLoadingMap={onMapReady}
       onDidFailLoadingMap={onStyleFailed}
-      onPress={onMapPress ? () => onMapPress() : undefined}
+      onPress={
+        onMapPress || onPoiPress ? (feature) => void handlePress(feature.properties) : undefined
+      }
       onLongPress={
         onMapLongPress
           ? (feature) => {
