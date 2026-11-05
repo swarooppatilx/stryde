@@ -1,6 +1,18 @@
 import { haversineDistance } from '@/utils/geo';
 import type { RoutePoint } from '@/utils/route';
 
+export const addWaypoint = (points: readonly RoutePoint[], point: RoutePoint): RoutePoint[] => [
+  ...points,
+  point,
+];
+
+export const undoWaypoint = (points: readonly RoutePoint[]): RoutePoint[] => points.slice(0, -1);
+
+export const clearWaypoints = (): RoutePoint[] => [];
+
+export const reverseWaypoints = (points: readonly RoutePoint[]): RoutePoint[] =>
+  [...points].reverse();
+
 /** Length in metres of straight lines joining the points in order. */
 export function waypointsDistance(points: readonly RoutePoint[]): number {
   let total = 0;
@@ -32,4 +44,20 @@ export function sampleAlong(points: readonly RoutePoint[], stepM: number, max = 
     out.push(b);
   }
   return out;
+}
+
+/** Back the way you came: the points again in reverse, without doubling the turnaround. */
+export function outAndBack(points: readonly RoutePoint[]): RoutePoint[] {
+  if (points.length < 2) return [...points];
+  return [...points, ...[...points].reverse().slice(1)];
+}
+
+/** Replaces one waypoint, e.g. after it was dragged. */
+export function moveWaypoint(
+  points: readonly RoutePoint[],
+  index: number,
+  point: RoutePoint
+): RoutePoint[] {
+  if (index < 0 || index >= points.length) return [...points];
+  return points.map((p, i) => (i === index ? point : p));
 }

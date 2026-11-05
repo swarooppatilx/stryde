@@ -5,6 +5,7 @@ import { ActivityIndicator, Keyboard, Pressable, StyleSheet, View } from 'react-
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionSheet, type SheetAction } from '@/components/action-sheet';
+import type { SportFilter } from '@/components/filter-chips';
 import { MapBottomSheet } from '@/components/map-bottom-sheet';
 import { type MapChip, MapChips } from '@/components/map-chips';
 import { MapLayersSheet } from '@/components/map-layers-sheet';
@@ -41,6 +42,16 @@ const TIME_FILTERS: Array<{ value: TimeFilter; label: string }> = [
   { value: '7d', label: 'Past week' },
   { value: '30d', label: 'Past month' },
 ];
+
+/** The route builder's sport for the map's sport filter. */
+const BUILDER_SPORT: Record<SportFilter, 'run' | 'ride' | 'walk' | 'hike'> = {
+  all: 'walk',
+  run: 'run',
+  ride: 'ride',
+  hike: 'hike',
+  swim: 'walk',
+  multi: 'walk',
+};
 
 const LOCATE_ICON = {
   off: 'locate-outline',
@@ -540,7 +551,22 @@ export default function MapScreen() {
         />
       )}
       {poi && !selectedTerritory && (
-        <PoiCard poi={poi} from={location} sport={sportFilter} onClose={() => setPoi(null)} />
+        <PoiCard
+          poi={poi}
+          from={location}
+          sport={sportFilter}
+          onClose={() => setPoi(null)}
+          onRouteHere={(place) => {
+            setPoi(null);
+            router.push({
+              pathname: '/route-builder',
+              params: {
+                to: `${place.coordinate[0]},${place.coordinate[1]}`,
+                sport: BUILDER_SPORT[sportFilter],
+              },
+            });
+          }}
+        />
       )}
       {/* After the map sheet, so a tapped territory's card sits on top of it instead of behind. */}
       {selectedTerritory && (

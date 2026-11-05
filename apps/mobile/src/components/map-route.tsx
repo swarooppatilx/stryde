@@ -9,6 +9,7 @@ import {
   type MapState,
   MapView,
   MarkerView,
+  PointAnnotation,
   RasterDemSource,
   ShapeSource,
   SymbolLayer,
@@ -60,6 +61,8 @@ export interface MapMarker {
   color: string;
   icon?: string;
   label?: string;
+  /** Can be dragged to a new spot; `onMarkerDragEnd` hears where it was dropped. */
+  draggable?: boolean;
 }
 
 /** A camera move reported by the map: `settled` when it has finished, `userInteraction` for a finger. */
@@ -89,8 +92,10 @@ export interface MapRouteProps {
   followUser?: 'default' | 'heading' | 'course' | undefined;
   /** Called with false when the athlete drags the map off the follow view, true when it follows again. */
   onFollowChange?: (following: boolean) => void;
-  /** A tap on empty map (a tap on a territory also arrives here). */
-  onMapPress?: () => void;
+  /** A tap on empty map, at [lng, lat] (a tap on a territory also arrives here). */
+  onMapPress?: (lngLat: [number, number]) => void;
+  /** A draggable marker was dropped at [lng, lat]. */
+  onMarkerDragEnd?: (id: string, lngLat: [number, number]) => void;
   /** A tap on a labelled place of the base map (café, toilets, viewpoint…); takes the tap from `onMapPress`. */
   onPoiPress?: (poi: MapPoi) => void;
   /** A long press, at [lng, lat]. */
@@ -281,6 +286,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   onFollowChange,
   onMapPress,
   onPoiPress,
+  onMarkerDragEnd,
   onMapLongPress,
   initialCenter = [73.851074, 18.524209],
   initialZoom = 15,
@@ -371,7 +377,10 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   const darkBase = isDarkBase(dark, mapType);
 
   /** A tap that lands on a place label opens it; anything else is a plain map tap. */
-  const handlePress = async (screen: { screenPointX: number; screenPointY: number }) => {
+  const handlePress = async (
+    screen: { screenPointX: number; screenPointY: number },
+    lngLat: [number, number]
+  ) => {
     if (onPoiPress && streets && poi) {
       const { screenPointX: x, screenPointY: y } = screen;
       try {
@@ -389,7 +398,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
         // A failed query is just a tap on the map.
       }
     }
-    onMapPress?.();
+    onMapPress?.(lngLat);
   };
 
   return (
@@ -405,7 +414,12 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
       onDidFinishLoadingMap={onMapReady}
       onDidFailLoadingMap={onStyleFailed}
       onPress={
-        onMapPress || onPoiPress ? (feature) => void handlePress(feature.properties) : undefined
+        onMapPress || onPoiPress
+          ? (feature) => {
+              const [lng, lat] = feature.geometry.coordinates;
+              void handlePress(feature.properties, [lng as number, lat as number]);
+            }
+          : undefined
       }
       onLongPress={
         onMapLongPress
@@ -722,16 +736,32 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
         </ShapeSource>
       )}
 
-      {markers.map((marker) => (
-        <MarkerView
-          key={marker.id}
-          coordinate={[marker.coordinate[0], marker.coordinate[1]]}
-          anchor={{ x: 0.5, y: 0.5 }}
-          allowOverlap
-        >
-          <MapPin color={marker.color} icon={marker.icon} />
-        </MarkerView>
-      ))}
+      {markers.map((marker) =>
+        marker.draggable ? (
+          <PointAnnotation
+            key={marker.id}
+            id={marker.id}
+            coordinate={[marker.coordinate[0], marker.coordinate[1]]}
+            anchor={{ x: 0.5, y: 0.5 }}
+            draggable
+            onDragEnd={(feature) => {
+              const [lng, lat] = feature.geometry.coordinates;
+              onMarkerDragEnd?.(marker.id, [lng as number, lat as number]);
+            }}
+          >
+            <MapPin color={marker.color} icon={marker.icon} />
+          </PointAnnotation>
+        ) : (
+          <MarkerView
+            key={marker.id}
+            coordinate={[marker.coordinate[0], marker.coordinate[1]]}
+            anchor={{ x: 0.5, y: 0.5 }}
+            allowOverlap
+          >
+            <MapPin color={marker.color} icon={marker.icon} />
+          </MarkerView>
+        )
+      )}
     </MapView>
   );
 });
