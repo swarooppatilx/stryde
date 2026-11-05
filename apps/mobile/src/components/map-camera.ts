@@ -20,6 +20,8 @@ export interface CameraMoveOptions {
   pitch?: number;
   padding?: CameraPadding;
   duration?: number;
+  /** Move at a steady speed instead of easing in and out, for chained moves like a flyover. */
+  linear?: boolean;
 }
 
 /** The camera calls the app makes, independent of the map SDK underneath. */
@@ -39,11 +41,11 @@ export function toMapboxPadding(padding: CameraPadding): NonNullable<CameraStop[
 }
 
 function animation(
-  duration: number | undefined
+  duration: number | undefined,
+  linear = false
 ): Pick<CameraStop, 'animationMode' | 'animationDuration'> {
-  return duration
-    ? { animationMode: 'easeTo', animationDuration: duration }
-    : { animationMode: 'none', animationDuration: 0 };
+  if (!duration) return { animationMode: 'none', animationDuration: 0 };
+  return { animationMode: linear ? 'linearTo' : 'easeTo', animationDuration: duration };
 }
 
 export function toCameraStop({
@@ -53,6 +55,7 @@ export function toCameraStop({
   pitch,
   padding,
   duration,
+  linear,
 }: CameraMoveOptions): CameraStop {
   return {
     ...(center && { centerCoordinate: center }),
@@ -60,7 +63,7 @@ export function toCameraStop({
     ...(bearing !== undefined && { heading: bearing }),
     ...(pitch !== undefined && { pitch }),
     ...(padding && { padding: toMapboxPadding(padding) }),
-    ...animation(duration),
+    ...animation(duration, linear),
   };
 }
 

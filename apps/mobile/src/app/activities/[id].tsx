@@ -7,6 +7,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActivityAthleteRow } from '@/components/activity-detail/athlete-row';
 import { ActivitySheetBody } from '@/components/activity-detail/sheet-body';
+import { ActivityFlyover } from '@/components/activity-flyover';
 import { ActivitySummaryLine } from '@/components/activity-summary-line';
 import { ActivityTitleBlock } from '@/components/activity-title-block';
 import { CommentsSheet } from '@/components/comments-sheet';
@@ -78,6 +79,7 @@ export default function ActivitySummaryScreen() {
 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [flyoverOpen, setFlyoverOpen] = useState(false);
   const [shareChoice, setShareChoice] = useState<ShareDesign>('route');
   const sheet = useCollapsibleSheet();
   const { expanded: sheetExpanded, setExpanded, setBodyHeight, setHeaderHeight } = sheet;
@@ -199,6 +201,30 @@ export default function ActivitySummaryScreen() {
         >
           <Ionicons name="chevron-back" size={IconSize.action} color={theme.text} />
         </Tappable>
+
+        {coordinates.length > 1 && (
+          <Tappable
+            onPress={() => setFlyoverOpen(true)}
+            style={[
+              styles.backButton,
+              { top: insets.top + Spacing.two + Touch.target + Spacing.two },
+              theme.shadows.raised,
+              { backgroundColor: theme.backgroundElement },
+            ]}
+            hitSlop={12}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Play a 3D flyover of this route"
+          >
+            <ThemedText type="smallBold">3D</ThemedText>
+          </Tappable>
+        )}
+        <ActivityFlyover
+          visible={flyoverOpen}
+          coordinates={coordinates}
+          title={activity.name}
+          onClose={() => setFlyoverOpen(false)}
+        />
 
         {paceStops && (
           <View style={[styles.paceKey, { top: insets.top + Spacing.three }]}>
