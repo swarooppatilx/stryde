@@ -22,6 +22,7 @@ import { BorderRadius, Brand, HEAT_RAMP, OTHERS_TERRITORY_COLOR, Spacing } from 
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useFitRoute } from '@/hooks/useFitRoute';
+import { useHideTabBar } from '@/hooks/useHideTabBar';
 import { type DistanceFilter, type TimeFilter, useMap } from '@/hooks/useMap';
 import { useOnline } from '@/hooks/useOnline';
 import { useRoutePreview } from '@/hooks/useRoutePreview';
@@ -93,6 +94,9 @@ export default function MapScreen() {
   const heatmapRamp = heatRampFor(useMapPrefsStore((s) => s.heatmapColor));
   const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
+  // Map-only: every control, the sheet and the tab bar step aside for an uncluttered map.
+  const [mapOnly, setMapOnly] = useState(false);
+  useHideTabBar(mapOnly);
   const router = useRouter();
   const { preview, setPreview, hide: hidePreview } = useRoutePreview();
   const previewLine = preview ? parsePolyline(preview.polyline) : [];
@@ -224,7 +228,9 @@ export default function MapScreen() {
     onPress: () => setTimeFilter(f.value),
   }));
   // The native compass starts below the chip row so it is never hidden behind it.
-  const compassTopOffset = insets.top + MAP_CHROME_BOTTOM + Spacing.two;
+  const compassTopOffset = mapOnly
+    ? insets.top + MapChrome.edge + MapChrome.fab + Spacing.two
+    : insets.top + MAP_CHROME_BOTTOM + Spacing.two;
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -267,218 +273,261 @@ export default function MapScreen() {
         onZoomChanged={onMapZoomChanged}
       />
 
-      <View style={[styles.topToolbar, { top: insets.top + MapChrome.edge }]}>
-        <MapSearchBar
-          query={searchQuery}
-          onChangeQuery={(text) => (text ? searchPlaces(text) : clearSearch())}
-          sport={sportFilter}
-          onChangeSport={setSportFilter}
-          onSubmit={() => {
-            const best = searchResults[0];
-            if (best) openPlace(best);
-            else Keyboard.dismiss();
-          }}
-        />
-
-        {searchResults.length > 0 && (
-          <ThemedView
-            style={[
-              styles.searchResults,
-              theme.shadows.overlay,
-              { backgroundColor: theme.backgroundElement },
-            ]}
-          >
-            {searchResults.map((result) => (
-              <Pressable
-                key={result.id}
-                style={styles.searchResultRow}
-                onPress={() => openPlace(result)}
-                accessibilityRole="button"
-              >
-                <Ionicons name="location-outline" size={16} color={theme.textSecondary} />
-                <ThemedText type="small" numberOfLines={1} style={styles.resultName}>
-                  {result.name}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </ThemedView>
-        )}
-        {searchLoading && (
-          <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={theme.textSecondary} />
-            <ThemedText type="caption" themeColor="textSecondary">
-              Searching…
-            </ThemedText>
-          </View>
-        )}
-        {searchedFor && searchResults.length === 0 && !searchLoading && !searchError && (
-          <ThemedText
-            type="caption"
-            themeColor="textSecondary"
-            style={styles.searchStatusRow}
-            accessibilityLiveRegion="polite"
-          >
-            {`No places found for "${searchedFor}"`}
-          </ThemedText>
-        )}
-        {searchError && (
-          <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
-            <ThemedText type="caption" themeColor="dangerText">
-              {searchError}
-            </ThemedText>
-            <Tappable
-              onPress={() => searchPlaces(searchQuery)}
-              hitSlop={12}
-              accessibilityRole="button"
-            >
-              <ThemedText type="caption" style={{ color: theme.accentText }}>
-                Try again
-              </ThemedText>
-            </Tappable>
-          </View>
-        )}
-
-        <MapChips chips={chips} />
-
-        {showOthers && (
-          <View style={styles.legend}>
-            {othersLoading && <ActivityIndicator size="small" color={theme.textSecondary} />}
-            <MapLegend
-              items={[
-                { label: 'Yours', color: theme.brand.primary },
-                { label: 'Others', color: OTHERS_TERRITORY_COLOR },
-              ]}
-            />
-          </View>
-        )}
-        {showHeatmap && heatmapPoints.length > 0 && (
-          <View style={styles.legend}>
-            <MapLegend
-              items={[
-                { label: 'Fewer activities', color: heatmapRamp[1]?.[1] ?? HEAT_RAMP[1][1] },
-                { label: 'More', color: heatmapRamp[4]?.[1] ?? HEAT_RAMP[4][1] },
-              ]}
-            />
-          </View>
-        )}
-        {!online && (
-          <View
-            style={[styles.offlineStrip, { backgroundColor: theme.backgroundElement }]}
-            accessibilityLiveRegion="polite"
-          >
-            <Ionicons name="cloud-offline-outline" size={16} color={theme.textSecondary} />
-            <ThemedText type="caption" themeColor="textSecondary">
-              You're offline. Your own routes and territory are still here.
-            </ThemedText>
-          </View>
-        )}
-        {showOthers && !othersLoading && othersTerritories.length === 0 ? (
-          <ThemedText
-            type="caption"
-            themeColor="textSecondary"
-            style={styles.searchStatusRow}
-            accessibilityLiveRegion="polite"
-          >
-            No one else's territory around here yet
-          </ThemedText>
-        ) : null}
-        {showHeatmap && heatmapPoints.length === 0 ? (
-          <ThemedText
-            type="caption"
-            themeColor="textSecondary"
-            style={styles.searchStatusRow}
-            accessibilityLiveRegion="polite"
-          >
-            Nothing to show on the heatmap yet. Record an activity or turn on Others.
-          </ThemedText>
-        ) : null}
-        {!location && !errorMsg ? (
-          <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={theme.textSecondary} />
-            <ThemedText type="caption" themeColor="textSecondary">
-              Finding your location…
-            </ThemedText>
-          </View>
-        ) : null}
-
-        {!location && errorMsg ? (
-          <ThemedView style={[styles.locationBanner, { backgroundColor: theme.backgroundElement }]}>
-            <Ionicons name="location-outline" size={18} color={theme.textSecondary} />
-            <ThemedText type="small" style={{ flex: 1, color: theme.textSecondary }}>
-              {errorMsg}
-            </ThemedText>
-            <Tappable onPress={loadLocation} hitSlop={8} accessibilityRole="button">
-              <ThemedText type="smallBold" style={{ color: theme.accentText }}>
-                Try again
-              </ThemedText>
-            </Tappable>
-          </ThemedView>
-        ) : null}
-      </View>
-
-      {/* Rides on top of the sheet, wherever the athlete has dragged it. */}
-      <Animated.View style={[styles.locateSlot, locateSlotStyle]} pointerEvents="box-none">
+      {mapOnly && (
         <Tappable
           style={[
             styles.locate,
+            styles.mapOnlyExit,
             theme.shadows.raised,
-            { backgroundColor: theme.backgroundElement },
+            { top: insets.top + MapChrome.edge, backgroundColor: theme.backgroundElement },
           ]}
-          onPress={toggleTilt}
+          onPress={() => setMapOnly(false)}
           accessibilityRole="button"
-          accessibilityState={{ selected: tilted }}
-          accessibilityLabel={tilted ? 'Switch to a flat map' : 'Tilt the map in 3D'}
+          accessibilityLabel="Show the map controls again"
         >
-          <ThemedText type="smallBold" style={{ color: tilted ? theme.brand.primary : theme.text }}>
-            3D
-          </ThemedText>
+          <Ionicons name="contract-outline" size={22} color={theme.text} />
         </Tappable>
-        <Tappable
-          style={[
-            styles.locate,
-            theme.shadows.raised,
-            { backgroundColor: theme.backgroundElement },
-          ]}
-          onPress={() => setStyleMenuOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={layersBadge > 0 ? `Map layers, ${layersBadge} on` : 'Map layers'}
-        >
-          <Ionicons name="layers-outline" size={24} color={theme.text} />
-          {layersBadge > 0 && (
-            <View style={[styles.layersBadge, { backgroundColor: theme.brand.primary }]}>
-              <ThemedText type="eyebrow" style={styles.layersBadgeText}>
-                {layersBadge}
+      )}
+
+      {!mapOnly && (
+        <View style={[styles.topToolbar, { top: insets.top + MapChrome.edge }]}>
+          <MapSearchBar
+            query={searchQuery}
+            onChangeQuery={(text) => (text ? searchPlaces(text) : clearSearch())}
+            sport={sportFilter}
+            onChangeSport={setSportFilter}
+            onSubmit={() => {
+              const best = searchResults[0];
+              if (best) openPlace(best);
+              else Keyboard.dismiss();
+            }}
+          />
+
+          {searchResults.length > 0 && (
+            <ThemedView
+              style={[
+                styles.searchResults,
+                theme.shadows.overlay,
+                { backgroundColor: theme.backgroundElement },
+              ]}
+            >
+              {searchResults.map((result) => (
+                <Pressable
+                  key={result.id}
+                  style={styles.searchResultRow}
+                  onPress={() => openPlace(result)}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="location-outline" size={16} color={theme.textSecondary} />
+                  <ThemedText type="small" numberOfLines={1} style={styles.resultName}>
+                    {result.name}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ThemedView>
+          )}
+          {searchLoading && (
+            <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={theme.textSecondary} />
+              <ThemedText type="caption" themeColor="textSecondary">
+                Searching…
               </ThemedText>
             </View>
           )}
-        </Tappable>
-        <Tappable
-          style={[
-            styles.locate,
-            theme.shadows.raised,
-            { backgroundColor: theme.backgroundElement },
-          ]}
-          onPress={() => {
-            // Idle: come back to me and follow. Following: face the way I am heading. Heading: stop.
-            if (followMode === null) recenter();
-            toggleFollow();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={LOCATE_LABEL[followMode ?? 'off']}
-        >
-          <Ionicons
-            name={LOCATE_ICON[followMode ?? 'off']}
-            size={24}
-            color={followMode ? theme.brand.primary : theme.textSecondary}
-          />
-        </Tappable>
-      </Animated.View>
+          {searchedFor && searchResults.length === 0 && !searchLoading && !searchError && (
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              style={styles.searchStatusRow}
+              accessibilityLiveRegion="polite"
+            >
+              {`No places found for "${searchedFor}"`}
+            </ThemedText>
+          )}
+          {searchError && (
+            <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
+              <ThemedText type="caption" themeColor="dangerText">
+                {searchError}
+              </ThemedText>
+              <Tappable
+                onPress={() => searchPlaces(searchQuery)}
+                hitSlop={12}
+                accessibilityRole="button"
+              >
+                <ThemedText type="caption" style={{ color: theme.accentText }}>
+                  Try again
+                </ThemedText>
+              </Tappable>
+            </View>
+          )}
 
-      <MapBottomSheet
-        height={sheetHeight}
-        onPreviewRoute={setPreview}
-        previewId={preview?.id ?? null}
-      />
+          <MapChips chips={chips} />
+
+          {showOthers && (
+            <View style={styles.legend}>
+              {othersLoading && <ActivityIndicator size="small" color={theme.textSecondary} />}
+              <MapLegend
+                items={[
+                  { label: 'Yours', color: theme.brand.primary },
+                  { label: 'Others', color: OTHERS_TERRITORY_COLOR },
+                ]}
+              />
+            </View>
+          )}
+          {showHeatmap && heatmapPoints.length > 0 && (
+            <View style={styles.legend}>
+              <MapLegend
+                items={[
+                  { label: 'Fewer activities', color: heatmapRamp[1]?.[1] ?? HEAT_RAMP[1][1] },
+                  { label: 'More', color: heatmapRamp[4]?.[1] ?? HEAT_RAMP[4][1] },
+                ]}
+              />
+            </View>
+          )}
+          {!online && (
+            <View
+              style={[styles.offlineStrip, { backgroundColor: theme.backgroundElement }]}
+              accessibilityLiveRegion="polite"
+            >
+              <Ionicons name="cloud-offline-outline" size={16} color={theme.textSecondary} />
+              <ThemedText type="caption" themeColor="textSecondary">
+                You're offline. Your own routes and territory are still here.
+              </ThemedText>
+            </View>
+          )}
+          {showOthers && !othersLoading && othersTerritories.length === 0 ? (
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              style={styles.searchStatusRow}
+              accessibilityLiveRegion="polite"
+            >
+              No one else's territory around here yet
+            </ThemedText>
+          ) : null}
+          {showHeatmap && heatmapPoints.length === 0 ? (
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              style={styles.searchStatusRow}
+              accessibilityLiveRegion="polite"
+            >
+              Nothing to show on the heatmap yet. Record an activity or turn on Others.
+            </ThemedText>
+          ) : null}
+          {!location && !errorMsg ? (
+            <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={theme.textSecondary} />
+              <ThemedText type="caption" themeColor="textSecondary">
+                Finding your location…
+              </ThemedText>
+            </View>
+          ) : null}
+
+          {!location && errorMsg ? (
+            <ThemedView
+              style={[styles.locationBanner, { backgroundColor: theme.backgroundElement }]}
+            >
+              <Ionicons name="location-outline" size={18} color={theme.textSecondary} />
+              <ThemedText type="small" style={{ flex: 1, color: theme.textSecondary }}>
+                {errorMsg}
+              </ThemedText>
+              <Tappable onPress={loadLocation} hitSlop={8} accessibilityRole="button">
+                <ThemedText type="smallBold" style={{ color: theme.accentText }}>
+                  Try again
+                </ThemedText>
+              </Tappable>
+            </ThemedView>
+          ) : null}
+        </View>
+      )}
+
+      {/* Rides on top of the sheet, wherever the athlete has dragged it. */}
+      {!mapOnly && (
+        <Animated.View style={[styles.locateSlot, locateSlotStyle]} pointerEvents="box-none">
+          <Tappable
+            style={[
+              styles.locate,
+              theme.shadows.raised,
+              { backgroundColor: theme.backgroundElement },
+            ]}
+            onPress={() => {
+              Keyboard.dismiss();
+              dismissResults();
+              setMapOnly(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Map only: hide the controls"
+          >
+            <Ionicons name="expand-outline" size={22} color={theme.text} />
+          </Tappable>
+          <Tappable
+            style={[
+              styles.locate,
+              theme.shadows.raised,
+              { backgroundColor: theme.backgroundElement },
+            ]}
+            onPress={toggleTilt}
+            accessibilityRole="button"
+            accessibilityState={{ selected: tilted }}
+            accessibilityLabel={tilted ? 'Switch to a flat map' : 'Tilt the map in 3D'}
+          >
+            <ThemedText
+              type="smallBold"
+              style={{ color: tilted ? theme.brand.primary : theme.text }}
+            >
+              3D
+            </ThemedText>
+          </Tappable>
+          <Tappable
+            style={[
+              styles.locate,
+              theme.shadows.raised,
+              { backgroundColor: theme.backgroundElement },
+            ]}
+            onPress={() => setStyleMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={layersBadge > 0 ? `Map layers, ${layersBadge} on` : 'Map layers'}
+          >
+            <Ionicons name="layers-outline" size={24} color={theme.text} />
+            {layersBadge > 0 && (
+              <View style={[styles.layersBadge, { backgroundColor: theme.brand.primary }]}>
+                <ThemedText type="eyebrow" style={styles.layersBadgeText}>
+                  {layersBadge}
+                </ThemedText>
+              </View>
+            )}
+          </Tappable>
+          <Tappable
+            style={[
+              styles.locate,
+              theme.shadows.raised,
+              { backgroundColor: theme.backgroundElement },
+            ]}
+            onPress={() => {
+              // Idle: come back to me and follow. Following: face the way I am heading. Heading: stop.
+              if (followMode === null) recenter();
+              toggleFollow();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={LOCATE_LABEL[followMode ?? 'off']}
+          >
+            <Ionicons
+              name={LOCATE_ICON[followMode ?? 'off']}
+              size={24}
+              color={followMode ? theme.brand.primary : theme.textSecondary}
+            />
+          </Tappable>
+        </Animated.View>
+      )}
+
+      {!mapOnly && (
+        <MapBottomSheet
+          height={sheetHeight}
+          onPreviewRoute={setPreview}
+          previewId={preview?.id ?? null}
+        />
+      )}
       {/* After the map sheet, so a tapped territory's card sits on top of it instead of behind. */}
       {selectedTerritory && (
         <TerritorySheet
@@ -559,6 +608,7 @@ const styles = StyleSheet.create({
     bottom: MapChrome.edge,
     gap: Spacing.two,
   },
+  mapOnlyExit: { position: 'absolute', right: MapChrome.edge, zIndex: 2 },
   locate: {
     width: MapChrome.fab,
     height: MapChrome.fab,
