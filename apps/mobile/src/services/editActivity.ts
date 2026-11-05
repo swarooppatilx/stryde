@@ -1,7 +1,7 @@
 import type { Activity } from '@/types';
 import { parsePolyline, toPolyline } from '@/utils/format';
 import { logger } from '@/utils/logger';
-import { publicRoute } from '@/utils/routePrivacy';
+import { canShareTerritory, publicRoute } from '@/utils/routePrivacy';
 import type { ActivityChain, PhotoUploader } from './postRun';
 
 const isPublished = (uri: string) => uri.startsWith('http');
@@ -102,8 +102,9 @@ export async function editActivity(
       description: merged.description,
       photos: photos.length > 0 ? photos : undefined,
       polyline: route.length > 0 ? toPolyline(route) : undefined,
-      territory:
-        shared.cutByZone || activity.hideRoute ? undefined : (activity.territory ?? undefined),
+      territory: canShareTerritory(activity, shared.cutByZone)
+        ? (activity.territory ?? undefined)
+        : undefined,
       coordinates: route.length > 0 ? route : undefined,
     });
     if (!result?.confirmed) return { published: false, reason: 'failed' };

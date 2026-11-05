@@ -648,6 +648,16 @@ describe('recording onchain', () => {
     expect(store.get('id-1').polyline).toBe(route);
   });
 
+  it('does not publish the loop shape when the route ends are hidden', async () => {
+    await savePostRun(
+      { ...INPUT, hideRouteEnds: true, territory: RING, territoryArea: 900 },
+      deps()
+    );
+
+    const [, metadata] = chain.callsTo('setMetadata')[0] as [bigint, { territory?: unknown }];
+    expect(metadata.territory).toBeUndefined();
+  });
+
   describe('privacy zones', () => {
     const route = Array.from(
       { length: 101 },

@@ -102,3 +102,14 @@ export function publicRoute(
     cutByZone: afterZones.length < route.length,
   };
 }
+
+/**
+ * Whether the territory outline may leave the device. The loop runs through the route's real
+ * start and end, so it stays private whenever the route is hidden, its ends are hidden, or a zone cut it.
+ */
+export function canShareTerritory(
+  activity: { hideRoute?: boolean; hideRouteEnds?: boolean },
+  cutByZone: boolean
+): boolean {
+  return !activity.hideRoute && !activity.hideRouteEnds && !cutByZone;
+}

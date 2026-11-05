@@ -279,6 +279,22 @@ describe('editActivity', () => {
 
     expect(published[0]?.metadata.territory).toBeUndefined();
   });
+
+  it('leaves out the loop shape when the route ends are hidden', async () => {
+    const ring = [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [0, 0],
+    ] as never;
+    const { store, chain, published } = setup();
+
+    await editActivity({ store, chain }, activity({ hideRouteEnds: true, territory: ring }), {
+      name: 'Renamed',
+    });
+
+    expect(published[0]?.metadata.territory).toBeUndefined();
+  });
 });
 
 describe('editing an Only Me activity', () => {

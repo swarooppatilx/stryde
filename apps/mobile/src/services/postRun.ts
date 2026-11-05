@@ -19,7 +19,7 @@ import { mapWithConcurrency } from '@/utils/async';
 import { chainProof } from '@/utils/chainProof';
 import { getActivityName, parsePolyline, toPolyline } from '@/utils/format';
 import { logger } from '@/utils/logger';
-import { publicRoute } from '@/utils/routePrivacy';
+import { canShareTerritory, publicRoute } from '@/utils/routePrivacy';
 
 /** Everything a finished activity can do onchain, for one wallet. */
 export interface ActivityChain {
@@ -403,8 +403,9 @@ async function syncOnChain(
               photos: photos.length > 0 ? photos : undefined,
               polyline: shared.route.length > 0 ? toPolyline(shared.route) : undefined,
               // The loop's outline would point back at a hidden place, so it stays private then.
-              territory:
-                shared.cutByZone || activity.hideRoute ? undefined : (territory ?? undefined),
+              territory: canShareTerritory(activity, shared.cutByZone)
+                ? (territory ?? undefined)
+                : undefined,
               // The chain stores only a hash/distance/duration/area: this is the
               // one durable place the real route shape lives.
               coordinates: shared.route.length > 0 ? shared.route : undefined,
