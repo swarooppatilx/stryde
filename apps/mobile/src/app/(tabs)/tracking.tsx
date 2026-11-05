@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FollowRouteBanner } from '@/components/follow-route-banner';
 import { LocateButton } from '@/components/locate-button';
 import type { MapCamera } from '@/components/map-camera';
 import { MapLayersSheet } from '@/components/map-layers-sheet';
@@ -21,12 +22,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ZoomControls } from '@/components/zoom-controls';
 import { SPORT_TYPES } from '@/constants/activity';
 import { DEFAULT_CENTER } from '@/constants/config';
+import { MapChrome } from '@/constants/mapChrome';
 import { Palette } from '@/constants/palette';
 import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useBackHandler } from '@/hooks/useBackHandler';
 import { useFollowCamera, useSmoothedHeading } from '@/hooks/useFollowCamera';
+import { useFollowRoute } from '@/hooks/useFollowRoute';
 import { useGpsPreview } from '@/hooks/useGpsPreview';
 import { useHideTabBar } from '@/hooks/useHideTabBar';
 import { useLapCard } from '@/hooks/useLapCard';
@@ -40,6 +43,7 @@ import { useVerticalSwipe } from '@/hooks/useVerticalSwipe';
 import { getPlatform } from '@/platform';
 import { confirmStart } from '@/services/startChecks';
 import { territoryService } from '@/services/territoryService';
+import { useFollowRouteStore } from '@/stores/followRouteStore';
 import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRecordUiStore } from '@/stores/recordUiStore';
 import type { ActivityType, Ring } from '@/types';
@@ -140,6 +144,10 @@ export default function TrackingScreen() {
     if (next.mode !== follow.mode) setSavedMode(next.mode);
   };
   const fix = isSessionActive ? location : previewFix;
+  // A saved route picked with "Use this route": drawn under the live track, with progress and alerts.
+  const followedRoute = useFollowRouteStore((s) => s.route);
+  const stopFollowing = useFollowRouteStore((s) => s.stop);
+  const followView = useFollowRoute(fix, isTracking);
   const heading = useSmoothedHeading(fix);
   const { onCameraMove, zoomBy } = useFollowCamera({
     cameraRef,
@@ -433,7 +441,21 @@ export default function TrackingScreen() {
         bikeLanes={showBikeLanes}
         mapType={mapType}
         terrain3d={terrain3d}
+        guideLine={followedRoute?.line}
       />
+      {followView && (
+        <FollowRouteBanner
+          view={followView}
+          onStop={stopFollowing}
+          // The map buttons stand at the right edge before and during a run; keep clear of them.
+          style={{
+            top: isSessionActive
+              ? insets.top + Spacing.three + islandHeight + Spacing.two
+              : insets.top + Spacing.three + 64,
+            right: Spacing.three + MapChrome.fab + Spacing.two,
+          }}
+        />
+      )}
       {fix && !isSessionActive && (
         <LocateButton
           follow={follow}

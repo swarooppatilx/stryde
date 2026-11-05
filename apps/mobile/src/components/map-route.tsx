@@ -150,6 +150,8 @@ export interface MapRouteProps {
   onMapReady?: () => void;
   /** The route cut into pieces coloured by how fast the athlete was; drawn instead of the plain line. */
   paceSegments?: ReadonlyArray<{ coordinates: LngLatPair[]; color: string }>;
+  /** A planned route to follow, drawn under the live track. */
+  guideLine?: readonly LngLatPair[];
   /** Numbered pins where each kilometre (or mile) ends along the route. */
   splitMarkers?: readonly SplitMarker[];
 }
@@ -187,6 +189,9 @@ const TRACKING_MODE = {
   heading: UserTrackingMode.FollowWithHeading,
   course: UserTrackingMode.FollowWithCourse,
 } as const;
+
+/** A planned route is blue, so the orange live track reads on top of it. */
+const GUIDE_COLOR = Palette.blue.b3;
 
 /** How far from a label (in points) a finger can land and still pick it. */
 const POI_TAP_SLOP = 14;
@@ -314,6 +319,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   position,
   splitMarkers = [],
   paceSegments,
+  guideLine,
   onMapReady,
 }: MapRouteProps) {
   const nativeCameraRef = useRef<CameraRef>(null);
@@ -330,6 +336,10 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   );
 
   const paceGeoJSON = useMemo(() => paceFeatureLines(paceSegments), [paceSegments]);
+  const guideGeoJSON = useMemo(
+    () => (guideLine && guideLine.length > 1 ? routeFeatureLine([...guideLine]) : null),
+    [guideLine]
+  );
 
   const splitGeoJSON = useMemo(() => splitFeaturePoints(splitMarkers), [splitMarkers]);
 
@@ -579,6 +589,31 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
           <LineLayer
             id="territory-border"
             style={{ lineColor: territoryColor, lineWidth: 2, lineOpacity: 0.8 }}
+          />
+        </ShapeSource>
+      )}
+
+      {guideGeoJSON && (
+        <ShapeSource id="guide-route" shape={guideGeoJSON}>
+          <LineLayer
+            id="guide-route-casing"
+            style={{
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineColor: Palette.white,
+              lineWidth: ROUTE_CASING_WIDTH,
+              lineOpacity: 0.85,
+            }}
+          />
+          <LineLayer
+            id="guide-route-line"
+            style={{
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineColor: GUIDE_COLOR,
+              lineWidth: ROUTE_LINE_WIDTH,
+              lineOpacity: 0.9,
+            }}
           />
         </ShapeSource>
       )}

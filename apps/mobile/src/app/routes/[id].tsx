@@ -19,6 +19,7 @@ import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useOfflineRouteMap } from '@/hooks/useOfflineRouteMap';
 import { useRouteElevation } from '@/hooks/useRouteElevation';
+import { useFollowRouteStore } from '@/stores/followRouteStore';
 import { resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRouteStore } from '@/stores/routeStore';
 import { confirmDeleteRoute } from '@/utils/confirmDeleteRoute';
@@ -151,6 +152,15 @@ export default function RouteDetailScreen() {
             <View style={styles.actions}>
               <AppButton onPress={() => router.push(`/flyover?routeId=${route.id}`)}>
                 Fly over route
+              </AppButton>
+              <AppButton
+                disabled={line.length < 2}
+                onPress={() => {
+                  useFollowRouteStore.getState().follow({ id: route.id, name: route.name, line });
+                  router.push('/(tabs)/tracking');
+                }}
+              >
+                Use this route
               </AppButton>
               <AppButton variant="secondary" onPress={exportGpx}>
                 Export GPX
