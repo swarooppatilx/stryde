@@ -1,20 +1,38 @@
 import {
   Camera,
+  CircleLayer,
+  FillLayer,
+  HeatmapLayer,
+  LineLayer,
+  LocationPuck,
+  type MapState,
+  MapView,
+  MarkerView,
+  ShapeSource,
+  SymbolLayer,
+  UserTrackingMode,
+} from '@rnmapbox/maps';
+import React, { useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { StyleSheet, type ViewStyle } from 'react-native';
+import {
   type CameraRef,
-  GeoJSONSource,
-  Layer,
-  Map as MapLibreMap,
-  Marker,
-  NativeUserLocation,
-  type PressEventWithFeatures,
-} from '@maplibre/maplibre-react-native';
-import React, { useMemo, useState } from 'react';
-import { type NativeSyntheticEvent, StyleSheet, type ViewStyle } from 'react-native';
+  createMapCamera,
+  type MapCamera,
+  toMapboxPadding,
+} from '@/components/map-camera';
 import { MapErrorBoundary, MapPin, MapRouteFallback } from '@/components/map-route-fallback';
+import {
+  BIKE_LANE_COLOR,
+  BIKE_LANE_FILTER,
+  BIKE_LANE_SOURCE,
+  MAPBOX_FONT,
+  mapboxStyleUrl,
+  POI_LABEL_LAYER,
+} from '@/constants/mapboxStyle';
 import { offlineMapStyle } from '@/constants/mapStyle';
-import { outdoorStyleFor } from '@/constants/outdoorMapStyle';
 import { Palette } from '@/constants/palette';
 import { Brand, HEAT_RAMP, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
+import { ensureMapbox } from '@/services/mapbox';
 import type { Ring } from '@/types';
 import { type PuckPosition, puckFeatureCollection } from '@/utils/locationPuck';
 import {
@@ -80,9 +98,9 @@ export interface MapRouteProps {
   poi?: boolean;
   /** Draw cycle paths on the base map. */
   bikeLanes?: boolean;
-  cameraRef?: React.RefObject<CameraRef | null>;
+  cameraRef?: React.RefObject<MapCamera | null>;
   activityRoutes?: ActivityRoute[];
-  /** Top offset (px) of MapLibre's native compass; pass the bottom edge of any floating controls over the map. */
+  /** Top offset (px) of the native compass; pass the bottom edge of any floating controls over the map. */
   compassTopOffset?: number;
   /** Other athletes' territory footprints (bounds-derived rectangles), each tagged with its territory id. */
   othersTerritories?: TerritoryFeatureInput[];
@@ -127,23 +145,29 @@ const ROUTE_CASING_OPACITY_DARK = 0.4;
 const ROUTE_CASING_OPACITY_LIGHT = 0.9;
 const ROUTE_CASING_WIDTH = ['interpolate', ['linear'], ['zoom'], 10, 5.5, 15, 8, 18, 11] as never;
 
-/** Some platform builds put `features` on the event itself rather than under `nativeEvent`. */
-function topLevelFeatures(event: object): GeoJSON.Feature[] | undefined {
-  return 'features' in event && Array.isArray(event.features) ? event.features : undefined;
-}
-
-function cameraMoveOf(
-  event: { center: number[]; zoom: number; bearing: number; userInteraction: boolean },
-  settled: boolean
-): CameraMove {
+function cameraMoveOf(state: MapState, userInteraction: boolean, settled: boolean): CameraMove {
+  const { center, zoom, heading } = state.properties;
   return {
-    center: [event.center[0] as number, event.center[1] as number],
-    zoom: event.zoom,
-    bearing: event.bearing,
-    userInteraction: event.userInteraction,
+    center: [center[0] as number, center[1] as number],
+    zoom,
+    bearing: heading,
+    userInteraction,
     settled,
   };
 }
+
+type ShapePressEvent = Parameters<
+  NonNullable<React.ComponentProps<typeof ShapeSource>['onPress']>
+>[0];
+
+const TRACKING_MODE = {
+  default: UserTrackingMode.Follow,
+  heading: UserTrackingMode.FollowWithHeading,
+  course: UserTrackingMode.FollowWithCourse,
+} as const;
+
+/** Bike lanes widen with zoom like the roads around them. */
+const BIKE_LANE_WIDTH = ['interpolate', ['linear'], ['zoom'], 12, 1.5, 16, 3.5, 18, 5] as never;
 
 export function routeFeatureLine(
   coordinates: MapRouteProps['coordinates']
@@ -219,7 +243,7 @@ const PUCK_ACCURACY_RADIUS = [
   ['*', ['get', 'accuracyPx'], 4194304],
 ] as never;
 
-const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
+const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   coordinates,
   territoryPolygons = [],
   territoryIds = [],
@@ -256,6 +280,9 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   paceSegments,
   onMapReady,
 }: MapRouteProps) {
+  const nativeCameraRef = useRef<CameraRef>(null);
+  useImperativeHandle(cameraRef, () => createMapCamera(nativeCameraRef), []);
+
   // A live route grows by one point per fix; only a longer line or a new last point is new geometry.
   const routeLength = coordinates?.length ?? 0;
   const lastPoint = coordinates?.[routeLength - 1];
@@ -287,12 +314,9 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
 
   const heatmapGeoJSON = heatmapFeaturePoints(heatmapPoints, heatmapVisible);
 
-  const handleTerritoryPress = (event: NativeSyntheticEvent<PressEventWithFeatures>) => {
+  const handleTerritoryPress = (event: ShapePressEvent) => {
     if (!onTerritoryPress) return;
-    // Native press events arrive with `features` at the event's top level in
-    // some platform builds and under `nativeEvent` in others — read both.
-    const features = event.nativeEvent?.features ?? topLevelFeatures(event);
-    const territoryId = features?.[0]?.properties?.territoryId;
+    const territoryId = event.features[0]?.properties?.territoryId;
     if (typeof territoryId === 'string' && !territoryId.startsWith('local-')) {
       onTerritoryPress(territoryId);
     }
@@ -303,344 +327,332 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
       ? coordinates[Math.floor(coordinates.length / 2)]
       : initialCenter;
 
-  // With no connection on a first visit the style cannot load, and nothing is drawn on a map
-  // without one. A plain background keeps the route, territory and pins showing.
+  // Set while a finger moves the map, so the move it settles into is reported as the athlete's.
+  const gestureRef = useRef(false);
+
+  // With no connection on a first visit (or no token) the style cannot load, and nothing is drawn
+  // on a map without one. A plain background keeps the route, territory and pins showing.
   const [styleFailed, setStyleFailed] = useState(false);
   const onStyleFailed = () => setStyleFailed(true);
-  const resolvedMapStyle = styleFailed
-    ? offlineMapStyle(dark)
-    : outdoorStyleFor(dark, { poi, bikeLanes });
+  const offlineStyleJSON = useMemo(() => JSON.stringify(offlineMapStyle(dark)), [dark]);
+  const textVisibility = styleFailed ? 'none' : 'visible';
 
   return (
-    <MapLibreMap
+    <MapView
       style={[styles.map, style]}
-      mapStyle={resolvedMapStyle}
+      {...(styleFailed ? { styleJSON: offlineStyleJSON } : { styleURL: mapboxStyleUrl(dark) })}
+      compassEnabled
       compassPosition={{ top: compassTopOffset, right: Spacing.three }}
+      scaleBarEnabled={false}
       onDidFinishLoadingMap={onMapReady}
       onDidFailLoadingMap={onStyleFailed}
       onPress={onMapPress ? () => onMapPress() : undefined}
       onLongPress={
         onMapLongPress
-          ? (e) => onMapLongPress([e.nativeEvent.lngLat[0], e.nativeEvent.lngLat[1]])
-          : undefined
-      }
-      onRegionIsChanging={
-        onCameraMove
-          ? (e) => {
-              if (e.nativeEvent?.userInteraction) onCameraMove(cameraMoveOf(e.nativeEvent, false));
+          ? (feature) => {
+              const [lng, lat] = feature.geometry.coordinates;
+              onMapLongPress([lng as number, lat as number]);
             }
           : undefined
       }
-      onRegionDidChange={
+      onCameraChanged={
+        onCameraMove
+          ? (state) => {
+              if (!state.gestures.isGestureActive) return;
+              gestureRef.current = true;
+              onCameraMove(cameraMoveOf(state, true, false));
+            }
+          : undefined
+      }
+      onMapIdle={
         onZoomChanged || onCameraMove
-          ? (e) => {
-              onZoomChanged?.(e.nativeEvent?.zoom ?? initialZoom);
-              if (e.nativeEvent) onCameraMove?.(cameraMoveOf(e.nativeEvent, true));
+          ? (state) => {
+              const byUser = gestureRef.current;
+              gestureRef.current = false;
+              onZoomChanged?.(state.properties.zoom ?? initialZoom);
+              onCameraMove?.(cameraMoveOf(state, byUser, true));
             }
           : undefined
       }
     >
       <Camera
-        ref={cameraRef}
-        initialViewState={
+        ref={nativeCameraRef}
+        defaultSettings={
           initialBounds
-            ? { bounds: initialBounds.bounds, padding: initialBounds.padding }
-            : { center: cameraCenter, zoom: initialZoom }
+            ? {
+                bounds: {
+                  ne: [initialBounds.bounds[2], initialBounds.bounds[3]],
+                  sw: [initialBounds.bounds[0], initialBounds.bounds[1]],
+                },
+                padding: toMapboxPadding(initialBounds.padding),
+              }
+            : { centerCoordinate: cameraCenter, zoomLevel: initialZoom }
         }
-        minZoom={zoomRange?.min}
-        maxZoom={zoomRange?.max}
-        trackUserLocation={followUser}
-        onTrackUserLocationChange={
+        minZoomLevel={zoomRange?.min}
+        maxZoomLevel={zoomRange?.max}
+        followUserLocation={followUser !== undefined}
+        followUserMode={followUser ? TRACKING_MODE[followUser] : undefined}
+        onUserTrackingModeChange={
           onFollowChange
-            ? (e) => onFollowChange(e.nativeEvent.trackUserLocation != null)
+            ? (event) => onFollowChange(event.nativeEvent.payload.followUserLocation)
             : undefined
         }
       />
 
-      {showUserLocation && NativeUserLocation && <NativeUserLocation mode={followUser} />}
+      {showUserLocation && (
+        <LocationPuck
+          puckBearingEnabled={followUser === 'heading' || followUser === 'course'}
+          puckBearing={followUser === 'course' ? 'course' : 'heading'}
+        />
+      )}
+
+      {!styleFailed && (
+        <SymbolLayer
+          id={POI_LABEL_LAYER}
+          existing
+          style={{ visibility: poi ? 'visible' : 'none' }}
+        />
+      )}
+
+      {bikeLanes && !styleFailed && (
+        <LineLayer
+          id="bike-lanes"
+          sourceID={BIKE_LANE_SOURCE.sourceID}
+          sourceLayerID={BIKE_LANE_SOURCE.sourceLayerID}
+          filter={BIKE_LANE_FILTER as never}
+          style={{
+            lineColor: BIKE_LANE_COLOR,
+            lineWidth: BIKE_LANE_WIDTH,
+            lineOpacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        />
+      )}
 
       {heatmapGeoJSON && (
-        <GeoJSONSource id="activity-heatmap" data={heatmapGeoJSON}>
-          <Layer
+        <ShapeSource id="activity-heatmap" shape={heatmapGeoJSON}>
+          <HeatmapLayer
             id="activity-heat"
-            type="heatmap"
-            source="activity-heatmap"
-            paint={{
-              'heatmap-weight': 1,
-              'heatmap-intensity': 0.35,
-              'heatmap-color': [
+            style={{
+              heatmapWeight: 1,
+              heatmapIntensity: 0.35,
+              heatmapColor: [
                 'interpolate',
                 ['linear'],
                 ['heatmap-density'],
                 ...(heatmapRamp ?? HEAT_RAMP).flat(),
-              ],
-              'heatmap-radius': 20,
-              'heatmap-opacity': 0.55,
+              ] as never,
+              heatmapRadius: 20,
+              heatmapOpacity: 0.55,
             }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
       {othersTerritoryGeoJSON && (
-        <GeoJSONSource
+        <ShapeSource
           id="others-territory"
-          data={othersTerritoryGeoJSON}
+          shape={othersTerritoryGeoJSON}
           onPress={handleTerritoryPress}
         >
-          <Layer
+          <FillLayer
             id="others-territory-fill"
-            source="others-territory"
-            type="fill"
-            paint={{
-              'fill-color': othersTerritoryColor,
-              'fill-opacity': othersTerritoryOpacity,
-            }}
+            style={{ fillColor: othersTerritoryColor, fillOpacity: othersTerritoryOpacity }}
           />
-          <Layer
+          <LineLayer
             id="others-territory-border"
-            source="others-territory"
-            type="line"
-            paint={{
-              'line-color': othersTerritoryColor,
-              'line-width': 1,
-              'line-opacity': 0.5,
-            }}
+            style={{ lineColor: othersTerritoryColor, lineWidth: 1, lineOpacity: 0.5 }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
       {territoryGeoJSON && (
-        <GeoJSONSource id="territory" data={territoryGeoJSON} onPress={handleTerritoryPress}>
-          <Layer
+        <ShapeSource id="territory" shape={territoryGeoJSON} onPress={handleTerritoryPress}>
+          <FillLayer
             id="territory-fill"
-            source="territory"
-            type="fill"
-            paint={{
-              'fill-color': territoryColor,
-              'fill-opacity': territoryOpacity,
-            }}
+            style={{ fillColor: territoryColor, fillOpacity: territoryOpacity }}
           />
-          <Layer
+          <LineLayer
             id="territory-border"
-            source="territory"
-            type="line"
-            paint={{
-              'line-color': territoryColor,
-              'line-width': 2,
-              'line-opacity': 0.8,
-            }}
+            style={{ lineColor: territoryColor, lineWidth: 2, lineOpacity: 0.8 }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
-      <GeoJSONSource id="route" data={routeGeoJSON}>
+      <ShapeSource id="route" shape={routeGeoJSON}>
         {/* An outline lifts the line off busy ground, the way a trail reads on a topo map. */}
-        <Layer
+        <LineLayer
           id="route-casing"
-          type="line"
-          source="route"
-          layout={{
-            'line-cap': 'round',
-            'line-join': 'round',
-          }}
-          paint={{
-            'line-color': dark ? ROUTE_CASING_COLOR_DARK : Palette.white,
-            'line-width': ROUTE_CASING_WIDTH,
-            'line-opacity': dark ? ROUTE_CASING_OPACITY_DARK : ROUTE_CASING_OPACITY_LIGHT,
+          style={{
+            lineCap: 'round',
+            lineJoin: 'round',
+            lineColor: dark ? ROUTE_CASING_COLOR_DARK : Palette.white,
+            lineWidth: ROUTE_CASING_WIDTH,
+            lineOpacity: dark ? ROUTE_CASING_OPACITY_DARK : ROUTE_CASING_OPACITY_LIGHT,
           }}
         />
-        <Layer
+        <LineLayer
           id="route-line"
-          type="line"
-          source="route"
-          layout={{
-            'line-cap': 'round',
-            'line-join': 'round',
-          }}
-          paint={{
-            'line-color': Brand.primary,
-            'line-width': ROUTE_LINE_WIDTH,
-            'line-opacity': paceGeoJSON ? 0 : 1,
+          style={{
+            lineCap: 'round',
+            lineJoin: 'round',
+            lineColor: Brand.primary,
+            lineWidth: ROUTE_LINE_WIDTH,
+            lineOpacity: paceGeoJSON ? 0 : 1,
           }}
         />
         {/* Small arrowheads along the line, so the direction of the route reads at a glance. */}
-        <Layer
+        <SymbolLayer
           id="route-arrows"
-          type="symbol"
-          source="route"
-          layout={{
-            'symbol-placement': 'line',
-            'symbol-spacing': 80,
-            'text-field': '›',
-            // Without a font MapLibre asks for its own default, which the tile host does not serve (404), so the chevrons never drew.
-            'text-font': ['Noto Sans Regular'],
-            'text-size': 22,
-            'text-keep-upright': false,
-            'text-rotation-alignment': 'map',
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-          }}
-          paint={{
-            'text-color': Palette.white,
-            'text-halo-color': Brand.primary,
-            'text-halo-width': 1.2,
+          style={{
+            visibility: textVisibility,
+            symbolPlacement: 'line',
+            symbolSpacing: 80,
+            textField: '›',
+            textFont: MAPBOX_FONT.regular,
+            textSize: 22,
+            textKeepUpright: false,
+            textRotationAlignment: 'map',
+            textAllowOverlap: true,
+            textIgnorePlacement: true,
+            textColor: Palette.white,
+            textHaloColor: Brand.primary,
+            textHaloWidth: 1.2,
           }}
         />
-      </GeoJSONSource>
+      </ShapeSource>
 
       {paceGeoJSON && (
-        <GeoJSONSource id="route-pace" data={paceGeoJSON}>
-          <Layer
+        <ShapeSource id="route-pace" shape={paceGeoJSON}>
+          <LineLayer
             id="route-pace-line"
-            type="line"
-            source="route-pace"
-            layout={{
-              'line-cap': 'round',
-              'line-join': 'round',
-            }}
-            paint={{
-              'line-color': ['get', 'color'],
-              'line-width': ROUTE_LINE_WIDTH,
+            style={{
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineColor: ['get', 'color'],
+              lineWidth: ROUTE_LINE_WIDTH,
             }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
       {splitGeoJSON && (
-        <GeoJSONSource id="split-markers" data={splitGeoJSON}>
-          <Layer
+        <ShapeSource id="split-markers" shape={splitGeoJSON}>
+          <CircleLayer
             id="split-markers-dot"
-            type="circle"
-            source="split-markers"
-            minzoom={SPLIT_MARKER_MIN_ZOOM}
-            paint={{
-              'circle-radius': SPLIT_MARKER_RADIUS,
-              'circle-color': Palette.white,
-              'circle-stroke-color': Palette.neutral.n1,
-              'circle-stroke-width': 1.5,
+            minZoomLevel={SPLIT_MARKER_MIN_ZOOM}
+            style={{
+              circleRadius: SPLIT_MARKER_RADIUS,
+              circleColor: Palette.white,
+              circleStrokeColor: Palette.neutral.n1,
+              circleStrokeWidth: 1.5,
             }}
           />
           {/* The offline fallback style has no glyphs, so the numbers can't be drawn there. */}
-          <Layer
+          <SymbolLayer
             id="split-markers-label"
-            type="symbol"
-            source="split-markers"
-            minzoom={SPLIT_MARKER_MIN_ZOOM}
-            layout={{
-              visibility: styleFailed ? 'none' : 'visible',
-              'text-field': ['get', 'label'],
-              'text-font': ['Noto Sans Bold'],
-              'text-size': SPLIT_LABEL_SIZE,
-              'text-allow-overlap': true,
-              'text-ignore-placement': true,
+            minZoomLevel={SPLIT_MARKER_MIN_ZOOM}
+            style={{
+              visibility: textVisibility,
+              textField: ['get', 'label'],
+              textFont: MAPBOX_FONT.bold,
+              textSize: SPLIT_LABEL_SIZE,
+              textAllowOverlap: true,
+              textIgnorePlacement: true,
+              textColor: Palette.neutral.n1,
             }}
-            paint={{ 'text-color': Palette.neutral.n1 }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
       {routesGeoJSON && (
-        <GeoJSONSource id="activity-routes" data={routesGeoJSON}>
-          <Layer
+        <ShapeSource id="activity-routes" shape={routesGeoJSON}>
+          <LineLayer
             id="activity-routes-glow"
-            type="line"
-            source="activity-routes"
-            layout={{
-              'line-cap': 'round',
-              'line-join': 'round',
-            }}
-            paint={{
-              'line-color': ['get', 'color'],
-              'line-width': 6,
-              'line-opacity': 0.18,
+            style={{
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineColor: ['get', 'color'],
+              lineWidth: 6,
+              lineOpacity: 0.18,
             }}
           />
-          <Layer
+          <LineLayer
             id="activity-routes-line"
-            type="line"
-            source="activity-routes"
-            layout={{
-              'line-cap': 'round',
-              'line-join': 'round',
-            }}
-            paint={{
-              'line-color': ['get', 'color'],
-              'line-width': 2.5,
+            style={{
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineColor: ['get', 'color'],
+              lineWidth: 2.5,
             }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
       {puckGeoJSON && (
-        <GeoJSONSource id="position-puck" data={puckGeoJSON}>
-          <Layer
+        <ShapeSource id="position-puck" shape={puckGeoJSON}>
+          <CircleLayer
             id="position-puck-accuracy"
-            type="circle"
-            source="position-puck"
-            paint={{
-              'circle-radius': PUCK_ACCURACY_RADIUS,
-              'circle-color': Brand.primary,
-              'circle-opacity': 0.14,
-              'circle-stroke-color': Brand.primary,
-              'circle-stroke-width': 1,
-              'circle-stroke-opacity': 0.35,
+            style={{
+              circleRadius: PUCK_ACCURACY_RADIUS,
+              circleColor: Brand.primary,
+              circleOpacity: 0.14,
+              circleStrokeColor: Brand.primary,
+              circleStrokeWidth: 1,
+              circleStrokeOpacity: 0.35,
             }}
           />
           {/* The offline fallback style has no glyphs, so the arrow can't be drawn there. */}
-          <Layer
+          <SymbolLayer
             id="position-puck-heading"
-            type="symbol"
-            source="position-puck"
             filter={['has', 'heading']}
-            layout={{
-              visibility: styleFailed ? 'none' : 'visible',
-              'text-field': '▲',
-              'text-font': ['Noto Sans Bold'],
-              'text-size': 16,
-              'text-rotate': ['get', 'heading'],
-              'text-rotation-alignment': 'map',
-              'text-offset': [0, -1.5],
-              'text-allow-overlap': true,
-              'text-ignore-placement': true,
-            }}
-            paint={{
-              'text-color': Brand.primary,
-              'text-halo-color': Palette.white,
-              'text-halo-width': 1.5,
+            style={{
+              visibility: textVisibility,
+              textField: '▲',
+              textFont: MAPBOX_FONT.bold,
+              textSize: 16,
+              textRotate: ['get', 'heading'],
+              textRotationAlignment: 'map',
+              textOffset: [0, -1.5],
+              textAllowOverlap: true,
+              textIgnorePlacement: true,
+              textColor: Brand.primary,
+              textHaloColor: Palette.white,
+              textHaloWidth: 1.5,
             }}
           />
-          <Layer
+          <CircleLayer
             id="position-puck-casing"
-            type="circle"
-            source="position-puck"
-            paint={{ 'circle-radius': PUCK_CASING_RADIUS, 'circle-color': Palette.white }}
+            style={{ circleRadius: PUCK_CASING_RADIUS, circleColor: Palette.white }}
           />
-          <Layer
+          <CircleLayer
             id="position-puck-dot"
-            type="circle"
-            source="position-puck"
-            paint={{ 'circle-radius': PUCK_DOT_RADIUS, 'circle-color': Brand.primary }}
+            style={{ circleRadius: PUCK_DOT_RADIUS, circleColor: Brand.primary }}
           />
-        </GeoJSONSource>
+        </ShapeSource>
       )}
 
       {markers.map((marker) => (
-        <Marker
+        <MarkerView
           key={marker.id}
-          lngLat={[marker.coordinate[0], marker.coordinate[1]]}
-          anchor="center"
+          coordinate={[marker.coordinate[0], marker.coordinate[1]]}
+          anchor={{ x: 0.5, y: 0.5 }}
+          allowOverlap
         >
           <MapPin color={marker.color} icon={marker.icon} />
-        </Marker>
+        </MarkerView>
       ))}
-    </MapLibreMap>
+    </MapView>
   );
 });
 
 export const MapRoute = React.memo(function MapRoute(props: MapRouteProps) {
+  // A build without a token can't load any Mapbox style; draw the route without a base map.
+  if (!ensureMapbox()) return <MapRouteFallback {...props} />;
   return (
     <MapErrorBoundary fallback={<MapRouteFallback {...props} />}>
-      <MapLibreRouteInternal {...props} />
+      <MapboxRouteInternal {...props} />
     </MapErrorBoundary>
   );
 });

@@ -1,5 +1,5 @@
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import type { MapCamera } from '@/components/map-camera';
 import { getPlatform } from '@/platform';
 import { createPlaceFinder, type PlaceResult, placeAt } from '@/services/placeSearch';
 import { createLatestGate } from '@/utils/mapRoutes';
@@ -7,7 +7,7 @@ import { createLatestGate } from '@/utils/mapRoutes';
 const DEBOUNCE_MS = 350;
 
 /** The map's place search: debounced, newest query wins, focusing a hit moves the camera. */
-export function usePlaceSearch(cameraRef: RefObject<CameraRef | null>) {
+export function usePlaceSearch(cameraRef: RefObject<MapCamera | null>) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);

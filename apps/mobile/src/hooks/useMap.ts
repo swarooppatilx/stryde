@@ -1,8 +1,8 @@
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { services } from '@repo/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { SportFilter } from '@/components/filter-chips';
+import type { MapCamera } from '@/components/map-camera';
 import { Palette } from '@/constants/palette';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { getPlatform } from '@/platform';
@@ -84,7 +84,7 @@ export function useMap() {
     distance: distanceFilter,
   });
   const [zoom, setZoom] = useState(15);
-  const cameraRef = useRef<CameraRef>(null);
+  const cameraRef = useRef<MapCamera>(null);
 
   const getTerritoryMetadata = useTerritoryStore((s) => s.getTerritoryMetadata);
   const userId = useCurrentUserId();
@@ -295,7 +295,7 @@ export function useMap() {
     const next = !tilted;
     setTilted(next);
     // Only the tilt changes: the current zoom is passed back so the view does not jump out.
-    void cameraRef.current?.setStop({
+    cameraRef.current?.easeTo({
       pitch: next ? TILT_DEGREES : 0,
       zoom,
       duration: 500,

@@ -17,6 +17,8 @@ export const ENV = {
   WORLD_APP_ID: process.env.EXPO_PUBLIC_WORLD_APP_ID || '',
   WORLD_RP_ID: process.env.EXPO_PUBLIC_WORLD_RP_ID || '',
   WORLD_ENVIRONMENT: (process.env.EXPO_PUBLIC_WORLD_ENVIRONMENT || 'sandbox') as WorldIdEnvironment,
+  // Public (pk.) token for the Mapbox maps SDK; without it the map shows its offline fallback.
+  MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '',
 } as const;
 
 export function getLocalRpcUrl(): string {

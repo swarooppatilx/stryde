@@ -1,5 +1,5 @@
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import type { MapCamera } from '@/components/map-camera';
 import type { CameraMove } from '@/components/map-route';
 import type { Location } from '@/types';
 import {
@@ -28,7 +28,7 @@ export function useSmoothedHeading(fix: Location | null): number | null {
 }
 
 interface Options {
-  cameraRef: RefObject<CameraRef | null>;
+  cameraRef: RefObject<MapCamera | null>;
   fix: Location | null;
   heading: number | null;
   follow: FollowState;

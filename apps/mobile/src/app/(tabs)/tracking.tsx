@@ -1,10 +1,10 @@
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LocateButton } from '@/components/locate-button';
+import type { MapCamera } from '@/components/map-camera';
 import { MapLayersSheet } from '@/components/map-layers-sheet';
 import { type CameraMove, type MapMarker, MapRoute } from '@/components/map-route';
 import { LapCompleteCard, PausedBar } from '@/components/record-banners';
@@ -117,7 +117,7 @@ export default function TrackingScreen() {
   const savedMode = useMapPrefsStore((s) => s.recordFollowMode);
   const setSavedMode = useMapPrefsStore((s) => s.setRecordFollowMode);
   const [follow, setFollow] = useState<FollowState>({ following: true, mode: savedMode });
-  const cameraRef = useRef<CameraRef>(null);
+  const cameraRef = useRef<MapCamera>(null);
   const [mapHeight, setMapHeight] = useState(0);
   const [tilted, setTilted] = useState(false);
   const [bearing, setBearing] = useState(0);
@@ -165,11 +165,11 @@ export default function TrackingScreen() {
     setTilted(next);
     // Following re-aims the camera itself; otherwise only the lean changes.
     if (!follow.following)
-      void cameraRef.current?.setStop({ pitch: next ? TILT_DEGREES : 0, duration: 500 });
+      cameraRef.current?.easeTo({ pitch: next ? TILT_DEGREES : 0, duration: 500 });
   };
   const turnNorth = () => {
     if (follow.following && follow.mode === 'heading') steer('locate');
-    else void cameraRef.current?.setStop({ bearing: 0, duration: 500 });
+    else cameraRef.current?.easeTo({ bearing: 0, duration: 500 });
   };
   const puck = useMemo(
     () =>

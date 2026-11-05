@@ -1,5 +1,5 @@
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { type RefObject, useEffect, useRef } from 'react';
+import type { MapCamera } from '@/components/map-camera';
 import type { Ring } from '@/types';
 import { logger } from '@/utils/logger';
 import { fitPadding, routeBounds } from '@/utils/routeBounds';
@@ -17,7 +17,7 @@ const FIT_DURATION_MS = 800;
  * that re-animates every time the sheet is toggled throws away wherever the athlete has panned to.
  */
 export function useFitRoute(
-  cameraRef: RefObject<CameraRef | null>,
+  cameraRef: RefObject<MapCamera | null>,
   coordinates: [number, number][],
   territory: Ring | null | undefined,
   sheetHeight: number,
@@ -35,7 +35,7 @@ export function useFitRoute(
     const bounds = routeBounds(points);
     if (!bounds) return;
 
-    // cameraRef attaches after MapLibre mounts its Camera, which is after this effect first runs; check inside the timer.
+    // cameraRef attaches after the map mounts its Camera, which is after this effect first runs; check inside the timer.
     const timer = setTimeout(
       () => {
         try {

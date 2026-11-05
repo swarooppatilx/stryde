@@ -77,7 +77,7 @@
           "imageWidth": 140
         }
       ],
-      "@maplibre/maplibre-react-native",
+      "@rnmapbox/maps",
       "expo-secure-store",
       "expo-web-browser",
       "@react-native-community/datetimepicker",

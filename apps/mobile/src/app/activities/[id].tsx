@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -11,6 +10,7 @@ import { ActivitySheetBody } from '@/components/activity-detail/sheet-body';
 import { ActivitySummaryLine } from '@/components/activity-summary-line';
 import { ActivityTitleBlock } from '@/components/activity-title-block';
 import { CommentsSheet } from '@/components/comments-sheet';
+import type { MapCamera } from '@/components/map-camera';
 import { MapLegend } from '@/components/map-legend';
 import { type MapMarker, MapRoute } from '@/components/map-route';
 import { ShareDesignSheet } from '@/components/share-design-sheet';
@@ -54,7 +54,7 @@ function shareDateLabel(activity: Activity): string {
 export default function ActivitySummaryScreen() {
   const theme = useTheme();
   const unitSystem = useUnitSystem();
-  const cameraRef = useRef<CameraRef>(null);
+  const cameraRef = useRef<MapCamera>(null);
   const detail = useActivity();
   const {
     activity,

@@ -1,12 +1,13 @@
-import { StaticMapImageManager } from '@maplibre/maplibre-react-native';
+import { snapshotManager } from '@rnmapbox/maps';
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { outdoorStyleFor } from '@/constants/outdoorMapStyle';
+import { mapboxStyleUrl } from '@/constants/mapboxStyle';
 import { Palette } from '@/constants/palette';
 import { useTheme } from '@/hooks/use-theme';
+import { ensureMapbox } from '@/services/mapbox';
 import type { Ring } from '@/types';
 import { parsePolyline } from '@/utils/format';
 import { type Arrow, routeArrows } from '@/utils/routeArrows';
@@ -125,19 +126,24 @@ export function RouteThumbnail({
       setMapUri(cached);
       return;
     }
-    if (!shapes?.bounds) {
+    if (!shapes?.bounds || !ensureMapbox()) {
       setMapUri(null);
       return;
     }
     let cancelled = false;
-    StaticMapImageManager.createImage({
-      bounds: shapes.bounds,
-      mapStyle: outdoorStyleFor(theme.isDark),
-      width: IMG_W,
-      height: IMG_H,
-      output: 'file',
-      logo: false,
-    })
+    const [west, south, east, north] = shapes.bounds;
+    snapshotManager
+      .takeSnap({
+        bounds: [
+          [east, north],
+          [west, south],
+        ],
+        styleURL: mapboxStyleUrl(theme.isDark),
+        width: IMG_W,
+        height: IMG_H,
+        writeToDisk: true,
+        withLogo: true,
+      })
       .then((uri) => {
         pictureCache.set(key, uri);
         if (!cancelled) setMapUri(uri);

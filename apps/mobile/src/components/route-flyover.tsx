@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { MapCamera } from '@/components/map-camera';
 import { type MapMarker, MapRoute } from '@/components/map-route';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
@@ -39,7 +39,7 @@ export function RouteFlyover({ line, title, dark, onClose }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const unitSystem = useUnitSystem();
-  const cameraRef = useRef<CameraRef | null>(null);
+  const cameraRef = useRef<MapCamera | null>(null);
   const frames = useMemo(() => flyoverFrames(line, FRAME_COUNT), [line]);
   const total = frames.at(-1)?.distance ?? 0;
 
@@ -63,7 +63,7 @@ export function RouteFlyover({ line, title, dark, onClose }: Props) {
       progressRef.current = flyoverProgress(progressRef.current, elapsed, duration);
       const frame = frameAt(frames, progressRef.current);
       if (frame) {
-        cameraRef.current?.jumpTo({
+        cameraRef.current?.easeTo({
           center: frame.center,
           bearing: frame.bearing,
           pitch: PITCH,
