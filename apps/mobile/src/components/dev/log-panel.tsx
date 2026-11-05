@@ -11,6 +11,7 @@ import { getPlatform } from '@/platform';
 import type { LogEntry, LogLevel } from '@/utils/logBuffer';
 import { logBuffer } from '@/utils/logger';
 import { filterLogs, formatLogLine, formatLogTime } from '@/utils/logView';
+import { shareLatestTrackingTrace } from '@/utils/share';
 import { Toast } from '@/utils/toast';
 
 const LEVELS: Array<{ value: LogLevel; label: string }> = [
@@ -72,6 +73,9 @@ export function LogPanel() {
             </AppButton>
           </View>
         </View>
+        <AppButton size="small" variant="secondary" onPress={() => void shareLatestTrackingTrace()}>
+          Share latest tracking trace
+        </AppButton>
       </View>
       <FlatList
         data={visible}

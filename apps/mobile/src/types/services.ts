@@ -9,6 +9,22 @@ export type FixRejections = {
   duplicate: number;
 };
 
+/** Internal numbers behind the stats, for the trace's finish summary. */
+export interface TrackingDiagnostics {
+  startTime: number | null;
+  pausedDurationMs: number;
+  acceptedFixes: number;
+  interpolatedFixes: number;
+  /** Straight sum of the accepted fixes, no cleaning. */
+  rawLengthM: number;
+  /** Outliers removed and smoothed, as the saved polyline is. */
+  cleanedLengthM: number;
+  stepLength: number;
+  maxSpeedKmh: number;
+  autoPauseEnabled: boolean;
+  useGyroscope: boolean;
+}
+
 export interface ITrackingService {
   startTracking(activityType?: string): Promise<void>;
   getActivityType(): string | null;
@@ -37,6 +53,8 @@ export interface ITrackingService {
   addInterpolatedLocation(location: Location): void;
   getAllLocations(): Location[];
   getRejections(): FixRejections;
+  /** Internal numbers for the tracking trace; optional so stand-ins need not provide it. */
+  getDiagnostics?(): TrackingDiagnostics;
 }
 
 export interface IActivityService {

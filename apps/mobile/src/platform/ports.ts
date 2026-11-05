@@ -155,6 +155,12 @@ export interface Files {
   readBytes(uri: string): Promise<Uint8Array>;
   /** Writes into the app's cache directory (the OS may clear it) and returns the new file's URI. */
   writeCache(name: string, content: string, encoding?: 'utf8' | 'base64'): string;
+  /** Appends to a file under the app's documents (kept until the app is removed), creating it and its folder. */
+  appendDocument(path: string, content: string): void;
+  /** URIs of the files directly in a documents folder, oldest name first; empty when it does not exist. */
+  listDocuments(folder: string): string[];
+  /** Removes a file by URI; nothing happens when it is already gone. */
+  remove(uri: string): void;
 }
 
 /** A finished workout recorded by another app or a watch and kept in the phone's health data. */

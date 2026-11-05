@@ -1,6 +1,6 @@
 import { type Clock, lazyService, type MotionSensors, type StorageAdapter } from '@/platform';
 import type { Location } from '@/types';
-import type { FixRejections, ITrackingService } from '@/types/services';
+import type { FixRejections, ITrackingService, TrackingDiagnostics } from '@/types/services';
 import {
   classifyFix,
   type FixClass,
@@ -13,6 +13,8 @@ import { logger } from '@/utils/logger';
 import { createMotionDetector } from '@/utils/motionPause';
 import { pairs } from '@/utils/pairs';
 import { TRACKING_STORAGE_KEY } from '@/utils/recoverableRun';
+import { NO_TRACE, round, type TraceRecorder } from '@/utils/trackingTrace';
+import { trackingTrace } from './trackingTrace';
 
 const TRACKING_KEY = TRACKING_STORAGE_KEY;
 const DEFAULT_STEP_LENGTH = 0.7;
@@ -55,7 +57,18 @@ export interface TrackingDeps {
   storage: StorageAdapter;
   clock: Clock;
   motion: Pick<MotionSensors, 'getStepCount' | 'getHeading'>;
+  /** Verbose per-fix trace for diagnosing the live stats; nothing is recorded without one. */
+  trace?: TraceRecorder;
 }
+
+/** Where a fix ended up: kept on the track, or why it was not. */
+type FixOutcome =
+  | 'accept'
+  | 'reject-clock'
+  | 'reject-accuracy'
+  | 'reject-stale'
+  | 'not-tracking'
+  | Exclude<FixClass, 'accept'>;
 
 export class TrackingService implements ITrackingService {
   private isTracking = false;
@@ -69,6 +82,7 @@ export class TrackingService implements ITrackingService {
   private readonly storage: StorageAdapter;
   private readonly clock: Clock;
   private readonly motion: TrackingDeps['motion'];
+  private readonly trace: TraceRecorder;
   private static readonly PERSIST_INTERVAL = 5000;
   /** Runs and walks: below walking pace for this long pauses (the accelerometer usually gets there first). */
   private static readonly AUTO_PAUSE_SPEED_MS = 1;
@@ -122,10 +136,11 @@ export class TrackingService implements ITrackingService {
   /** The fix before the current one while auto-paused: resume is judged on the speed between two fixes, not on the whole pause. */
   private lastPausedFix: Location | null = null;
 
-  constructor({ storage, clock, motion }: TrackingDeps) {
+  constructor({ storage, clock, motion, trace }: TrackingDeps) {
     this.storage = storage;
     this.clock = clock;
     this.motion = motion;
+    this.trace = trace ?? NO_TRACE;
   }
 
   setUseGyroscope(enabled: boolean): void {
@@ -173,6 +188,7 @@ export class TrackingService implements ITrackingService {
     this.lowSpeedSince = null;
     this.isTracking = false;
     this.pauseStartTime = this.clock.now();
+    this.trace.record('clock.pause', { pausedDurationMs: this.pausedDuration });
     await this.persist();
   }
 
@@ -181,11 +197,14 @@ export class TrackingService implements ITrackingService {
     this.autoPaused = false;
     this.pauseLocation = null;
     this.lowSpeedSince = null;
+    let pausedForMs: number | null = null;
     if (this.pauseStartTime) {
-      this.pausedDuration += this.clock.now() - this.pauseStartTime;
+      pausedForMs = this.clock.now() - this.pauseStartTime;
+      this.pausedDuration += pausedForMs;
       this.pauseStartTime = null;
     }
     this.isTracking = true;
+    this.trace.record('clock.resume', { pausedForMs, pausedDurationMs: this.pausedDuration });
     await this.persist();
   }
 
@@ -244,13 +263,53 @@ export class TrackingService implements ITrackingService {
   }
 
   addLocation(location: Location): void {
+    const before = this.locations.at(-1);
+    const wasTracking = this.isTracking;
+    const outcome = this.storeFix(location);
+    this.traceFix(location, outcome, before, wasTracking);
+  }
+
+  private traceFix(
+    fix: Location,
+    outcome: FixOutcome,
+    previous: Location | undefined,
+    wasTracking: boolean
+  ): void {
+    const dtMs = previous ? fix.timestamp - previous.timestamp : null;
+    const stepM = previous
+      ? haversineDistance(previous.latitude, previous.longitude, fix.latitude, fix.longitude)
+      : null;
+    this.trace.record('fix', {
+      outcome,
+      ts: fix.timestamp,
+      lagMs: this.clock.now() - fix.timestamp,
+      lat: round(fix.latitude, 7),
+      lng: round(fix.longitude, 7),
+      acc: round(fix.accuracy, 1),
+      spd: round(fix.speed, 2),
+      alt: round(fix.altitude, 1),
+      vAcc: round(fix.verticalAccuracy, 1),
+      brg: round(fix.bearing, 0),
+      ...(fix.mocked && { mocked: true }),
+      // Measured from the last accepted fix, whatever this one's outcome.
+      dtMs,
+      stepM: round(stepM, 2),
+      impliedMs: dtMs && stepM !== null && dtMs > 0 ? round(stepM / (dtMs / 1000), 2) : null,
+      tracking: wasTracking,
+      autoPaused: this.autoPaused,
+      kept: this.locations.length,
+      teleportRejects: this.teleportRejects,
+    });
+  }
+
+  private storeFix(location: Location): FixOutcome {
     if (location.timestamp < MIN_PLAUSIBLE_FIX_TIME_MS) {
       this.reject('clock');
-      return;
+      return 'reject-clock';
     }
     if (location.accuracy > MAX_FIX_ACCURACY_M) {
       this.reject('accuracy');
-      return;
+      return 'reject-accuracy';
     }
     if (location.speed !== undefined) {
       this.lastSpeedReading = { speed: location.speed, at: this.clock.now() };
@@ -259,7 +318,7 @@ export class TrackingService implements ITrackingService {
     // than what was already seen would walk the route backwards.
     if (location.timestamp <= this.lastFixTimestamp) {
       this.reject('duplicate');
-      return;
+      return 'reject-stale';
     }
     this.lastFixTimestamp = location.timestamp;
     this.updateAutoPause(location);
@@ -276,7 +335,7 @@ export class TrackingService implements ITrackingService {
       }
       if (verdict !== 'accept') {
         this.reject(REJECTION_OF_VERDICT[verdict]);
-        return;
+        return verdict;
       }
       this.teleportRejects = 0;
 
@@ -296,13 +355,20 @@ export class TrackingService implements ITrackingService {
         if (actualDistance > 0 && this.stepsSinceLastGps > 0) {
           this.stepLength = actualDistance / this.stepsSinceLastGps;
           this.stepLength = Math.max(0.3, Math.min(1.0, this.stepLength));
+          this.trace.record('gyro.stepLength', {
+            stepLength: round(this.stepLength, 3),
+            steps: this.stepsSinceLastGps,
+            gpsM: round(actualDistance, 2),
+          });
         }
       }
 
       this.stepsSinceLastGps = 0;
       this.lastInterpolatedLocation = location;
       this.schedulePersist();
+      return 'accept';
     }
+    return 'not-tracking';
   }
 
   /**
@@ -316,7 +382,10 @@ export class TrackingService implements ITrackingService {
     const state = this.motionDetector.update(magnitudeG, now);
 
     if (this.autoPaused && this.pausedByMotion) {
-      if (state === 'moving') void this.resumeTracking();
+      if (state === 'moving') {
+        this.trace.record('autopause.off', { by: 'motion' });
+        void this.resumeTracking();
+      }
       return;
     }
     if (!this.isTracking || !this.usesMotionPause()) {
@@ -344,7 +413,11 @@ export class TrackingService implements ITrackingService {
       return;
     }
 
-    this.autoPauseAt(last);
+    this.autoPauseAt(last, 'motion', {
+      stillForMs: now - stillSince,
+      gpsSpeed: round(reading?.speed, 2),
+      gpsSpeedAgeMs: reading ? now - reading.at : null,
+    });
     this.pausedByMotion = true;
     this.motionStillSince = null;
   }
@@ -353,7 +426,12 @@ export class TrackingService implements ITrackingService {
     return this.activityType === null || TrackingService.MOTION_PAUSE_SPORTS.has(this.activityType);
   }
 
-  private autoPauseAt(location: Location): void {
+  private autoPauseAt(
+    location: Location,
+    reason: 'slow' | 'motion' | 'signal-loss',
+    details: Record<string, unknown> = {}
+  ): void {
+    this.trace.record('autopause.on', { reason, at: location.timestamp, ...details });
     void this.pauseTracking();
     this.autoPaused = true;
     this.pauseLocation = location;
@@ -370,8 +448,9 @@ export class TrackingService implements ITrackingService {
    */
   checkSignalLoss(): void {
     if (!this.autoPauseEnabled || !this.isTracking || !this.lastGpsLocation) return;
-    if (this.clock.now() - this.lastFixTimestamp < TrackingService.SIGNAL_LOSS_MS) return;
-    this.autoPauseAt(this.lastGpsLocation);
+    const silentMs = this.clock.now() - this.lastFixTimestamp;
+    if (silentMs < TrackingService.SIGNAL_LOSS_MS) return;
+    this.autoPauseAt(this.lastGpsLocation, 'signal-loss', { silentMs });
   }
 
   private usesPacePause(): boolean {
@@ -420,6 +499,11 @@ export class TrackingService implements ITrackingService {
         stepSpeed > this.autoPauseSpeedMs() &&
         moved >= TrackingService.AUTO_PAUSE_RESUME_MOVE_M
       ) {
+        this.trace.record('autopause.off', {
+          by: 'gps',
+          stepSpeed: round(stepSpeed, 2),
+          movedM: round(moved, 1),
+        });
         this.autoPaused = false;
         this.pauseLocation = null;
         this.lastPausedFix = null;
@@ -440,11 +524,21 @@ export class TrackingService implements ITrackingService {
         : 0;
 
     if (speed < this.autoPauseSpeedMs()) {
+      if (this.lowSpeedSince === null) {
+        this.trace.record('autopause.slowStart', {
+          speed: round(speed, 2),
+          threshold: this.autoPauseSpeedMs(),
+        });
+      }
       this.lowSpeedSince ??= location.timestamp;
-      if (location.timestamp - this.lowSpeedSince >= this.autoPauseHoldMs()) {
-        this.autoPauseAt(location);
+      const slowForMs = location.timestamp - this.lowSpeedSince;
+      if (slowForMs >= this.autoPauseHoldMs()) {
+        this.autoPauseAt(location, 'slow', { speed: round(speed, 2), slowForMs });
       }
     } else {
+      if (this.lowSpeedSince !== null) {
+        this.trace.record('autopause.slowEnd', { speed: round(speed, 2) });
+      }
       this.lowSpeedSince = null;
     }
   }
@@ -513,7 +607,9 @@ export class TrackingService implements ITrackingService {
           // A quick relaunch keeps all its time; a long one only gets a minute,
           // not the hours the app spent dead.
           const gap = this.clock.now() - data.lastPersistTime;
-          this.pausedDuration += Math.max(0, gap - MAX_RESTORE_ACTIVE_GAP_MS);
+          const addedPausedMs = Math.max(0, gap - MAX_RESTORE_ACTIVE_GAP_MS);
+          this.pausedDuration += addedPausedMs;
+          this.trace.record('restore.gap', { gapMs: gap, addedPausedMs });
         }
         if (typeof data.stepLength === 'number') {
           this.stepLength = data.stepLength;
@@ -596,6 +692,23 @@ export class TrackingService implements ITrackingService {
     return this.isTracking;
   }
 
+  getDiagnostics(): TrackingDiagnostics {
+    return {
+      startTime: this.startTime,
+      pausedDurationMs: this.pauseStartTime
+        ? this.pausedDuration + (this.clock.now() - this.pauseStartTime)
+        : this.pausedDuration,
+      acceptedFixes: this.locations.length,
+      interpolatedFixes: this.interpolatedLocations.length,
+      rawLengthM: pathLength(this.locations),
+      cleanedLengthM: pathLength(this.cleanTrack(this.locations)),
+      stepLength: this.stepLength,
+      maxSpeedKmh: this.maxSpeedKmh,
+      autoPauseEnabled: this.autoPauseEnabled,
+      useGyroscope: this.useGyroscope,
+    };
+  }
+
   getStartTime(): number | null {
     return this.startTime;
   }
@@ -656,5 +769,5 @@ export function createTrackingService(deps: TrackingDeps): TrackingService {
 
 /** The app-wide service: built on first use from the installed platform. */
 export const trackingService: ITrackingService = lazyService(({ storage, clock, motion }) =>
-  createTrackingService({ storage, clock, motion })
+  createTrackingService({ storage, clock, motion, trace: trackingTrace })
 );

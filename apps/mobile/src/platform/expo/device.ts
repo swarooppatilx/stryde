@@ -1,6 +1,6 @@
 import * as ExpoClipboard from 'expo-clipboard';
 import * as Crypto from 'expo-crypto';
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import { getInfoAsync, readAsStringAsync } from 'expo-file-system/legacy';
 import * as ExpoHaptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -114,5 +114,27 @@ export const expoFiles: Files = {
     const file = new File(Paths.cache, name);
     file.write(content, encoding === 'base64' ? { encoding } : undefined);
     return file.uri;
+  },
+  appendDocument(path, content) {
+    const parts = path.split('/');
+    const name = parts.pop() as string;
+    const folder = new Directory(Paths.document, ...parts);
+    if (!folder.exists) folder.create({ intermediates: true, idempotent: true });
+    const file = new File(folder, name);
+    if (!file.exists) file.create();
+    file.write(content, { append: true });
+  },
+  listDocuments(folder) {
+    const dir = new Directory(Paths.document, ...folder.split('/'));
+    if (!dir.exists) return [];
+    return dir
+      .list()
+      .filter((entry): entry is File => entry instanceof File)
+      .map((file) => file.uri)
+      .sort();
+  },
+  remove(uri) {
+    const file = new File(uri);
+    if (file.exists) file.delete();
   },
 };

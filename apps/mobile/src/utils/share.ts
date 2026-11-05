@@ -7,6 +7,7 @@ import { getPlatform } from '@/platform';
 import { Alert } from '@/utils/alert';
 import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
+import { TRACE_FOLDER } from '@/utils/trackingTrace';
 import { buildActivityDeepLink } from './deepLink';
 
 type SvgRef = RefObject<Svg | null>;
@@ -133,4 +134,21 @@ export function shareText(message: string): Promise<void> {
   return withFailureAlert('Share', 'Could not share this.', () =>
     Share.open({ message, failOnCancel: false }).then(() => undefined)
   );
+}
+
+/** Shares the newest live-tracking trace (newline-delimited JSON) for offline analysis. */
+export function shareLatestTrackingTrace(): Promise<void> {
+  return withFailureAlert('Share', 'Could not share the tracking trace.', async () => {
+    const uri = getPlatform().files.listDocuments(TRACE_FOLDER).at(-1);
+    if (!uri) {
+      Toast.info('No tracking trace yet: record an activity first');
+      return;
+    }
+    await Share.open({
+      url: uri,
+      type: 'text/plain',
+      filename: uri.split('/').at(-1),
+      failOnCancel: false,
+    });
+  });
 }

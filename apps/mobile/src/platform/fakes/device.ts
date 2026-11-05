@@ -238,6 +238,22 @@ export class MemoryFiles implements Files {
     this.contents.set(uri, content);
     return uri;
   }
+
+  appendDocument(path: string, content: string) {
+    const uri = `file:///documents/${path}`;
+    this.contents.set(uri, (this.contents.get(uri) ?? '') + content);
+  }
+
+  listDocuments(folder: string) {
+    const prefix = `file:///documents/${folder}/`;
+    return [...this.contents.keys()]
+      .filter((uri) => uri.startsWith(prefix) && !uri.slice(prefix.length).includes('/'))
+      .sort();
+  }
+
+  remove(uri: string) {
+    this.contents.delete(uri);
+  }
 }
 
 /** A health source you can script: set `status`, `access` and `workouts`, then see what was asked for. */

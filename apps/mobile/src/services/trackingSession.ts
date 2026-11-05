@@ -35,10 +35,12 @@ import { isTooShort, MIN_GPS_DISTANCE_M } from '@/utils/minimumRun';
 import { LIVE_SPEED_STALE_MS, recentMovement } from '@/utils/recentMovement';
 import { downsampleRoute, type RoutePoint } from '@/utils/route';
 import { computeSplits } from '@/utils/splits';
+import { round, type TrackingTrace } from '@/utils/trackingTrace';
 import { ensureForegroundLocation } from './locationPermission';
 import { territoryService } from './territoryService';
 import { getTimeToIndexed } from './timeToIndexed';
 import { trackingService } from './trackingService';
+import { trackingTrace } from './trackingTrace';
 
 /** Least distance a GPS-measured activity must cover to be worth saving. */
 
@@ -159,6 +161,13 @@ export interface TrackingSessionDeps {
   clock: Clock;
   /** Told once at the finish how many fixes the recording ignored, by reason. */
   recordRejections?: (counts: FixRejections) => void;
+  /** Verbose trace of the recording, for diagnosing the live stats. */
+  trace?: TrackingTrace;
+}
+
+/** Seconds per kilometre, or null before there is distance to divide by. */
+function secPerKm(distanceM: number, durationMs: number): number | null {
+  return distanceM > 0 && durationMs > 0 ? round(durationMs / distanceM, 1) : null;
 }
 
 const IDLE_SNAPSHOT: SessionSnapshot = {
@@ -210,6 +219,44 @@ function climbOf(locations: readonly Location[]): {
  */
 export function createTrackingSession(deps: TrackingSessionDeps): TrackingSession {
   const { tracking, territory, background, haptics, speaker, screenAwake } = deps;
+  const trace = deps.trace;
+  const note = (kind: string, data?: Record<string, unknown>) => trace?.record(kind, data);
+
+  /** The figures the screen is showing right now, as numbers. */
+  function traceStats(): void {
+    if (!trace || status === 'idle') return;
+    const { recent, splits, elevationGain } = snapshot;
+    note('stats', {
+      status,
+      autoPaused,
+      distanceM: round(distance, 1),
+      durationMs: duration,
+      avgSecPerKm: secPerKm(distance, duration),
+      recentM: round(recent.distance, 1),
+      recentMs: recent.durationMs,
+      currentSecPerKm: secPerKm(recent.distance, recent.durationMs),
+      fixAgeMs: lastFix ? deps.clock.now() - lastFix.timestamp : null,
+      kept: knownCount,
+      splits: splits.length,
+      lastSplit: splits.at(-1)
+        ? { m: round(splits.at(-1)?.distance, 1), ms: splits.at(-1)?.movingTime }
+        : null,
+      elevationGain: round(elevationGain, 1),
+    });
+    trace.flushIfDue();
+  }
+
+  function beginTrace(sport: string, extra: Record<string, unknown> = {}): void {
+    if (!trace || !options) return;
+    trace.begin(sport, {
+      accuracyMode: options.accuracyMode,
+      timeIntervalMs: options.timeIntervalMs,
+      useGyroscope: options.useGyroscope,
+      autoPause: options.autoPause,
+      splitMeters: options.splitMeters ?? 1000,
+      ...extra,
+    });
+  }
   const listeners = new Set<() => void>();
 
   let options: SessionOptions | null = null;
@@ -398,9 +445,11 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     if (status === 'tracking' && tracking.getIsAutoPaused()) {
       status = 'paused';
       autoPaused = true;
+      note('status', { status, autoPaused, distanceM: round(distance, 1), durationMs: duration });
     } else if (status === 'paused' && autoPaused && tracking.getIsTracking()) {
       status = 'tracking';
       autoPaused = false;
+      note('status', { status, autoPaused, distanceM: round(distance, 1), durationMs: duration });
     }
   }
 
@@ -497,6 +546,11 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
   async function drainBackground(): Promise<void> {
     const buffered = await background.peek();
     if (buffered.length === 0) return;
+    note('background.drain', {
+      count: buffered.length,
+      firstTs: Math.min(...buffered.map((p) => p.timestamp)),
+      lastTs: Math.max(...buffered.map((p) => p.timestamp)),
+    });
     for (const point of [...buffered].sort((a, b) => a.timestamp - b.timestamp)) {
       tracking.addLocation(point);
     }
@@ -524,6 +578,8 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       const stored = tracking.getActivityType() as ActivityType | null;
       const activityType = stored && stored in MAX_SPEED_KMH ? stored : restoreOptions.activityType;
       options = { ...restoreOptions, activityType };
+      if (trace && !trace.currentPath()) beginTrace(activityType, { restored: true });
+      note('session.restore', { startTime: tracking.getStartTime() });
       tracking.setMaxSpeed(MAX_SPEED_KMH[activityType]);
       tracking.setAutoPauseEnabled(restoreOptions.autoPause);
 
@@ -566,6 +622,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         if (!(await deps.ensureLocationPermission())) return { ok: false, reason: 'permission' };
 
         options = startOptions;
+        beginTrace(startOptions.activityType);
         tracking.setMaxSpeed(MAX_SPEED_KMH[startOptions.activityType]);
         tracking.setAutoPauseEnabled(startOptions.autoPause);
         await tracking.startTracking(startOptions.activityType);
@@ -578,6 +635,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
           await startWatching();
           announceAction('start');
         } catch (err) {
+          trace?.end('session.startFailed', { message: gpsFailureMessage(err) });
           await tracking.stopTracking();
           resetView();
           options = null;
@@ -604,6 +662,11 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       haptics.impactMedium();
       measure();
       lapMarks = [...lapMarks, { distance, duration }];
+      note('session.lap', {
+        n: lapMarks.length,
+        distanceM: round(distance, 1),
+        durationMs: duration,
+      });
       emit();
       const closed = latestLap(lapMarks);
       if (options?.announceActions && closed)
@@ -611,6 +674,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     },
 
     async pause() {
+      note('session.pause', { distanceM: round(distance, 1), durationMs: duration });
       haptics.impactMedium();
       await tracking.pauseTracking();
       stopWatching();
@@ -628,6 +692,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     },
 
     async resume() {
+      note('session.resume', { distanceM: round(distance, 1), durationMs: duration });
       haptics.impactMedium();
       await tracking.resumeTracking();
       status = 'tracking';
@@ -689,8 +754,41 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       };
 
       const finishedSport = options?.activityType;
+      const diagnostics = tracking.getDiagnostics?.();
+      note('session.summary', {
+        shown: { distanceM: round(distance, 1), durationMs: duration },
+        saved: {
+          distanceM: round(summary.distance, 1),
+          durationMs: summary.duration,
+          avgSecPerKm: secPerKm(summary.distance, summary.duration),
+          elevationGain: round(summary.elevationGain, 1),
+          elevationLoss: round(summary.elevationLoss, 1),
+          splits: summary.splits.map((s) => ({ m: round(s.distance, 1), ms: s.movingTime })),
+          laps: summary.laps.length,
+          bestEfforts: summary.bestEfforts,
+          polylinePoints: polyline ? polyline.split(';').length : 0,
+        },
+        // The same accepted fixes measured three ways; a gap between them points at the culprit.
+        lengths: {
+          incrementalM: round(tracking.getDistance(), 1),
+          rawM: round(diagnostics?.rawLengthM, 1),
+          cleanedM: round(diagnostics?.cleanedLengthM, 1),
+          smoothedSplitsM: round(
+            summary.splits.reduce((sum, s) => sum + s.distance, 0),
+            1
+          ),
+        },
+        clock: diagnostics && {
+          startTime: diagnostics.startTime,
+          wallMs: diagnostics.startTime ? deps.clock.now() - diagnostics.startTime : null,
+          pausedMs: diagnostics.pausedDurationMs,
+        },
+        diagnostics,
+        rejections: tracking.getRejections(),
+      });
       announceAction('finish');
       const result = await tracking.stopTracking();
+      trace?.end('session.finish', { ok: result.success, error: result.error ?? null });
       resetView();
       applyMotion();
       emit();
@@ -743,6 +841,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       const changed =
         status !== before.status || distance !== before.distance || duration !== before.duration;
       if (changed || (status === 'tracking' && options?.useGyroscope)) emit();
+      traceStats();
     },
 
     configure(patch) {
@@ -768,5 +867,6 @@ export const trackingSession: TrackingSession = lazyService((platform) =>
     ensureLocationPermission: ensureForegroundLocation,
     clock: platform.clock,
     recordRejections: (counts) => getTimeToIndexed().log.record('record.rejections', { counts }),
+    trace: trackingTrace,
   })
 );
