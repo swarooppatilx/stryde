@@ -133,6 +133,7 @@ export default function MapScreen() {
     activityRoutes,
     othersTerritories,
     heatmapPoints,
+    heatmapColor,
     searchQuery,
     searchResults,
     searchLoading,
@@ -278,7 +279,7 @@ export default function MapScreen() {
         compassTopOffset={compassTopOffset}
         heatmapPoints={heatmapPoints}
         heatmapVisible={showHeatmap}
-        heatmapRamp={heatmapRamp}
+        heatmapColor={heatmapColor}
         onTerritoryPress={handleTerritoryPress}
         onZoomChanged={onMapZoomChanged}
       />

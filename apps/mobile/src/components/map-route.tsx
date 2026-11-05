@@ -24,6 +24,7 @@ import {
   toMapboxPadding,
 } from '@/components/map-camera';
 import { MapErrorBoundary, MapPin, MapRouteFallback } from '@/components/map-route-fallback';
+import { type HeatmapColor, heatRampFor } from '@/constants/heatmapColors';
 import {
   type BaseMapType,
   BIKE_LANE_COLOR,
@@ -38,9 +39,10 @@ import {
 } from '@/constants/mapboxStyle';
 import { offlineMapStyle } from '@/constants/mapStyle';
 import { Palette } from '@/constants/palette';
-import { Brand, HEAT_RAMP, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
+import { Brand, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
 import { ensureMapbox } from '@/services/mapbox';
 import type { Ring } from '@/types';
+import type { HeatCell } from '@/utils/heatmap';
 import { type PuckPosition, puckFeatureCollection } from '@/utils/locationPuck';
 import {
   type LngLatPair,
@@ -121,10 +123,11 @@ export interface MapRouteProps {
   othersTerritoryColor?: string;
   othersTerritoryOpacity?: number;
   /** Point cloud for the activity-density heatmap layer. */
-  heatmapPoints?: LngLatPair[];
+  heatmapPoints?: ReadonlyArray<LngLatPair | HeatCell>;
+  /** Colour scheme of the heatmap. */
+  heatmapColor?: HeatmapColor;
   heatmapVisible?: boolean;
   /** Colours of the heatmap, cool to hot; the classic ramp when left out. */
-  heatmapRamp?: readonly (readonly [number, string])[];
   /** Fires with the territory id when a territory (own or another athlete's) is tapped. */
   onTerritoryPress?: (territoryId: string) => void;
   /** Keeps the parent's zoom state in sync (drives the 2D zoom buttons). */
@@ -233,19 +236,26 @@ function splitFeaturePoints(
 }
 
 function heatmapFeaturePoints(
-  heatmapPoints: LngLatPair[],
+  heatmapPoints: ReadonlyArray<LngLatPair | HeatCell>,
   heatmapVisible: boolean
-): GeoJSON.FeatureCollection<GeoJSON.Point> | null {
+): { shape: GeoJSON.FeatureCollection<GeoJSON.Point>; maxWeight: number } | null {
   if (!heatmapVisible || heatmapPoints.length === 0) return null;
-  return {
-    type: 'FeatureCollection',
-    features: heatmapPoints.map(([lng, lat]) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [lng, lat] },
-      properties: {},
-    })),
-  };
+  let maxWeight = 1;
+  const features = heatmapPoints.map((point) => {
+    const w = point[2] ?? 1;
+    if (w > maxWeight) maxWeight = w;
+    return {
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [point[0], point[1]] },
+      properties: { w },
+    };
+  });
+  return { shape: { type: 'FeatureCollection', features }, maxWeight };
 }
+
+/** The glow widens and brightens as you zoom in, so streets stay readable at every scale. */
+const HEAT_RADIUS = ['interpolate', ['linear'], ['zoom'], 10, 5, 14, 12, 17, 26] as never;
+const HEAT_INTENSITY = ['interpolate', ['linear'], ['zoom'], 10, 0.6, 15, 1.2, 18, 1.8] as never;
 
 const PUCK_DOT_RADIUS = 7;
 const PUCK_CASING_RADIUS = 10;
@@ -290,7 +300,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   othersTerritoryOpacity = 0.12,
   heatmapPoints = [],
   heatmapVisible = true,
-  heatmapRamp,
+  heatmapColor = 'classic',
   onTerritoryPress,
   onZoomChanged,
   onCameraMove,
@@ -501,20 +511,29 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
       )}
 
       {heatmapGeoJSON && (
-        <ShapeSource id="activity-heatmap" shape={heatmapGeoJSON}>
+        <ShapeSource id="activity-heatmap" shape={heatmapGeoJSON.shape}>
           <HeatmapLayer
             id="activity-heat"
             style={{
-              heatmapWeight: 1,
-              heatmapIntensity: 0.35,
+              // The busiest spot weighs 1; a spot used once still glows faintly.
+              heatmapWeight: [
+                'interpolate',
+                ['linear'],
+                ['get', 'w'],
+                1,
+                0.3,
+                Math.max(2, heatmapGeoJSON.maxWeight),
+                1,
+              ] as never,
+              heatmapIntensity: HEAT_INTENSITY,
               heatmapColor: [
                 'interpolate',
                 ['linear'],
                 ['heatmap-density'],
-                ...(heatmapRamp ?? HEAT_RAMP).flat(),
+                ...heatRampFor(heatmapColor).flat(),
               ] as never,
-              heatmapRadius: 20,
-              heatmapOpacity: 0.55,
+              heatmapRadius: HEAT_RADIUS,
+              heatmapOpacity: 0.85,
             }}
           />
         </ShapeSource>

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { SportFilter } from '@/components/filter-chips';
 import type { MapCamera } from '@/components/map-camera';
-import { Palette } from '@/constants/palette';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { getPlatform } from '@/platform';
 import { ensureForegroundLocation } from '@/services/locationPermission';
@@ -14,8 +13,9 @@ import type { Ring } from '@/types';
 import { type DistanceFilter, inDistanceBand, routeLength } from '@/utils/distanceFilter';
 import { isLocationServicesOff } from '@/utils/errors';
 import { parsePolyline } from '@/utils/format';
+import { heatCells, inHeatmapPeriod } from '@/utils/heatmap';
 import { logger } from '@/utils/logger';
-import { heatmapPoints as buildHeatmap, territoryBoundsRing } from '@/utils/mapData';
+import { territoryBoundsRing } from '@/utils/mapData';
 import { routeColorFor, visibleRoutes } from '@/utils/mapRoutes';
 import { matchesSportFilter } from '@/utils/sportFilter';
 import { usePlaceSearch } from './usePlaceSearch';
@@ -73,6 +73,11 @@ export function useMap() {
   const sportFilter = useMapPrefsStore((s) => s.sport);
   const timeFilter = useMapPrefsStore((s) => s.time);
   const distanceFilter = useMapPrefsStore((s) => s.distance);
+  const heatmapSource = useMapPrefsStore((s) => s.heatmapSource);
+  const heatmapPeriod = useMapPrefsStore((s) => s.heatmapPeriod);
+  const heatmapColor = useMapPrefsStore((s) => s.heatmapColor);
+  // Other athletes' activities feed both their route lines and the community heatmap.
+  const wantOthers = showOthers || (showHeatmap && heatmapSource === 'community');
   const setLayer = useMapPrefsStore((s) => s.setLayer);
   const setSportFilter = useMapPrefsStore((s) => s.setSport);
   const setTimeFilter = useMapPrefsStore((s) => s.setTime);
@@ -164,7 +169,7 @@ export function useMap() {
 
   // Cross-user data comes from the subgraph when deployed (no fromBlock:0 rescan); without one the layers stay empty. Per-metadata IPFS fetches are bounded and best-effort.
   const loadOthers = useCallback(async () => {
-    if (!showOthers) {
+    if (!wantOthers) {
       setOthersRoutes([]);
       setOthersTerritories([]);
       return;
@@ -219,7 +224,7 @@ export function useMap() {
     } finally {
       setOthersLoading(false);
     }
-  }, [showOthers]);
+  }, [wantOthers]);
 
   useEffect(() => {
     void loadOthers();
@@ -263,22 +268,27 @@ export function useMap() {
     return visibleRoutes({ showRoutes, showOthers, own, others });
   }, [ownRoutes, filteredOthersRoutes, showRoutes, showOthers]);
 
+  // Built from its own source, apart from the route lines: the heatmap can show the community
+  // while the map draws only your routes, or the other way round.
   const heatmapPoints = useMemo(() => {
     if (!showHeatmap) return [];
-    const sourceRoutes = visibleRoutes<{ coordinates: [number, number][] }>({
-      showRoutes,
-      showOthers,
-      own: ownRoutes,
-      others: filteredOthersRoutes,
-    });
-    return buildHeatmap(
-      sourceRoutes.map((r, i) => ({
-        id: String(i),
-        coordinates: r.coordinates,
-        color: Palette.black,
-      }))
-    );
-  }, [showHeatmap, showRoutes, showOthers, ownRoutes, filteredOthersRoutes]);
+    const now = Date.now();
+    const routes =
+      heatmapSource === 'personal'
+        ? activities
+            .filter((a) => a.polyline && matchesSportFilter(sportFilter, a.activityType))
+            .map((a) => ({
+              coordinates: parsePolyline(a.polyline),
+              timestampMs: a.createdAt.getTime(),
+            }))
+        : othersRoutes
+            .filter((r) => matchesSportFilter(sportFilter, r.sport))
+            .map((r) => ({
+              coordinates: r.coordinates,
+              timestampMs: r.timestamp === undefined ? undefined : r.timestamp * 1000,
+            }));
+    return heatCells(routes.filter((r) => inHeatmapPeriod(r, heatmapPeriod, now)));
+  }, [showHeatmap, heatmapSource, heatmapPeriod, activities, othersRoutes, sportFilter]);
 
   const recenter = useCallback(() => {
     if (location) {
@@ -412,6 +422,7 @@ export function useMap() {
     activityRoutes,
     othersTerritories,
     heatmapPoints,
+    heatmapColor,
     selectedTerritory,
     territoryLoading,
     loadLocation,

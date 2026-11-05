@@ -16,6 +16,12 @@ import {
   resolveMapStyle,
   useMapPrefsStore,
 } from '@/stores/mapPrefsStore';
+import {
+  HEATMAP_PERIOD_LABELS,
+  HEATMAP_SOURCE_LABELS,
+  type HeatmapPeriod,
+  type HeatmapSource,
+} from '@/utils/heatmap';
 import { MAP_LAYER_OPTIONS } from '@/utils/mapLayerOptions';
 import { MAP_STYLE_LABELS } from '@/utils/recordIsland';
 import { AppSwitch } from './app-switch';
@@ -37,6 +43,12 @@ const MAP_TYPES: ReadonlyArray<{
   { value: 'satellite', label: 'Satellite', icon: 'earth-outline' },
   { value: 'hybrid', label: 'Hybrid', icon: 'layers-outline' },
 ];
+
+const optionsOf = <T extends string>(labels: Record<T, string>) =>
+  (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
+const HEAT_SOURCES = optionsOf<HeatmapSource>(HEATMAP_SOURCE_LABELS);
+const HEAT_PERIODS = optionsOf<HeatmapPeriod>(HEATMAP_PERIOD_LABELS);
+const HEAT_COLORS = HEATMAP_COLOR_OPTIONS;
 
 interface MapLayersSheetProps {
   visible: boolean;
@@ -161,6 +173,28 @@ export function MapLayersSheet({ visible, onClose, layers, previewCenter }: MapL
               {layers.map((layer) => {
                 const option = MAP_LAYER_OPTIONS[layer];
                 const on = isLayerOn(prefs, layer);
+                const heatmapOptions = layer === 'heatmap' && on && (
+                  <View style={styles.heatOptions}>
+                    <ChipRow
+                      options={HEAT_SOURCES}
+                      value={prefs.heatmapSource}
+                      onChange={(heatmapSource) => prefs.setHeatmap({ heatmapSource })}
+                      contentStyle={styles.chips}
+                    />
+                    <ChipRow
+                      options={HEAT_PERIODS}
+                      value={prefs.heatmapPeriod}
+                      onChange={(heatmapPeriod) => prefs.setHeatmap({ heatmapPeriod })}
+                      contentStyle={styles.chips}
+                    />
+                    <ChipRow
+                      options={HEAT_COLORS}
+                      value={prefs.heatmapColor}
+                      onChange={(heatmapColor) => prefs.setHeatmap({ heatmapColor })}
+                      contentStyle={styles.chips}
+                    />
+                  </View>
+                );
                 return (
                   <View key={layer}>
                     <Tappable
@@ -184,19 +218,7 @@ export function MapLayersSheet({ visible, onClose, layers, previewCenter }: MapL
                         label={option.label}
                       />
                     </Tappable>
-                    {layer === 'heatmap' && on && (
-                      <View style={styles.heatColours}>
-                        <ThemedText type="caption" themeColor="textSecondary">
-                          Heatmap colour
-                        </ThemedText>
-                        <ChipRow
-                          options={HEATMAP_COLOR_OPTIONS}
-                          value={prefs.heatmapColor}
-                          onChange={prefs.setHeatmapColor}
-                          contentStyle={styles.chips}
-                        />
-                      </View>
-                    )}
+                    {heatmapOptions}
                   </View>
                 );
               })}
@@ -239,6 +261,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chips: { paddingHorizontal: 0 },
+  heatOptions: { gap: Spacing.two, paddingLeft: 22 + Spacing.three, paddingBottom: Spacing.two },
   row: {
     minHeight: 56,
     flexDirection: 'row',
