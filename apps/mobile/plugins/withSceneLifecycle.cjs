@@ -20,15 +20,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     let window = UIWindow(windowScene: windowScene)
     self.window = window
     appDelegate.window = window
-    appDelegate.reactNativeFactory?.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: appDelegate.launchOptions)
-    if let url = connectionOptions.urlContexts.first?.url {
-      _ = appDelegate.application(UIApplication.shared, open: url, options: [:])
-    }
-    if let activity = connectionOptions.userActivities.first {
-      _ = appDelegate.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+    // Show something at once and start React Native on the next turn of the run loop: in a
+    // debug build finding the bundle can wait on the network for Metro, and iOS kills an app
+    // whose scene takes more than a few seconds to connect.
+    let placeholder = UIViewController()
+    placeholder.view.backgroundColor = .systemBackground
+    window.rootViewController = placeholder
+    window.makeKeyAndVisible()
+    let url = connectionOptions.urlContexts.first?.url
+    let activity = connectionOptions.userActivities.first
+    DispatchQueue.main.async {
+      appDelegate.reactNativeFactory?.startReactNative(
+        withModuleName: "main",
+        in: window,
+        launchOptions: appDelegate.launchOptions)
+      if let url {
+        _ = appDelegate.application(UIApplication.shared, open: url, options: [:])
+      }
+      if let activity {
+        _ = appDelegate.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+      }
     }
   }
 
