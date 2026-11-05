@@ -183,6 +183,10 @@ export const profileRegistryAbi = [
     outputs: [{ name: '', type: 'bool' }],
     stateMutability: 'view',
   },
+  { type: 'error', name: 'NotRegistered', inputs: [] },
+  { type: 'error', name: 'AlreadyVerified', inputs: [] },
+  { type: 'error', name: 'NullifierAlreadyUsed', inputs: [] },
+  { type: 'error', name: 'NotAuthorizedVerifier', inputs: [] },
 ] as const;
 
 export const challengeRegistryAbi = [

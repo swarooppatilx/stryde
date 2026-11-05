@@ -51,6 +51,15 @@ const REVERTS: Record<string, RelayFailure> = {
     status: 409,
     message: 'A season is already active. End it before starting another.',
   },
+  // Ordering problems a retry can fix (a new season starting, a queued registration landing), so 503 not 4xx.
+  SeasonNotActive: { status: 503, message: 'No season is active right now; try again shortly.' },
+  NotRegistered: {
+    status: 503,
+    message: 'This wallet has no profile onchain yet; try again shortly.',
+  },
+  AlreadyVerified: { status: 409, message: 'This wallet is already verified.' },
+  NullifierAlreadyUsed: { status: 409, message: 'This World ID already verified another wallet.' },
+  NotAuthorizedVerifier: { status: 403, message: 'Relayer is not authorized to verify profiles' },
   AlreadyMinted: { status: 409, message: 'This has already been minted.' },
   DuplicateActivityHash: { status: 409, message: 'This activity has already been rewarded.' },
   TerritoryAlreadyMinted: { status: 409, message: 'This territory has already been minted.' },

@@ -12,6 +12,9 @@ const abi = [
   { type: 'error', name: 'AlreadyMinted', inputs: [] },
   { type: 'error', name: 'NotSettler', inputs: [] },
   { type: 'error', name: 'SettleWindowClosed', inputs: [] },
+  { type: 'error', name: 'SeasonNotActive', inputs: [] },
+  { type: 'error', name: 'NotRegistered', inputs: [] },
+  { type: 'error', name: 'NullifierAlreadyUsed', inputs: [] },
   { type: 'error', name: 'Unmapped', inputs: [] },
   {
     type: 'error',

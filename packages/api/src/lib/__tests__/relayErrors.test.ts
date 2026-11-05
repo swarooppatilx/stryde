@@ -18,6 +18,9 @@ describe('classifyRelayError', () => {
     ['NotRecorder', 403],
     ['OwnableUnauthorizedAccount', 403],
     ['AlreadyMinted', 409],
+    ['SeasonNotActive', 503],
+    ['NotRegistered', 503],
+    ['NullifierAlreadyUsed', 409],
   ] as const)('maps the contract error %s to %i', (name, status) => {
     expect(classifyRelayError(revertedWith(name))?.status).toBe(status);
   });
