@@ -2,6 +2,7 @@ import { ExpirationTime } from '@arkiv-network/sdk';
 import { asc, type Expression, gt, lte } from '@arkiv-network/sdk/query';
 import { key, u64 } from '@arkiv-network/sdk/schema';
 import type { createArkivPublicClient, createArkivWalletClient } from './arkiv.js';
+import { logError } from './logError.js';
 
 /**
  * The longest an entity may live past the block it is extended in (the SDK's MAX_LIFETIME, about
@@ -101,7 +102,8 @@ export async function renewExpiring(
     try {
       await client.extend(item.key, item.target);
       renewed += 1;
-    } catch {
+    } catch (error) {
+      logError(`[arkiv] Could not renew ${item.key}:`, error);
       failed += 1;
     }
   }
