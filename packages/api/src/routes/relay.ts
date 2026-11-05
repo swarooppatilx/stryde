@@ -326,64 +326,63 @@ relay.post('/record-contribution', async (c) => {
     return c.json({ error: 'Required: participant (address), activityHash (bytes32)' }, 400);
   }
 
-  // One request at a time per instance: checking the ledger and marking it must not interleave
-  // (a best-effort guard; separate instances can still race, see ContributionLedger).
-  return countContribution(async () => {
-    let ledger: ReturnType<typeof getContributionLedger>;
-    let recorded: Awaited<ReturnType<typeof lookupRecordedActivity>>;
-    try {
-      ledger = getContributionLedger();
-      if (await ledger.has(activityHash)) {
-        return c.json(
-          { error: 'This activity already counts, or is being counted, for the season' },
-          409
-        );
-      }
-      recorded = await lookupRecordedActivity(activityHash);
-    } catch (error) {
-      return mapRelayError(c, error);
-    }
-    if (!recorded) {
-      return c.json({ error: 'Activity is not visible onchain yet; try again shortly' }, 503);
-    }
-    if (recorded.owner.toLowerCase() !== participant.toLowerCase()) {
-      return c.json({ error: 'Only the athlete who recorded this activity can be credited' }, 403);
-    }
-    const meters =
-      recorded.distance > BigInt(MAX_DISTANCE_METERS)
-        ? BigInt(MAX_DISTANCE_METERS)
-        : recorded.distance;
-    if (meters === 0n) return c.json({ error: 'The recorded activity has no distance' }, 400);
+  const alreadyCounted = () =>
+    c.json({ error: 'This activity already counts, or is being counted, for the season' }, 409);
+  let ledger: ReturnType<typeof getContributionLedger>;
+  let recorded: Awaited<ReturnType<typeof lookupRecordedActivity>>;
+  try {
+    ledger = getContributionLedger();
+    if (await ledger.has(activityHash)) return alreadyCounted();
+    recorded = await lookupRecordedActivity(activityHash);
+  } catch (error) {
+    return mapRelayError(c, error);
+  }
+  if (!recorded) {
+    return c.json({ error: 'Activity is not visible onchain yet; try again shortly' }, 503);
+  }
+  if (recorded.owner.toLowerCase() !== participant.toLowerCase()) {
+    return c.json({ error: 'Only the athlete who recorded this activity can be credited' }, 403);
+  }
+  const meters =
+    recorded.distance > BigInt(MAX_DISTANCE_METERS)
+      ? BigInt(MAX_DISTANCE_METERS)
+      : recorded.distance;
+  if (meters === 0n) return c.json({ error: 'The recorded activity has no distance' }, 400);
 
-    // SeasonManager adds whatever it is sent, so claim the activity before sending. The claim
-    // is dropped only when the write definitely did not happen; if it may still mine
-    // (unconfirmed), it stays and a replay is answered 409 instead of sending a second time.
-    let claim: string;
-    try {
-      claim = await ledger.reserve(activityHash, participant);
-    } catch (error) {
-      return mapRelayError(c, error);
-    }
+  // SeasonManager adds whatever it is sent, so claim the activity before sending. The claim
+  // is dropped only when the write definitely did not happen; if it may still mine
+  // (unconfirmed), it stays and a replay is answered 409 instead of sending a second time.
+  // Only the check-and-reserve runs one at a time per instance (a best-effort guard; separate
+  // instances can still race, see ContributionLedger); the send and receipt wait do not.
+  let claim: string | null;
+  try {
+    claim = await countContribution(async () =>
+      (await ledger.has(activityHash)) ? null : ledger.reserve(activityHash, participant)
+    );
+  } catch (error) {
+    return mapRelayError(c, error);
+  }
+  if (claim === null) return alreadyCounted();
+  const reserved = claim;
 
-    return respondWith(c, async () => {
-      let result: RelayResult;
-      try {
-        result = await relayTx({
-          contract: 'seasonManager',
-          functionName: 'recordContribution',
-          args: [participant, meters],
-        });
-      } catch (error) {
-        if (!(error instanceof ReceiptTimeoutError)) await releaseClaim(ledger, claim);
-        throw error;
-      }
-      if (result.confirmed) {
-        // The contribution is onchain; reporting failure here would make the app retry and count it twice.
-        await markCounted(ledger, activityHash, participant, claim);
-      } else {
-        await releaseClaim(ledger, claim);
-      }
-      return result;
-    });
+  return respondWith(c, async () => {
+    let result: RelayResult;
+    try {
+      result = await relayTx({
+        contract: 'seasonManager',
+        functionName: 'recordContribution',
+        args: [participant, meters],
+      });
+    } catch (error) {
+      if (!(error instanceof ReceiptTimeoutError)) await releaseClaim(ledger, reserved);
+      throw error;
+    }
+    if (result.confirmed) {
+      // The contribution is onchain; reporting failure here would make the app retry and count it twice.
+      await markCounted(ledger, activityHash, participant, reserved);
+    } else {
+      await releaseClaim(ledger, reserved);
+    }
+    return result;
   });
 });

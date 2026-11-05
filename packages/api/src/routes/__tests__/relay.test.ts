@@ -493,6 +493,31 @@ describe('POST /record-contribution', () => {
     ledger.mark.mockReset();
   });
 
+  it('sends a duplicate only once when both arrive together', async () => {
+    const [a, b] = await Promise.all([
+      post({ participant: PARTICIPANT, activityHash: HASH }),
+      post({ participant: PARTICIPANT, activityHash: HASH }),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+  });
+
+  it("does not hold one athlete's contribution behind another's receipt wait", async () => {
+    let mine: (value: unknown) => void = () => {};
+    mockPublicClient.waitForTransactionReceipt.mockImplementationOnce(
+      () => new Promise((resolve) => (mine = resolve))
+    );
+
+    const first = post({ participant: PARTICIPANT, activityHash: HASH });
+    const second = post({ participant: PARTICIPANT, activityHash: `0x${'ef'.repeat(32)}` });
+
+    await vi.waitFor(() => expect(mockWallet.writeContract).toHaveBeenCalledTimes(2));
+    mine({ status: 'success', transactionHash: '0xhash' });
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
+  });
+
   it('frees the activity for a retry after a definite revert', async () => {
     mockPublicClient.simulateContract.mockRejectedValueOnce(new Error('revert'));
     const first = await post({ participant: PARTICIPANT, amount: 5000, activityHash: HASH });
