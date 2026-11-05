@@ -11,7 +11,7 @@ import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { DEFAULT_CENTER } from '@/constants/config';
+import { DEFAULT_CENTER, ENV } from '@/constants/config';
 import { MapChrome } from '@/constants/mapChrome';
 import { BorderRadius, type Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -21,11 +21,13 @@ import { useRouteElevation } from '@/hooks/useRouteElevation';
 import { useSnappedRoute } from '@/hooks/useSnappedRoute';
 import { getPlatform } from '@/platform';
 import { profileFor } from '@/services/directions';
+import { generateLoops, headingWords, type LoopSuggestion } from '@/services/loopGenerator';
 import { resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRouteStore } from '@/stores/routeStore';
 import type { ActivityType } from '@/types';
 import { formatDistance, formatElevation, toPolyline } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { LOOP_DISTANCES } from '@/utils/loopRoutes';
 import type { RoutePoint } from '@/utils/route';
 import {
   addWaypoint,
@@ -90,6 +92,12 @@ export default function RouteBuilderScreen() {
   const [sport, setSport] = useState<ActivityType>(params.sport ?? 'run');
   const [snap, setSnap] = useState(true);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  // Loop generator: pick a distance, get three loops from the start (or from here).
+  const [looping, setLooping] = useState(false);
+  const [loopTarget, setLoopTarget] = useState<number>(LOOP_DISTANCES.run[1] as number);
+  const [loops, setLoops] = useState<LoopSuggestion[] | null>(null);
+  const [loopsLoading, setLoopsLoading] = useState(false);
+  const [loopSeed, setLoopSeed] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +156,40 @@ export default function RouteBuilderScreen() {
     setPoints((current) => addWaypoint(current, point));
   };
 
+  const loopSport = sport === 'ride' || sport === 'walk' || sport === 'hike' ? sport : 'run';
+  const loopOptions = LOOP_DISTANCES[loopSport].map((m) => ({
+    value: String(m),
+    label: formatDistance(m, unitSystem),
+  }));
+  const findLoops = async (seed: number) => {
+    const start = points[0] ?? center;
+    if (!start) return;
+    setLoopsLoading(true);
+    setLoops(null);
+    try {
+      const found = await generateLoops(start, loopTarget, profileFor(sport), seed, {
+        token: ENV.MAPBOX_ACCESS_TOKEN,
+      });
+      setLoops(found);
+      if (found.length === 0) Toast.info("Couldn't find loops here. Try another distance.", 2);
+    } finally {
+      setLoopsLoading(false);
+    }
+  };
+  const openLoops = () => {
+    // A loop of the right size for the sport, unless the athlete already picked one.
+    if (!LOOP_DISTANCES[loopSport].includes(loopTarget)) {
+      setLoopTarget(LOOP_DISTANCES[loopSport][1] as number);
+    }
+    setLoops(null);
+    setLooping(true);
+  };
+  const pickLoop = (loop: LoopSuggestion) => {
+    haptics.selection();
+    setSnap(true);
+    setPoints(loop.waypoints);
+  };
+
   const startSave = () => {
     setName(`Route of ${formatDistance(distance, unitSystem)}`);
     setSaving(true);
@@ -179,6 +221,138 @@ export default function RouteBuilderScreen() {
       ? 'Following paths for this sport. Drag a point to reshape.'
       : 'Straight lines between points.';
   })();
+
+  const panelBody = () => {
+    if (looping) {
+      return (
+        <View style={styles.stack}>
+          <ThemedText type="smallBold">
+            Loop from {points.length > 0 ? 'your start point' : 'here'}
+          </ThemedText>
+          <ChipRow
+            options={loopOptions}
+            value={String(loopTarget)}
+            onChange={(value) => setLoopTarget(Number(value))}
+            contentStyle={styles.chips}
+          />
+          {loopsLoading && (
+            <ActivityIndicator color={theme.brand.primary} accessibilityLabel="Finding loops" />
+          )}
+          {loops?.map((loop, i) => (
+            <Tappable
+              key={`${loop.bearing}-${i}`}
+              onPress={() => pickLoop(loop)}
+              style={[styles.loopCard, { backgroundColor: theme.background }]}
+              accessibilityRole="button"
+              accessibilityLabel={`${formatDistance(loop.distance, unitSystem)} loop, ${headingWords(loop.bearing)}`}
+            >
+              <Ionicons name="sync-outline" size={20} color={theme.brand.primary} />
+              <View style={styles.loopText}>
+                <ThemedText type="smallBold">
+                  {formatDistance(loop.distance, unitSystem)}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {headingWords(loop.bearing)}
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+            </Tappable>
+          ))}
+          <View style={styles.tools}>
+            <AppButton
+              size="small"
+              fullWidth={false}
+              disabled={loopsLoading}
+              onPress={() => {
+                const next = loops ? loopSeed + 1 : loopSeed;
+                setLoopSeed(next);
+                void findLoops(next);
+              }}
+            >
+              {loops ? 'Show others' : 'Find loops'}
+            </AppButton>
+            <AppButton
+              variant="ghost"
+              size="small"
+              fullWidth={false}
+              onPress={() => setLooping(false)}
+            >
+              Done
+            </AppButton>
+          </View>
+        </View>
+      );
+    }
+    if (saving) {
+      return (
+        <View style={styles.stack}>
+          <TextField label="Route name" value={name} onChangeText={setName} maxLength={60} />
+          <AppButton onPress={confirmSave}>Save route</AppButton>
+          <AppButton variant="ghost" onPress={() => setSaving(false)}>
+            Keep editing
+          </AppButton>
+        </View>
+      );
+    }
+    return (
+      <>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tools}
+        >
+          <AppButton
+            variant="secondary"
+            size="small"
+            fullWidth={false}
+            disabled={!ENV.MAPBOX_ACCESS_TOKEN}
+            onPress={openLoops}
+          >
+            Loop
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="small"
+            fullWidth={false}
+            disabled={points.length === 0}
+            onPress={() => setPoints(undoWaypoint)}
+          >
+            Undo
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="small"
+            fullWidth={false}
+            disabled={points.length < 2}
+            onPress={() => setPoints(outAndBack)}
+          >
+            Out & back
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="small"
+            fullWidth={false}
+            disabled={points.length < 2}
+            onPress={() => setPoints(reverseWaypoints)}
+          >
+            Reverse
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="small"
+            fullWidth={false}
+            disabled={points.length === 0}
+            onPress={() => setPoints(clearWaypoints())}
+          >
+            Clear
+          </AppButton>
+        </ScrollView>
+        <AppButton disabled={points.length < 2 || snapped.status === 'loading'} onPress={startSave}>
+          Save route
+        </AppButton>
+      </>
+    );
+  };
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -286,66 +460,7 @@ export default function RouteBuilderScreen() {
           </ThemedText>
         )}
 
-        {saving ? (
-          <View style={styles.stack}>
-            <TextField label="Route name" value={name} onChangeText={setName} maxLength={60} />
-            <AppButton onPress={confirmSave}>Save route</AppButton>
-            <AppButton variant="ghost" onPress={() => setSaving(false)}>
-              Keep editing
-            </AppButton>
-          </View>
-        ) : (
-          <>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tools}
-            >
-              <AppButton
-                variant="secondary"
-                size="small"
-                fullWidth={false}
-                disabled={points.length === 0}
-                onPress={() => setPoints(undoWaypoint)}
-              >
-                Undo
-              </AppButton>
-              <AppButton
-                variant="secondary"
-                size="small"
-                fullWidth={false}
-                disabled={points.length < 2}
-                onPress={() => setPoints(outAndBack)}
-              >
-                Out & back
-              </AppButton>
-              <AppButton
-                variant="secondary"
-                size="small"
-                fullWidth={false}
-                disabled={points.length < 2}
-                onPress={() => setPoints(reverseWaypoints)}
-              >
-                Reverse
-              </AppButton>
-              <AppButton
-                variant="secondary"
-                size="small"
-                fullWidth={false}
-                disabled={points.length === 0}
-                onPress={() => setPoints(clearWaypoints())}
-              >
-                Clear
-              </AppButton>
-            </ScrollView>
-            <AppButton
-              disabled={points.length < 2 || snapped.status === 'loading'}
-              onPress={startSave}
-            >
-              Save route
-            </AppButton>
-          </>
-        )}
+        {panelBody()}
       </View>
     </ThemedView>
   );
@@ -389,4 +504,12 @@ const styles = StyleSheet.create({
   stat: { gap: 2 },
   tools: { gap: Spacing.two },
   stack: { gap: Spacing.two },
+  loopCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: BorderRadius.lg,
+  },
+  loopText: { flex: 1 },
 });
