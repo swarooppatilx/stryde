@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DEFAULT_CENTER, ENV } from '@/constants/config';
 import { HEATMAP_COLOR_OPTIONS } from '@/constants/heatmapColors';
+import { mapboxStyleUrl, staticPreviewUrl } from '@/constants/mapboxStyle';
 import { Palette } from '@/constants/palette';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -9,6 +12,8 @@ import {
   isLayerOn,
   type MapLayer,
   type MapStylePref,
+  type MapType,
+  resolveMapStyle,
   useMapPrefsStore,
 } from '@/stores/mapPrefsStore';
 import { MAP_LAYER_OPTIONS } from '@/utils/mapLayerOptions';
@@ -23,18 +28,32 @@ const APPEARANCE_OPTIONS = (Object.keys(MAP_STYLE_LABELS) as MapStylePref[]).map
   label: MAP_STYLE_LABELS[value],
 }));
 
+const MAP_TYPES: ReadonlyArray<{
+  value: MapType;
+  label: string;
+  icon: 'map-outline' | 'earth-outline' | 'layers-outline';
+}> = [
+  { value: 'standard', label: 'Standard', icon: 'map-outline' },
+  { value: 'satellite', label: 'Satellite', icon: 'earth-outline' },
+  { value: 'hybrid', label: 'Hybrid', icon: 'layers-outline' },
+];
+
 interface MapLayersSheetProps {
   visible: boolean;
   onClose(): void;
   /** The switches that mean something on this map; a screen leaves out the ones it cannot draw. */
   layers: readonly MapLayer[];
+  /** Where the map type previews are centred; the athlete's position when known. */
+  previewCenter?: [number, number] | null;
 }
 
 /** One sheet for what the base map looks like and what is drawn on it: the map's layers button opens it. */
-export function MapLayersSheet({ visible, onClose, layers }: MapLayersSheetProps) {
+export function MapLayersSheet({ visible, onClose, layers, previewCenter }: MapLayersSheetProps) {
   const theme = useTheme();
   const { bottom } = useSafeAreaInsets();
   const prefs = useMapPrefsStore();
+  const appearanceDark = resolveMapStyle(prefs.style, theme.isDark) === 'dark';
+  const center = previewCenter ?? DEFAULT_CENTER;
 
   return (
     <Modal
@@ -65,25 +84,74 @@ export function MapLayersSheet({ visible, onClose, layers }: MapLayersSheetProps
                 Map type
               </ThemedText>
               <View style={styles.tiles}>
-                <View
-                  style={[styles.tile, { borderColor: theme.brand.primary }]}
-                  accessible
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: true }}
-                  accessibilityLabel="Standard map"
-                >
-                  <View style={[styles.swatch, { backgroundColor: theme.backgroundSelected }]}>
-                    <Ionicons name="map-outline" size={28} color={theme.brand.primary} />
-                  </View>
-                  <ThemedText type="caption">Standard</ThemedText>
-                </View>
+                {MAP_TYPES.map((type) => {
+                  const selected = prefs.mapType === type.value;
+                  return (
+                    <Tappable
+                      key={type.value}
+                      onPress={() => prefs.setMapType(type.value)}
+                      style={[
+                        styles.tile,
+                        { borderColor: selected ? theme.brand.primary : 'transparent' },
+                      ]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${type.label} map`}
+                    >
+                      <View style={[styles.swatch, { backgroundColor: theme.backgroundSelected }]}>
+                        {ENV.MAPBOX_ACCESS_TOKEN ? (
+                          <Image
+                            source={{
+                              uri: staticPreviewUrl(
+                                mapboxStyleUrl(appearanceDark, type.value),
+                                center,
+                                ENV.MAPBOX_ACCESS_TOKEN
+                              ),
+                            }}
+                            style={StyleSheet.absoluteFill}
+                            contentFit="cover"
+                            cachePolicy="disk"
+                            transition={150}
+                          />
+                        ) : (
+                          <Ionicons name={type.icon} size={28} color={theme.brand.primary} />
+                        )}
+                      </View>
+                      <ThemedText type={selected ? 'smallBold' : 'caption'}>
+                        {type.label}
+                      </ThemedText>
+                    </Tappable>
+                  );
+                })}
               </View>
-              <ChipRow
-                options={APPEARANCE_OPTIONS}
-                value={prefs.style}
-                onChange={prefs.setStyle}
-                contentStyle={styles.chips}
-              />
+              {prefs.mapType === 'standard' && (
+                <ChipRow
+                  options={APPEARANCE_OPTIONS}
+                  value={prefs.style}
+                  onChange={prefs.setStyle}
+                  contentStyle={styles.chips}
+                />
+              )}
+              <Tappable
+                onPress={() => prefs.setTerrain3d(!prefs.terrain3d)}
+                style={styles.row}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: prefs.terrain3d }}
+                accessibilityLabel="3D terrain"
+              >
+                <Ionicons name="triangle-outline" size={22} color={theme.text} />
+                <View style={styles.rowText}>
+                  <ThemedText>3D terrain</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    Hills and valleys in 3D; the map tilts to show them
+                  </ThemedText>
+                </View>
+                <AppSwitch
+                  checked={prefs.terrain3d}
+                  onChange={prefs.setTerrain3d}
+                  label="3D terrain"
+                />
+              </Tappable>
             </View>
 
             <View style={styles.section}>
@@ -163,8 +231,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   swatch: {
-    width: 88,
-    height: 64,
+    width: 96,
+    height: 70,
+    overflow: 'hidden',
     borderRadius: BorderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',

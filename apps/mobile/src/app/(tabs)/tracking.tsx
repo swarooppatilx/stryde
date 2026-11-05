@@ -130,6 +130,8 @@ export default function TrackingScreen() {
   const mapStyle = useMapPrefsStore((s) => s.style);
   const showPoi = useMapPrefsStore((s) => s.showPoi);
   const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
+  const mapType = useMapPrefsStore((s) => s.mapType);
+  const terrain3d = useMapPrefsStore((s) => s.terrain3d);
   const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
   const onMapLayout = (event: LayoutChangeEvent) => setMapHeight(event.nativeEvent.layout.height);
   const steer = (action: FollowAction) => {
@@ -429,6 +431,8 @@ export default function TrackingScreen() {
         dark={resolveMapStyle(mapStyle, theme.isDark) === 'dark'}
         poi={showPoi}
         bikeLanes={showBikeLanes}
+        mapType={mapType}
+        terrain3d={terrain3d}
       />
       {fix && !isSessionActive && (
         <LocateButton
@@ -604,6 +608,7 @@ export default function TrackingScreen() {
         visible={layersOpen}
         onClose={() => setLayersOpen(false)}
         layers={['poi', 'bikeLanes']}
+        previewCenter={fix ? [fix.longitude, fix.latitude] : null}
       />
       {locked && <RecordLockOverlay onUnlock={() => setLocked(false)} />}
     </View>

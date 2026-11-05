@@ -1,4 +1,5 @@
 import {
+  Atmosphere,
   Camera,
   CircleLayer,
   FillLayer,
@@ -8,8 +9,10 @@ import {
   type MapState,
   MapView,
   MarkerView,
+  RasterDemSource,
   ShapeSource,
   SymbolLayer,
+  Terrain,
   UserTrackingMode,
 } from '@rnmapbox/maps';
 import React, { useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -22,12 +25,16 @@ import {
 } from '@/components/map-camera';
 import { MapErrorBoundary, MapPin, MapRouteFallback } from '@/components/map-route-fallback';
 import {
+  type BaseMapType,
   BIKE_LANE_COLOR,
   BIKE_LANE_FILTER,
   BIKE_LANE_SOURCE,
+  hasStreetData,
+  isDarkBase,
   MAPBOX_FONT,
   mapboxStyleUrl,
   POI_LABEL_LAYER,
+  TERRAIN_DEM,
 } from '@/constants/mapboxStyle';
 import { offlineMapStyle } from '@/constants/mapStyle';
 import { Palette } from '@/constants/palette';
@@ -94,6 +101,10 @@ export interface MapRouteProps {
   /** Draws the athlete's position; mount it only once permission is granted and a fix exists, or the native layer logs errors. */
   showUserLocation?: boolean;
   dark?: boolean;
+  /** Streets and trails, aerial imagery, or imagery with streets on top. */
+  mapType?: BaseMapType;
+  /** Draw hills in 3D; the camera's tilt is up to the caller. */
+  terrain3d?: boolean;
   /** Label parks and other places on the base map. */
   poi?: boolean;
   /** Draw cycle paths on the base map. */
@@ -260,6 +271,8 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   style,
   showUserLocation = false,
   dark = false,
+  mapType = 'standard',
+  terrain3d = false,
   poi = true,
   bikeLanes = false,
   cameraRef,
@@ -336,11 +349,15 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   const onStyleFailed = () => setStyleFailed(true);
   const offlineStyleJSON = useMemo(() => JSON.stringify(offlineMapStyle(dark)), [dark]);
   const textVisibility = styleFailed ? 'none' : 'visible';
+  const streets = !styleFailed && hasStreetData(mapType);
+  const darkBase = isDarkBase(dark, mapType);
 
   return (
     <MapView
       style={[styles.map, style]}
-      {...(styleFailed ? { styleJSON: offlineStyleJSON } : { styleURL: mapboxStyleUrl(dark) })}
+      {...(styleFailed
+        ? { styleJSON: offlineStyleJSON }
+        : { styleURL: mapboxStyleUrl(dark, mapType) })}
       compassEnabled
       compassPosition={{ top: compassTopOffset, right: Spacing.three }}
       scaleBarEnabled={false}
@@ -406,7 +423,27 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
         />
       )}
 
-      {!styleFailed && (
+      {terrain3d && !styleFailed && (
+        <RasterDemSource
+          id={TERRAIN_DEM.id}
+          url={TERRAIN_DEM.url}
+          tileSize={TERRAIN_DEM.tileSize}
+          maxZoomLevel={TERRAIN_DEM.maxZoom}
+        >
+          <Terrain style={{ exaggeration: TERRAIN_DEM.exaggeration }} />
+          <Atmosphere
+            style={{
+              color: darkBase ? '#1b2330' : '#d8e6f3',
+              highColor: darkBase ? '#0b0f17' : '#8fb4dc',
+              horizonBlend: 0.08,
+              spaceColor: darkBase ? '#05070b' : '#7aa7d6',
+              starIntensity: darkBase ? 0.2 : 0,
+            }}
+          />
+        </RasterDemSource>
+      )}
+
+      {streets && (
         <SymbolLayer
           id={POI_LABEL_LAYER}
           existing
@@ -414,7 +451,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
         />
       )}
 
-      {bikeLanes && !styleFailed && (
+      {bikeLanes && streets && (
         <LineLayer
           id="bike-lanes"
           sourceID={BIKE_LANE_SOURCE.sourceID}
@@ -487,7 +524,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
           style={{
             lineCap: 'round',
             lineJoin: 'round',
-            lineColor: dark ? ROUTE_CASING_COLOR_DARK : Palette.white,
+            lineColor: darkBase && mapType === 'standard' ? ROUTE_CASING_COLOR_DARK : Palette.white,
             lineWidth: ROUTE_CASING_WIDTH,
             lineOpacity: dark ? ROUTE_CASING_OPACITY_DARK : ROUTE_CASING_OPACITY_LIGHT,
           }}

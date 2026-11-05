@@ -87,6 +87,8 @@ export default function MapScreen() {
   const online = useOnline();
   const stylePref = useMapPrefsStore((s) => s.style);
   const showPoi = useMapPrefsStore((s) => s.showPoi);
+  const mapType = useMapPrefsStore((s) => s.mapType);
+  const terrain3d = useMapPrefsStore((s) => s.terrain3d);
   const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
   const heatmapRamp = heatRampFor(useMapPrefsStore((s) => s.heatmapColor));
   const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
@@ -150,6 +152,14 @@ export default function MapScreen() {
     handleTerritoryPress,
     closeTerritory,
   } = useMap();
+  // 3D terrain is only worth seeing from an angle: switching it on leans the map over.
+  const [leanedFor3d, setLeanedFor3d] = useState(false);
+  if (terrain3d && !tilted && !leanedFor3d) {
+    setLeanedFor3d(true);
+    toggleTilt();
+  } else if (!terrain3d && leanedFor3d) {
+    setLeanedFor3d(false);
+  }
   // The search bar, chips and any banner cover the top of the map; keep the route clear of them.
   useFitRoute(
     cameraRef,
@@ -243,6 +253,8 @@ export default function MapScreen() {
         initialCenter={location ? [location.longitude, location.latitude] : DEFAULT_CENTER}
         initialZoom={15}
         dark={resolveMapStyle(stylePref, theme.isDark) === 'dark'}
+        mapType={mapType}
+        terrain3d={terrain3d}
         poi={showPoi}
         bikeLanes={showBikeLanes}
         activityRoutes={activityRoutes}
@@ -479,6 +491,7 @@ export default function MapScreen() {
         visible={styleMenuOpen}
         onClose={() => setStyleMenuOpen(false)}
         layers={['routes', 'heatmap', 'others', 'poi', 'bikeLanes']}
+        previewCenter={location ? [location.longitude, location.latitude] : null}
       />
       <ActionSheet
         visible={distanceMenuOpen}

@@ -8,6 +8,8 @@ import { chainScopedStorageAdapter } from '@/utils/storage';
 
 export type MapLayer = 'routes' | 'heatmap' | 'others' | 'poi' | 'bikeLanes';
 export type MapStylePref = 'auto' | 'light' | 'dark';
+/** The base map: drawn streets and trails, aerial imagery, or imagery with streets and labels on top. */
+export type MapType = 'standard' | 'satellite' | 'hybrid';
 
 interface MapPrefsState {
   showRoutes: boolean;
@@ -22,6 +24,9 @@ interface MapPrefsState {
   style: MapStylePref;
   /** The colour ramp of the heatmap layer. */
   heatmapColor: HeatmapColor;
+  mapType: MapType;
+  /** Hills and valleys drawn in 3D, with the map tilted to show them. */
+  terrain3d: boolean;
   /** How the Record map follows the athlete: remembered between recordings. */
   recordFollowMode: FollowMode;
   setLayer: (layer: MapLayer, on: boolean) => void;
@@ -30,6 +35,8 @@ interface MapPrefsState {
   setDistance: (distance: DistanceFilter) => void;
   setStyle: (style: MapStylePref) => void;
   setHeatmapColor: (color: HeatmapColor) => void;
+  setMapType: (mapType: MapType) => void;
+  setTerrain3d: (on: boolean) => void;
   setRecordFollowMode: (mode: FollowMode) => void;
   /** Opens every filter again; layers stay as they are. */
   clearFilters: () => void;
@@ -45,6 +52,8 @@ const DEFAULTS = {
   showBikeLanes: false,
   style: 'auto',
   heatmapColor: 'classic',
+  mapType: 'standard',
+  terrain3d: false,
   recordFollowMode: 'north',
   ...OPEN_FILTERS,
 } as const;
@@ -69,6 +78,8 @@ export const useMapPrefsStore = create<MapPrefsState>()(
       setDistance: (distance) => set({ distance }),
       setStyle: (style) => set({ style }),
       setHeatmapColor: (heatmapColor) => set({ heatmapColor }),
+      setMapType: (mapType) => set({ mapType }),
+      setTerrain3d: (terrain3d) => set({ terrain3d }),
       setRecordFollowMode: (recordFollowMode) => set({ recordFollowMode }),
       clearFilters: () => set({ ...OPEN_FILTERS }),
       reset: () => set({ ...DEFAULTS }),
