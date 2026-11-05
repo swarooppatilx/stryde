@@ -171,7 +171,8 @@ export async function ensureActiveSeason(
   _wallet: ReturnType<typeof getWalletClient>
 ): Promise<SyncedSeason> {
   const current = await getCurrentSeason();
-  if (current.isActive) return current;
+  // isActive stays true past endTime until the next startSeason closes it, and contributions revert then.
+  if (current.isActive && Date.now() / 1000 <= current.endTime) return current;
 
   const started = await relayStartSeason(30 * 24 * 60 * 60);
   if (!started.confirmed) {

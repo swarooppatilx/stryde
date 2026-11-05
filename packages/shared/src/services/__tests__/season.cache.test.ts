@@ -52,4 +52,14 @@ describe('ensureActiveSeason on a live network', () => {
 
     await expect(ensureActiveSeason({} as never)).rejects.toThrow(/season/i);
   });
+
+  it('starts a new season when the active one is past its end time', async () => {
+    setChainMode('ethereum-sepolia');
+    readContract.mockResolvedValue(rawSeason(true));
+    relayStartSeason.mockResolvedValue({ confirmed: true, queued: false });
+
+    await ensureActiveSeason({} as never);
+
+    expect(relayStartSeason).toHaveBeenCalledOnce();
+  });
 });
