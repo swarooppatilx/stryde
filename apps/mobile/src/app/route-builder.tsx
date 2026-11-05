@@ -64,6 +64,8 @@ const MARKER_LOOK: Record<
 };
 const SAMPLE_STEP_M = 100;
 const ELEVATION_DELAY_MS = 700;
+/** A flat route's profile spans at least this many metres, so a kerb is not drawn as a hill. */
+const ELEVATION_MIN_RANGE_M = 30;
 
 /** "lng,lat" from a route param, or null. */
 function parsePoint(value: string | undefined): RoutePoint | null {
@@ -452,6 +454,7 @@ export default function RouteBuilderScreen() {
             formatValue={(v) => formatElevation(v, unitSystem)}
             summary={`${formatElevation(profile.gain, unitSystem)} up, ${formatElevation(profile.loss, unitSystem)} down`}
             onScrubChange={setScrubIndex}
+            minRange={ELEVATION_MIN_RANGE_M}
             accessibilityLabel={`Elevation along the route, ${formatElevation(profile.gain, unitSystem)} up and ${formatElevation(profile.loss, unitSystem)} down. Drag across it to see the spot on the map.`}
           />
         ) : (

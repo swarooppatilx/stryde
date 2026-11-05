@@ -20,7 +20,7 @@ import { ThemedView } from '@/components/themed-view';
 import { DEFAULT_CENTER } from '@/constants/config';
 import { heatRampFor } from '@/constants/heatmapColors';
 import { MAP_CHROME_BOTTOM, MapChrome } from '@/constants/mapChrome';
-import { BorderRadius, Brand, HEAT_RAMP, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
+import { BorderRadius, Brand, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useFitRoute } from '@/hooks/useFitRoute';
@@ -104,7 +104,6 @@ export default function MapScreen() {
   const mapType = useMapPrefsStore((s) => s.mapType);
   const terrain3d = useMapPrefsStore((s) => s.terrain3d);
   const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
-  const heatmapRamp = heatRampFor(useMapPrefsStore((s) => s.heatmapColor));
   const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   // Map-only: every control, the sheet and the tab bar step aside for an uncluttered map.
@@ -243,6 +242,8 @@ export default function MapScreen() {
     onPress: () => setTimeFilter(f.value),
   }));
   // The native compass starts below the chip row so it is never hidden behind it.
+  const statusSurface = { backgroundColor: theme.backgroundElement };
+  const heatRamp = heatRampFor(heatmapColor);
   const compassTopOffset = mapOnly
     ? insets.top + MapChrome.edge + MapChrome.fab + Spacing.two
     : insets.top + MAP_CHROME_BOTTOM + Spacing.two;
@@ -349,7 +350,7 @@ export default function MapScreen() {
             </ThemedView>
           )}
           {searchLoading && (
-            <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
+            <View style={[styles.searchStatusRow, statusSurface]} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={theme.textSecondary} />
               <ThemedText type="caption" themeColor="textSecondary">
                 Searching…
@@ -360,14 +361,14 @@ export default function MapScreen() {
             <ThemedText
               type="caption"
               themeColor="textSecondary"
-              style={styles.searchStatusRow}
+              style={[styles.searchStatusRow, statusSurface]}
               accessibilityLiveRegion="polite"
             >
               {`No places found for "${searchedFor}"`}
             </ThemedText>
           )}
           {searchError && (
-            <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
+            <View style={[styles.searchStatusRow, statusSurface]} accessibilityLiveRegion="polite">
               <ThemedText type="caption" themeColor="dangerText">
                 {searchError}
               </ThemedText>
@@ -400,8 +401,8 @@ export default function MapScreen() {
             <View style={styles.legend}>
               <MapLegend
                 items={[
-                  { label: 'Fewer activities', color: heatmapRamp[1]?.[1] ?? HEAT_RAMP[1][1] },
-                  { label: 'More', color: heatmapRamp[4]?.[1] ?? HEAT_RAMP[4][1] },
+                  { label: 'Fewer activities', color: heatRamp[1]?.[1] ?? theme.textSecondary },
+                  { label: 'More', color: heatRamp.at(-2)?.[1] ?? theme.text },
                 ]}
               />
             </View>
@@ -421,7 +422,7 @@ export default function MapScreen() {
             <ThemedText
               type="caption"
               themeColor="textSecondary"
-              style={styles.searchStatusRow}
+              style={[styles.searchStatusRow, statusSurface]}
               accessibilityLiveRegion="polite"
             >
               No one else's territory around here yet
@@ -431,14 +432,14 @@ export default function MapScreen() {
             <ThemedText
               type="caption"
               themeColor="textSecondary"
-              style={styles.searchStatusRow}
+              style={[styles.searchStatusRow, statusSurface]}
               accessibilityLiveRegion="polite"
             >
               Nothing to show on the heatmap yet. Record an activity or turn on Others.
             </ThemedText>
           ) : null}
           {!location && !errorMsg ? (
-            <View style={styles.searchStatusRow} accessibilityLiveRegion="polite">
+            <View style={[styles.searchStatusRow, statusSurface]} accessibilityLiveRegion="polite">
               <ActivityIndicator size="small" color={theme.textSecondary} />
               <ThemedText type="caption" themeColor="textSecondary">
                 Finding your location…
@@ -464,8 +465,8 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Rides on top of the sheet, wherever the athlete has dragged it. */}
-      {!mapOnly && (
+      {/* Rides on top of the sheet, wherever the athlete has dragged it; a place card takes its spot. */}
+      {!mapOnly && !poi && (
         <Animated.View style={[styles.locateSlot, locateSlotStyle]} pointerEvents="box-none">
           <Tappable
             style={[
@@ -635,11 +636,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   resultName: { flex: 1 },
+  // A solid pill, so the line stays readable over satellite imagery and busy maps.
   searchStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderRadius: BorderRadius.lg,
   },
   legend: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   locateSlot: {

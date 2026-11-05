@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ScrollView, StyleSheet } from 'react-native';
 import { MapChrome } from '@/constants/mapChrome';
+import { Palette } from '@/constants/palette';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/utils/haptics';
@@ -36,20 +37,25 @@ export function MapChips({ chips }: { chips: readonly MapChip[] }) {
           style={[
             styles.chip,
             theme.shadows.raised,
-            { backgroundColor: chip.active ? theme.brand.primaryTint : theme.backgroundElement },
+            // Solid when on, so a selected chip still reads over satellite imagery.
+            { backgroundColor: chip.active ? theme.brand.primary : theme.backgroundElement },
           ]}
           accessibilityRole="button"
           accessibilityLabel={chip.menu ? `${chip.label}, change filter` : chip.label}
           accessibilityState={{ selected: chip.active }}
         >
-          <ThemedText type="smallBold" themeColor={chip.active ? 'accentText' : 'text'}>
+          <ThemedText
+            type="smallBold"
+            themeColor={chip.active ? undefined : 'text'}
+            style={chip.active ? { color: Palette.white } : undefined}
+          >
             {chip.label}
           </ThemedText>
           {chip.menu && (
             <Ionicons
               name="chevron-down"
               size={14}
-              color={chip.active ? theme.accentText : theme.text}
+              color={chip.active ? Palette.white : theme.text}
             />
           )}
         </Tappable>

@@ -739,7 +739,8 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
       {markers.map((marker) =>
         marker.draggable ? (
           <PointAnnotation
-            key={marker.id}
+            // Android draws an annotation's view once, as a picture: a new look needs a new annotation.
+            key={`${marker.id}-${marker.icon ?? ''}-${marker.color}`}
             id={marker.id}
             coordinate={[marker.coordinate[0], marker.coordinate[1]]}
             anchor={{ x: 0.5, y: 0.5 }}

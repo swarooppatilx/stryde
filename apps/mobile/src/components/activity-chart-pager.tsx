@@ -76,7 +76,7 @@ export function ActivityChartPager({
       return (
         <ScrubChart
           title="Elevation"
-          minSpan={20}
+          minRange={20}
           values={elevation.values}
           times={elevation.times}
           timed={elevation.source === 'stream'}
@@ -92,7 +92,7 @@ export function ActivityChartPager({
       return (
         <ScrubChart
           title="Heart rate"
-          minSpan={30}
+          minRange={30}
           values={heartRate.bpm}
           times={heartRate.t}
           timed
