@@ -333,10 +333,14 @@ type OnChainOutcome = Pick<PostRunResult, 'steps' | 'onchainFailed' | 'needsVeri
  * Records a saved activity onchain, as far as it gets. Every step reports its own
  * outcome; one failing never stops the others.
  */
-function skipReason(activity: Pick<Activity, 'mocked' | 'privacy'>): string {
+function skipReason(
+  activity: Pick<Activity, 'mocked' | 'privacy' | 'hideRoute' | 'hideRouteEnds'>
+): string {
   if (activity.mocked) return 'simulated location';
   if (staysOnDevice(activity.privacy)) return 'private activity';
-  return 'route hidden';
+  if (activity.hideRoute) return 'route hidden';
+  if (activity.hideRouteEnds) return 'route ends hidden';
+  return 'privacy zone';
 }
 
 async function syncOnChain(
@@ -360,6 +364,16 @@ async function syncOnChain(
   };
   let onchainFailed = false;
   let needsVerification = false;
+  const shared = publicRoute(
+    // A hidden route publishes nothing of the route at all.
+    activity.hideRoute ? [] : parsePolyline(activity.polyline),
+    {
+      hideEnds: activity.hideRouteEnds ?? false,
+      zones: activity.privacyZones ?? [],
+      seed: activity.id,
+    }
+  );
+  const territoryPublic = canShareTerritory(activity, shared.cutByZone);
 
   if (chain) {
     const record = await attempt('recordActivity', () =>
@@ -387,15 +401,6 @@ async function syncOnChain(
           // Persists name/description/photos/route to IPFS and attaches the CID
           // onchain, so the activity's rich data survives logout or a device switch.
           // That copy is public, so it carries the route without its hidden ends and private places.
-          const shared = publicRoute(
-            // A hidden route publishes nothing of the route at all.
-            activity.hideRoute ? [] : parsePolyline(activity.polyline),
-            {
-              hideEnds: activity.hideRouteEnds ?? false,
-              zones: activity.privacyZones ?? [],
-              seed: activity.id,
-            }
-          );
           const metadata = await attempt('activity metadata', () =>
             chain.setMetadata(onchainActivityId, {
               name: activity.name,
@@ -403,9 +408,7 @@ async function syncOnChain(
               photos: photos.length > 0 ? photos : undefined,
               polyline: shared.route.length > 0 ? toPolyline(shared.route) : undefined,
               // The loop's outline would point back at a hidden place, so it stays private then.
-              territory: canShareTerritory(activity, shared.cutByZone)
-                ? (territory ?? undefined)
-                : undefined,
+              territory: territoryPublic ? (territory ?? undefined) : undefined,
               // The chain stores only a hash/distance/duration/area: this is the
               // one durable place the real route shape lives.
               coordinates: shared.route.length > 0 ? shared.route : undefined,
@@ -462,7 +465,8 @@ async function syncOnChain(
       onchainFailed = true;
     }
 
-    if (territory && (staysOnDevice(activity.privacy) || activity.hideRoute || activity.mocked)) {
+    // The claim writes the outline onchain, so it follows the same privacy rule as the metadata.
+    if (territory && (staysOnDevice(activity.privacy) || activity.mocked || !territoryPublic)) {
       const why = skipReason(activity);
       steps.territory = skipped(why);
       steps.territoryNft = skipped(why);

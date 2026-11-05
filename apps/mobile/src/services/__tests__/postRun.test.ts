@@ -773,6 +773,29 @@ describe('claiming territory', () => {
     expect(chain.callsTo('claimTerritory')).toEqual([[RING, 1200]]);
     expect(chain.callsTo('mintTerritoryNft')).toEqual([[`0x${'bb'.repeat(32)}`]]);
     expect(result.needsVerification).toBe(false);
+  });
+
+  it('makes no claim when the route ends are hidden, since the outline would show them', async () => {
+    const result = await savePostRun({ ...territoryInput, hideRouteEnds: true }, deps());
+
+    expect(chain.methods).not.toContain('claimTerritory');
+    expect(result.steps.territory).toEqual({ status: 'skipped', reason: 'route ends hidden' });
+  });
+
+  it('makes no claim when a privacy zone cut the route', async () => {
+    const route = Array.from(
+      { length: 101 },
+      (_, i) => `73.85,${(18.52 + i * 0.0001).toFixed(4)}`
+    ).join(';');
+    const home = { id: 'home', name: 'Home', latitude: 18.52, longitude: 73.85, radius: 200 };
+
+    const result = await savePostRun(
+      { ...territoryInput, polyline: route, privacyZones: [home] },
+      deps()
+    );
+
+    expect(chain.methods).not.toContain('claimTerritory');
+    expect(result.steps.territory).toEqual({ status: 'skipped', reason: 'privacy zone' });
     expect(result.onchainFailed).toBe(false);
   });
 
