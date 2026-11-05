@@ -55,6 +55,13 @@ contract RelayerRolesTest is Test {
         assertTrue(token.hasRole(token.MINTER_ROLE(), relayer));
     }
 
+    function test_Granting_LetsTheRelayerDefineAchievements() public {
+        _grant();
+
+        vm.prank(relayer);
+        achievements.defineAchievement(keccak256("first-run"), "First run");
+    }
+
     function test_Granting_KeepsTheDeployerInControl() public {
         _grant();
 

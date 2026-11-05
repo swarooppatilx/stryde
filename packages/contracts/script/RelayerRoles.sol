@@ -26,6 +26,8 @@ library RelayerRoles {
         season.setRecorder(relayer, true);
         challenges.setSettler(relayer);
         achievements.grantRole(achievements.MINTER_ROLE(), relayer);
+        // /mint-achievement defines unseen achievement types first, which is admin-gated.
+        achievements.grantRole(achievements.DEFAULT_ADMIN_ROLE(), relayer);
         territories.grantRole(territories.MINTER_ROLE(), relayer);
         token.grantRole(token.MINTER_ROLE(), relayer);
     }
