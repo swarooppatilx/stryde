@@ -1,3 +1,4 @@
+import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context, MiddlewareHandler } from 'hono';
 
 interface Window {
@@ -13,9 +14,24 @@ export interface RateLimitOptions {
   now?: () => number;
 }
 
-/** Only headers the hosting platform sets itself: a client-supplied x-forwarded-for can be anything. */
-export function clientKey(header: (name: string) => string | undefined): string {
-  return header('x-vercel-forwarded-for') || header('x-real-ip') || 'unknown';
+/**
+ * Only headers the hosting platform sets itself: a client-supplied x-forwarded-for can be anything.
+ * Without them (outside Vercel) the socket address keeps clients apart instead of one shared bucket.
+ */
+export function clientKey(
+  header: (name: string) => string | undefined,
+  remoteAddress?: string
+): string {
+  return header('x-vercel-forwarded-for') || header('x-real-ip') || remoteAddress || 'unknown';
+}
+
+/** The peer address on @hono/node-server; other runtimes have no `incoming` socket. */
+function socketAddress(c: Context): string | undefined {
+  try {
+    return getConnInfo(c).remote.address;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -37,7 +53,7 @@ export function createRateLimiter(options: RateLimitOptions): MiddlewareHandler 
 
   return async (c: Context, next) => {
     const time = now();
-    const key = clientKey((name) => c.req.header(name));
+    const key = clientKey((name) => c.req.header(name), socketAddress(c));
     let current = windows.get(key);
 
     if (current && time > current.resetAt) {

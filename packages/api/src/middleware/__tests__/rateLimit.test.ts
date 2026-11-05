@@ -81,8 +81,9 @@ describe('clientKey', () => {
     );
   });
 
-  it('falls back to x-real-ip, then to one shared bucket', () => {
-    expect(clientKey(header({ 'x-real-ip': '4.4.4.4' }))).toBe('4.4.4.4');
+  it('falls back to x-real-ip, then the socket address, then one shared bucket', () => {
+    expect(clientKey(header({ 'x-real-ip': '4.4.4.4' }), '5.5.5.5')).toBe('4.4.4.4');
+    expect(clientKey(header({}), '5.5.5.5')).toBe('5.5.5.5');
     expect(clientKey(header({}))).toBe('unknown');
   });
 });
