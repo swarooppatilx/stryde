@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { getRelayChainConfig } from './chainConfig.js';
+import { checkRewardGate } from './humanPresence.js';
 import { expectedIssuer, getIdentityProvider } from './identityProvider.js';
+import { lookupRecordedActivity } from './recordedActivity.js';
 import { RELAY_ABIS } from './relayAbis.js';
 import { getRelayerPublicClient, getRelayerWallet } from './relayer.js';
 import { type Approval, type ApprovalStatus, store } from './store.js';
@@ -9,7 +11,8 @@ import { ACR_ORB, ACR_ORB_FACE, ACR_SELFIE, ACR_SELFIE_FACE, type ValidatedIdent
 /** Allowed clock skew when comparing World's auth_time with the attempt start. */
 const AUTH_TIME_SKEW_SEC = 30;
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
-const MAX_REWARD_DISTANCE_M = 100_000;
+/** Same cap as /relay/mint-reward: nobody covers more than 1000 km in one activity. */
+const MAX_REWARD_DISTANCE_M = 1_000_000n;
 const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export interface ActionContext {
@@ -30,6 +33,11 @@ export interface ActionPolicy {
   /** Acceptable `acr` values. Empty means any World ID account class. */
   acceptableAcr: string[];
   validate(params: Record<string, unknown>): string | null;
+  /**
+   * Runs before the World ID prompt. Rejects requests that could never succeed and returns
+   * the params to store, so the human approves what will really happen.
+   */
+  prepare?(ctx: { wallet: `0x${string}`; params: Record<string, unknown> }): Promise<Record<string, unknown>>;
   execute(ctx: ActionContext): Promise<Record<string, unknown>>;
 }
 
@@ -37,7 +45,7 @@ export class HumanPassError extends Error {
   constructor(
     readonly code: string,
     message: string,
-    readonly status: 400 | 403 | 404 | 409 | 503 = 400
+    readonly status: 400 | 403 | 404 | 409 | 428 | 503 = 400
   ) {
     super(message);
   }
@@ -45,6 +53,46 @@ export class HumanPassError extends Error {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * What an activity is worth, read from the chain, never from the request: the owner, the
+ * recorded distance and the presence gate, exactly as /relay/mint-reward checks them.
+ */
+async function resolveActivityReward(wallet: `0x${string}`, activityId: bigint) {
+  const config = getRelayChainConfig();
+  const publicClient = getRelayerPublicClient();
+  const [activityHash, owner] = (await publicClient.readContract({
+    address: config.contracts.activityRegistry!,
+    abi: RELAY_ABIS.activityRegistry,
+    functionName: 'getActivity',
+    args: [activityId],
+  })) as readonly [`0x${string}`, `0x${string}`, bigint];
+  if (owner.toLowerCase() !== wallet.toLowerCase()) {
+    throw new HumanPassError('not_owner', 'That activity belongs to another athlete.', 403);
+  }
+
+  const rewarded = (await publicClient.readContract({
+    address: config.contracts.moveToEarnToken!,
+    abi: RELAY_ABIS.moveToEarnToken,
+    functionName: 'isRewarded',
+    args: [activityHash],
+  })) as boolean;
+  if (rewarded) throw new HumanPassError('already_rewarded', 'This activity was already rewarded.', 409);
+
+  const recorded = await lookupRecordedActivity(activityHash);
+  if (!recorded) {
+    throw new HumanPassError('not_indexed', 'Activity is not visible onchain yet; try again shortly.', 503);
+  }
+  if (recorded.owner.toLowerCase() !== wallet.toLowerCase()) {
+    throw new HumanPassError('not_owner', 'That activity belongs to another athlete.', 403);
+  }
+  const meters = recorded.distance > MAX_REWARD_DISTANCE_M ? MAX_REWARD_DISTANCE_M : recorded.distance;
+  if (meters === 0n) throw new HumanPassError('no_distance', 'The recorded activity has no distance.');
+
+  const gate = checkRewardGate(wallet, activityHash, Number(meters));
+  if (!gate.ok) throw new HumanPassError(gate.code, gate.message, 428);
+  return { activityHash, meters };
 }
 
 function rewardAcr(): string[] {
@@ -136,46 +184,30 @@ export const ACTIONS: Record<string, ActionPolicy> = {
     acceptableAcr: rewardAcr(),
     validate(params) {
       const activityId = Number(params.activityId);
-      const distanceM = Number(params.distanceM);
       if (!Number.isInteger(activityId) || activityId <= 0) return 'activityId must be a positive integer';
-      if (!Number.isFinite(distanceM) || distanceM <= 0 || distanceM > MAX_REWARD_DISTANCE_M) {
-        return `distanceM must be between 1 and ${MAX_REWARD_DISTANCE_M}`;
-      }
       return null;
+    },
+    // Any distance in the request is ignored: the reward is for the distance recorded onchain.
+    async prepare({ wallet, params }) {
+      const activityId = Number(params.activityId);
+      const { meters } = await resolveActivityReward(wallet, BigInt(activityId));
+      return { activityId, distanceM: Number(meters) };
     },
     async execute({ wallet, params }) {
       const config = getRelayChainConfig();
-      const publicClient = getRelayerPublicClient();
-      const activityId = BigInt(Number(params.activityId));
-      const [activityHash, owner] = (await publicClient.readContract({
-        address: config.contracts.activityRegistry!,
-        abi: RELAY_ABIS.activityRegistry,
-        functionName: 'getActivity',
-        args: [activityId],
-      })) as readonly [`0x${string}`, `0x${string}`, bigint];
-
-      if (owner.toLowerCase() !== wallet.toLowerCase()) {
-        throw new HumanPassError('not_owner', 'That activity belongs to another athlete.', 403);
-      }
-      const rewarded = (await publicClient.readContract({
-        address: config.contracts.moveToEarnToken!,
-        abi: RELAY_ABIS.moveToEarnToken,
-        functionName: 'isRewarded',
-        args: [activityHash],
-      })) as boolean;
-      if (rewarded) throw new HumanPassError('already_rewarded', 'This activity was already rewarded.', 409);
-
+      // Checked again: the activity may have been rewarded while the human was approving.
+      const { activityHash, meters } = await resolveActivityReward(wallet, BigInt(Number(params.activityId)));
       const relayer = getRelayerWallet();
       const hash = await relayer.writeContract({
         address: config.contracts.moveToEarnToken!,
         abi: RELAY_ABIS.moveToEarnToken,
         functionName: 'mintForActivity',
-        args: [wallet, activityHash, BigInt(Math.round(Number(params.distanceM)))],
+        args: [wallet, activityHash, meters],
         account: relayer.account!,
         chain: config.chain,
       });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      return { txHash: hash, confirmed: receipt.status === 'success', activityHash };
+      const receipt = await getRelayerPublicClient().waitForTransactionReceipt({ hash });
+      return { txHash: hash, confirmed: receipt.status === 'success', activityHash, distanceM: Number(meters) };
     },
   },
 };
@@ -254,6 +286,9 @@ export async function createApproval(input: {
   if (!link && !policy.enroll && !policy.recovery) {
     throw new HumanPassError('not_linked', 'Link your World ID before using this action.', 409);
   }
+  const params = policy.prepare
+    ? await policy.prepare({ wallet: input.wallet as `0x${string}`, params: input.params })
+    : input.params;
 
   const device = await provider.start({
     acceptableAcr: policy.acceptableAcr.length ? policy.acceptableAcr : undefined,
@@ -265,8 +300,8 @@ export async function createApproval(input: {
     id: randomUUID(),
     wallet: input.wallet,
     action: input.action,
-    params: input.params,
-    paramsHash: paramsDigest(input.action, input.wallet, input.params),
+    params,
+    paramsHash: paramsDigest(input.action, input.wallet, params),
     initiator: input.initiator,
     agentGrantId: input.agentGrantId ?? null,
     clientSecretHash: input.clientSecret ? hashToken(input.clientSecret) : null,

@@ -11,9 +11,20 @@ vi.mock('../relayer.js', () => ({
   getRelayerPublicClient: vi.fn(),
   getRelayerWallet: vi.fn(),
 }));
+vi.mock('../chainConfig.js', () => ({
+  getRelayChainConfig: () => ({
+    chain: {},
+    contracts: { activityRegistry: '0xac', moveToEarnToken: '0x70' },
+  }),
+}));
+vi.mock('../recordedActivity.js', () => ({ lookupRecordedActivity: vi.fn() }));
+vi.mock('../humanPresence.js', () => ({ checkRewardGate: vi.fn(() => ({ ok: true, reason: 'test' })) }));
 
 process.env.STORE_FILE = join(mkdtempSync(join(tmpdir(), 'stryde-store-')), 'store.json');
 
+const { getRelayerPublicClient, getRelayerWallet } = await import('../relayer.js');
+const { lookupRecordedActivity } = await import('../recordedActivity.js');
+const { checkRewardGate } = await import('../humanPresence.js');
 const { decideMockAttempt } = await import('../identityProvider.js');
 const humanPass = await import('../humanPass.js');
 const { store } = await import('../store.js');
@@ -149,6 +160,54 @@ describe('Human Pass approvals', () => {
       humanPass.createApproval({ wallet: WALLET_A, action: 'issue_agent_token', params: {}, initiator: 'agent' })
     ).rejects.toMatchObject({ code: 'agent_forbidden' });
     expect(humanPass.AGENT_ACTIONS).toEqual(['claim_activity_reward']);
+  });
+
+  describe('agent reward claims', () => {
+    const HASH = `0x${'ab'.repeat(32)}`;
+    const writeContract = vi.fn(async () => '0xtx');
+
+    beforeEach(() => {
+      vi.mocked(getRelayerPublicClient).mockReturnValue({
+        readContract: vi.fn(async ({ functionName }: { functionName: string }) =>
+          functionName === 'getActivity' ? [HASH, WALLET_A, 0n] : false
+        ),
+        waitForTransactionReceipt: vi.fn(async () => ({ status: 'success' })),
+      } as never);
+      vi.mocked(getRelayerWallet).mockReturnValue({ account: {}, writeContract } as never);
+      vi.mocked(lookupRecordedActivity).mockResolvedValue({ owner: WALLET_A, distance: 1200n });
+      writeContract.mockClear();
+    });
+
+    const claim = (params: Record<string, unknown>) =>
+      humanPass.createApproval({ wallet: WALLET_A, action: 'claim_activity_reward', params, initiator: 'agent' });
+
+    it('mints the recorded distance, not the one the agent asks for', async () => {
+      await runApproval(WALLET_A, 'link_human', human('human-a'));
+      const approval = await claim({ activityId: 7, distanceM: 100_000 });
+      expect(approval.params).toEqual({ activityId: 7, distanceM: 1200 });
+
+      expect(decideMockAttempt(approval.userCode, human('human-a'))).toBe(true);
+      vi.setSystemTime(Date.now() + 3_000);
+      const done = await humanPass.advanceApproval(approval.id);
+      expect(done.status).toBe('completed');
+      expect(writeContract).toHaveBeenCalledWith(expect.objectContaining({ args: [WALLET_A, HASH, 1200n] }));
+    });
+
+    it('holds the claim before World ID when the presence gate would', async () => {
+      await runApproval(WALLET_A, 'link_human', human('human-a'));
+      vi.mocked(checkRewardGate).mockReturnValueOnce({
+        ok: false,
+        code: 'presence_required',
+        message: 'Check in with World ID first',
+      });
+      await expect(claim({ activityId: 7 })).rejects.toMatchObject({ code: 'presence_required', status: 428 });
+    });
+
+    it("refuses another athlete's activity before prompting World ID", async () => {
+      await runApproval(WALLET_A, 'link_human', human('human-a'));
+      vi.mocked(lookupRecordedActivity).mockResolvedValueOnce({ owner: WALLET_B, distance: 1200n });
+      await expect(claim({ activityId: 7 })).rejects.toMatchObject({ code: 'not_owner' });
+    });
   });
 
   it('enforces Orb when the reward policy requires it', () => {

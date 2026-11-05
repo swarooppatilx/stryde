@@ -111,25 +111,31 @@ server.registerTool(
   {
     title: 'Request STRD reward claim',
     description:
-      'Ask to mint STRD for a recorded activity. This does NOT mint immediately: it returns a World App link and code the athlete must approve with a fresh World ID check. Show them the link, then call check_approval.',
+      'Ask to mint STRD for a recorded activity, at the distance recorded onchain. This does NOT mint immediately: it returns a World App link and code the athlete must approve with a fresh World ID check. Show them the link, then call check_approval.',
     inputSchema: {
       activityId: z.number().int().positive(),
-      distanceM: z.number().positive().max(100_000),
     },
   },
-  async ({ activityId, distanceM }) => {
+  async ({ activityId }) => {
     const result = await api('/actions/claim_activity_reward', {
       method: 'POST',
-      body: JSON.stringify({ params: { activityId, distanceM } }),
+      body: JSON.stringify({ params: { activityId } }),
     });
     const body = result.body as {
-      approval?: { id: string; userCode: string; verificationUriComplete: string; expiresAt: number };
+      approval?: {
+        id: string;
+        userCode: string;
+        verificationUriComplete: string;
+        expiresAt: number;
+        params: { distanceM?: number };
+      };
     };
     if (result.status === 401 && body.approval) {
       const a = body.approval;
       return text(
         [
           'Human approval required (World ID step-up).',
+          `Reward for the recorded distance: ${a.params.distanceM ?? '?'} m`,
           `Ask the athlete to open: ${a.verificationUriComplete}`,
           `Code: ${a.userCode}`,
           `Expires: ${new Date(a.expiresAt).toISOString()}`,
