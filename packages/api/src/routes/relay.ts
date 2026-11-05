@@ -1,7 +1,6 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { checkAchievement } from '../lib/achievementCheck.js';
-import { findRecordedActivity, findRecordedActivityInSubgraph } from '../lib/activityProof.js';
 import { isAddress } from '../lib/address.js';
 import { getRelayChainConfig } from '../lib/chainConfig.js';
 import { settlementVerdict } from '../lib/challengeSettlement.js';
@@ -11,6 +10,7 @@ import { isWalletBanned } from '../lib/humanPass.js';
 import { checkRewardGate, type RewardGate } from '../lib/humanPresence.js';
 import { getChainIndex } from '../lib/index/runtime.js';
 import { logError } from '../lib/logError.js';
+import { lookupRecordedActivity } from '../lib/recordedActivity.js';
 import { RELAY_ABIS } from '../lib/relayAbis.js';
 import { classifyRelayError, ReceiptTimeoutError, RetryLaterError } from '../lib/relayErrors.js';
 import { getRelayerPublicClient } from '../lib/relayer.js';
@@ -66,31 +66,6 @@ async function isAchievementDefined(achievementId: `0x${string}`): Promise<boole
     args: [achievementId],
   })) as { exists: boolean };
   return exists;
-}
-
-/** Who recorded `activityHash` and how far: the subgraph first, the chain's logs if it can't say. */
-async function lookupRecordedActivity(activityHash: `0x${string}`) {
-  const { contracts, deployBlock, subgraphUrl } = getRelayChainConfig();
-  if (subgraphUrl) {
-    const indexed = await findRecordedActivityInSubgraph(subgraphUrl, activityHash).catch(
-      (error) => {
-        logError('[relay] Subgraph lookup failed, scanning logs instead', error);
-        return null;
-      }
-    );
-    if (indexed) return indexed;
-  }
-  try {
-    return await findRecordedActivity(
-      getRelayerPublicClient(),
-      contracts.activityRegistry as `0x${string}`,
-      activityHash,
-      deployBlock
-    );
-  } catch (error) {
-    // Public RPCs refuse or prune old log ranges at random: worth a retry, not a hard failure.
-    throw new RetryLaterError(error);
-  }
 }
 
 relay.post('/mint-achievement', async (c) => {
