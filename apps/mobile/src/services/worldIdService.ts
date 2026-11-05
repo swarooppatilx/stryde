@@ -2,10 +2,15 @@ import * as Linking from 'expo-linking';
 import { AppState } from 'react-native';
 
 import { ENV } from '@/constants/config';
-import type { WorldVerificationError } from '@/types/worldId';
+import type {
+  AthletePass,
+  PresenceTicket,
+  RewardGate,
+  WorldCheckKind,
+  WorldVerificationError,
+} from '@/types/worldId';
 import { logger } from '@/utils/logger';
 
-const WORLD_VERIFY_ACTION = 'stryde-verify-profile';
 const WORLD_VERIFY_RETURN_TO = 'stryde://verify';
 
 const POLL_INTERVAL_MS = 2_000;
@@ -23,7 +28,17 @@ interface SessionCreateResponse {
 type PollStatus =
   | { status: 'pending' }
   | { status: 'failed'; error: string; message?: string }
-  | { status: 'confirmed'; result: { responses?: Array<Record<string, unknown>> } };
+  | {
+      status: 'confirmed';
+      result: { responses?: Array<Record<string, unknown>> };
+      pass?: AthletePass;
+      ticket?: PresenceTicket;
+    };
+
+const apiHeaders = () => ({
+  'content-type': 'application/json',
+  ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
+});
 
 async function readApiError(response: Response, fallback: string): Promise<string> {
   const detail = await response.text().catch(() => '');
@@ -36,16 +51,18 @@ async function readApiError(response: Response, fallback: string): Promise<strin
   }
 }
 
-async function createServerSession(signal: string): Promise<SessionCreateResponse> {
+async function createServerSession(
+  kind: WorldCheckKind,
+  signal: string,
+  activityHash?: string
+): Promise<SessionCreateResponse> {
   const response = await fetch(`${ENV.API_URL}/api/world/session`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
-    },
+    headers: apiHeaders(),
     body: JSON.stringify({
-      action: WORLD_VERIFY_ACTION,
+      kind,
       signal,
+      activityHash,
       return_to: WORLD_VERIFY_RETURN_TO,
     }),
   });
@@ -62,10 +79,7 @@ async function pollServerSession(sessionId: string): Promise<PollStatus> {
   try {
     response = await fetch(`${ENV.API_URL}/api/world/session/${sessionId}/poll`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(ENV.API_KEY ? { 'X-API-Key': ENV.API_KEY } : {}),
-      },
+      headers: apiHeaders(),
     });
   } catch (error) {
     // No response at all (the phone is often switching networks while the user
@@ -110,15 +124,14 @@ function mapIdKitError(error: string, detail?: string): WorldVerificationError {
     case 'timeout':
       return {
         code: error,
-        message:
-          'Verification timed out. Complete Selfie Check in World ID, then return to Stryde.',
+        message: 'Verification timed out. Complete the check in World App, then return to Stryde.',
       };
     case 'cancelled':
     case 'user_rejected':
     case 'user_cancelled':
       return {
         code: 'cancelled',
-        message: 'You dismissed the verification. Tap "Reset and try again" to start over.',
+        message: 'You dismissed the check in World App. Nothing was shared.',
       };
     case 'verification_failed':
       return {
@@ -137,9 +150,22 @@ function mapIdKitError(error: string, detail?: string): WorldVerificationError {
 export interface SelfieCheckResult {
   nullifier: string;
   proof: { responses?: Array<Record<string, unknown>> };
+  /** What the check unlocked, as the server recorded it. */
+  pass?: AthletePass;
+  ticket?: PresenceTicket;
 }
 
-export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult> {
+const WALLET_RE = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Runs one World ID check end to end: the server signs and holds the IDKit request, World App
+ * does the camera step, and the server verifies the proof before anything is unlocked.
+ */
+export async function runWorldCheck(
+  kind: WorldCheckKind,
+  signal: string,
+  activityHash?: string
+): Promise<SelfieCheckResult> {
   if (!isWorldIdConfigured()) {
     throw new Error(
       'World ID is not configured. Add EXPO_PUBLIC_WORLD_APP_ID and EXPO_PUBLIC_WORLD_RP_ID to .env.'
@@ -148,11 +174,11 @@ export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult>
 
   // The signal is the wallet the proof is bound to; the signed-out placeholder
   // would verify no one onchain.
-  if (!/^0x[0-9a-fA-F]{40}$/.test(signal)) {
+  if (!WALLET_RE.test(signal)) {
     throw new Error('Sign in before verifying with World ID.');
   }
 
-  const { sessionId, connectorURI } = await createServerSession(signal);
+  const { sessionId, connectorURI } = await createServerSession(kind, signal, activityHash);
 
   let pollNow = false;
   const appStateSub = AppState.addEventListener('change', (state) => {
@@ -166,7 +192,7 @@ export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult>
     try {
       await Linking.openURL(connectorURI);
     } catch {
-      throw new Error('Cannot open World ID. Install the World ID Sandbox app, then try again.');
+      throw new Error('Cannot open World App. Install World App, then try again.');
     }
 
     while (Date.now() < deadline) {
@@ -192,14 +218,39 @@ export async function runSelfieCheck(signal: string): Promise<SelfieCheckResult>
         );
       }
 
-      return {
-        nullifier,
-        proof: poll.result,
-      };
+      return { nullifier, proof: poll.result, pass: poll.pass, ticket: poll.ticket };
     }
 
     throw mapIdKitError('timeout');
   } finally {
     appStateSub.remove();
   }
+}
+
+/** Athlete Pass enrollment: a Selfie Check uniqueness proof that also opens a World ID session. */
+export function runSelfieCheck(signal: string): Promise<SelfieCheckResult> {
+  return runWorldCheck('enroll', signal);
+}
+
+export interface PassStatus {
+  pass: AthletePass | null;
+  ticket: PresenceTicket | null;
+  gate: RewardGate;
+}
+
+/** The server's view of the athlete's pass, and what a run of `meters` would need to earn. */
+export async function fetchPassStatus(
+  wallet: string,
+  query: { activityHash?: string; meters?: number } = {}
+): Promise<PassStatus> {
+  const params = new URLSearchParams();
+  if (query.activityHash) params.set('activityHash', query.activityHash);
+  if (query.meters !== undefined) params.set('meters', String(Math.round(query.meters)));
+  const response = await fetch(`${ENV.API_URL}/api/world/pass/${wallet}?${params}`, {
+    headers: apiHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Could not load your Athlete Pass'));
+  }
+  return (await response.json()) as PassStatus;
 }

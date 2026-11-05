@@ -15,6 +15,7 @@ import type {
   Ring,
   Split,
 } from '@/types';
+import type { RewardHold } from '@/types/worldId';
 import { mapWithConcurrency } from '@/utils/async';
 import { chainProof } from '@/utils/chainProof';
 import { getActivityName, parsePolyline, toPolyline } from '@/utils/format';
@@ -137,6 +138,8 @@ export interface PostRunResult {
   activity: Activity;
   /** Has a territory to claim but the user hasn't verified with World ID. */
   needsVerification: boolean;
+  /** The relayer is holding the reward until this World ID check passes. */
+  rewardHold?: RewardHold;
   /** The activity or its territory claim didn't make it onchain (the failures the user must hear about). */
   onchainFailed: boolean;
   steps: {
@@ -209,6 +212,19 @@ async function uploadPhotos(
 /** The relayer answers 409 when it already has this write (the error carries its HTTP status). */
 const isConflict = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && 'status' in error && error.status === 409;
+
+const REWARD_HOLDS: readonly RewardHold[] = [
+  'enroll_required',
+  'presence_required',
+  'step_up_required',
+];
+
+/** The relayer answers 428 with the World ID check a reward waits for. */
+function rewardHoldOf(error: unknown): RewardHold | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const { status, code } = error as { status?: unknown; code?: unknown };
+  return status === 428 && REWARD_HOLDS.includes(code as RewardHold) ? (code as RewardHold) : null;
+}
 
 /** Runs one best-effort step, turning a throw into data so the next step still runs. */
 async function attempt<T>(
@@ -315,9 +331,9 @@ export async function savePostRun(input: PostRunInput, deps: PostRunDeps): Promi
     );
     return { current, ...outcome };
   });
-  const { current, steps, onchainFailed, needsVerification } = finished;
+  const { current, steps, onchainFailed, needsVerification, rewardHold } = finished;
 
-  return { activity: current, needsVerification, onchainFailed, steps };
+  return { activity: current, needsVerification, onchainFailed, steps, rewardHold };
 }
 
 /** What the onchain steps need: the saved activity plus the published form of its photos and territory. */
@@ -327,7 +343,10 @@ interface OnChainSubject {
   territory: Ring | null;
 }
 
-type OnChainOutcome = Pick<PostRunResult, 'steps' | 'onchainFailed' | 'needsVerification'>;
+type OnChainOutcome = Pick<
+  PostRunResult,
+  'steps' | 'onchainFailed' | 'needsVerification' | 'rewardHold'
+>;
 
 /**
  * Records a saved activity onchain, as far as it gets. Every step reports its own
@@ -360,6 +379,7 @@ async function syncOnChain(
   };
   let onchainFailed = false;
   let needsVerification = false;
+  let rewardHold: RewardHold | undefined;
 
   if (chain) {
     const record = await attempt('recordActivity', () =>
@@ -440,14 +460,20 @@ async function syncOnChain(
           const reward = await attempt('reward mint', () =>
             chain.mintReward(activityHash, activity.distance)
           );
+          const hold = reward.ok ? null : rewardHoldOf(reward.error);
           if (reward.ok) {
             steps.reward = reward.value.confirmed ? ok() : skipped('not confirmed');
             // Relayed mints can't report the amount; only a known amount is recorded.
             if (reward.value.confirmed && reward.value.amount > 0n) {
               store.updateActivity(activity.id, {
                 strdEarned: Number(formatUnits(reward.value.amount, 18)),
+                rewardHold: undefined,
               });
             }
+          } else if (hold) {
+            rewardHold = hold;
+            store.updateActivity(activity.id, { rewardHold: hold });
+            steps.reward = skipped('held for a World ID check');
           } else {
             steps.reward = { status: 'failed', error: reward.error };
           }
@@ -499,7 +525,7 @@ async function syncOnChain(
     }
   }
 
-  return { steps, onchainFailed, needsVerification };
+  return { steps, onchainFailed, needsVerification, rewardHold };
 }
 
 /** The outcome of a run that did nothing, every step skipped for the same reason. */
@@ -516,6 +542,40 @@ function skippedOutcome(reason: string): OnChainOutcome {
     onchainFailed: false,
     needsVerification: false,
   };
+}
+
+export type RewardRelease =
+  | { status: 'released'; confirmed: boolean }
+  | { status: 'held'; hold: RewardHold }
+  | { status: 'failed'; error: unknown };
+
+/** Asks the relayer again for a reward it held, once the athlete has passed the World ID check it named. */
+export async function releaseHeldReward(
+  activity: Activity,
+  deps: Pick<PostRunDeps, 'store' | 'chain'>
+): Promise<RewardRelease> {
+  if (!deps.chain || !activity.activityHash) {
+    return { status: 'failed', error: new Error('This activity is not onchain yet.') };
+  }
+  const activityHash = activity.activityHash as `0x${string}`;
+  const reward = await attempt('held reward mint', () =>
+    deps.chain!.mintReward(activityHash, activity.distance)
+  );
+  if (reward.ok) {
+    deps.store.updateActivity(activity.id, {
+      rewardHold: undefined,
+      ...(reward.value.amount > 0n
+        ? { strdEarned: Number(formatUnits(reward.value.amount, 18)) }
+        : {}),
+    });
+    return { status: 'released', confirmed: reward.value.confirmed };
+  }
+  const hold = rewardHoldOf(reward.error);
+  if (hold) {
+    deps.store.updateActivity(activity.id, { rewardHold: hold });
+    return { status: 'held', hold };
+  }
+  return { status: 'failed', error: reward.error };
 }
 
 /**

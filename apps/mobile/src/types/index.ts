@@ -1,4 +1,5 @@
 import type { ActivityType, Location, Ring, Territory } from '@repo/shared/types';
+import type { RewardHold } from './worldId';
 
 export type { ActivityType, Location, Ring, Territory };
 
@@ -153,10 +154,27 @@ export interface Activity {
   txHash?: string;
   /** STRD tokens earned for this activity's distance, once the mint confirms. */
   strdEarned?: number;
+  /** The reward is held until this World ID check passes; the run itself is saved and onchain. */
+  rewardHold?: RewardHold;
   /** Decimal string: bigint does not survive AsyncStorage's JSON persistence. */
   onchainActivityId?: string;
   /** IPFS CID of the off-chain metadata once attached on-chain; skips re-upload and lets other devices resolve it. */
   metadataCid?: string;
+  /** Wearable heart-rate check for this activity (Health Connect / HealthKit). */
+  sweat?: {
+    score: number;
+    avgBpm: number;
+    maxBpm: number;
+    sampleCount: number;
+    verified: boolean;
+    reason: string;
+  };
+  steps?: number;
+  /** Segment efforts written to Arkiv for this activity. */
+  segmentEfforts?: Array<{ key: string; segmentKey: string; segmentName: string; elapsedSec: number }>;
+  /** Swarm reference of the archived GPX (sealed when the route is private). */
+  swarmRef?: string;
+  swarmLink?: string;
   /** Automatic retry bookkeeping for an activity the chain does not hold yet. */
   sync?: { attempts: number; nextAttemptAt: number; lastError?: string };
   createdAt: Date;

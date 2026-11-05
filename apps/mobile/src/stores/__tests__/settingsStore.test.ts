@@ -287,7 +287,7 @@ describe('preferred sports', () => {
     expect(migrate({ autoPause: true }, 9)).toMatchObject({ preferredSports: [] });
   });
 
-  it('are on version 10', () => {
-    expect(useSettingsStore.persist.getOptions().version).toBe(10);
+  it('are on version 11', () => {
+    expect(useSettingsStore.persist.getOptions().version).toBe(11);
   });
 });

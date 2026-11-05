@@ -7,6 +7,7 @@ import {
   isSyncing,
   type PostRunDeps,
   type PostRunInput,
+  releaseHeldReward,
   retryOnChain,
   savePostRun,
 } from '@/services/postRun';
@@ -710,6 +711,51 @@ describe('recording onchain', () => {
     expect(chain.methods).toContain('recordSeasonContribution');
     expect(chain.methods).toContain('mintReward');
     expect(store.get('id-1').metadataCid).toBeUndefined();
+  });
+
+  it('keeps the run and holds the reward when the relayer wants a World ID check', async () => {
+    chain.failures.mintReward = Object.assign(new Error('Sign this run'), {
+      status: 428,
+      code: 'presence_required',
+    });
+
+    const result = await savePostRun(INPUT, deps());
+
+    expect(result.onchainFailed).toBe(false);
+    expect(result.rewardHold).toBe('presence_required');
+    expect(result.steps.reward).toEqual({ status: 'skipped', reason: 'held for a World ID check' });
+    expect(store.get('id-1')).toMatchObject({ rewardHold: 'presence_required', txHash: expect.any(String) });
+  });
+
+  it('releases a held reward once the check has passed', async () => {
+    chain.failures.mintReward = Object.assign(new Error('Sign this run'), {
+      status: 428,
+      code: 'presence_required',
+    });
+    const { activity } = await savePostRun(INPUT, deps());
+    delete chain.failures.mintReward;
+
+    const release = await releaseHeldReward(store.get(activity.id), deps());
+
+    expect(release).toEqual({ status: 'released', confirmed: true });
+    expect(store.get(activity.id)).toMatchObject({ rewardHold: undefined, strdEarned: 5 });
+  });
+
+  it('moves a held reward to the next check the relayer names', async () => {
+    chain.failures.mintReward = Object.assign(new Error('Get a pass'), {
+      status: 428,
+      code: 'enroll_required',
+    });
+    const { activity } = await savePostRun(INPUT, deps());
+    chain.failures.mintReward = Object.assign(new Error('Sign this run'), {
+      status: 428,
+      code: 'presence_required',
+    });
+
+    const release = await releaseHeldReward(store.get(activity.id), deps());
+
+    expect(release).toEqual({ status: 'held', hold: 'presence_required' });
+    expect(store.get(activity.id).rewardHold).toBe('presence_required');
   });
 
   it('still mints the reward when the season contribution fails', async () => {

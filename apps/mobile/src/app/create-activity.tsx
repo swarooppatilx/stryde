@@ -34,6 +34,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useGoBack } from '@/hooks/useGoBack';
 import { usePostRun } from '@/hooks/usePostRun';
+import { useViemWallet } from '@/hooks/useViemWallet';
+import { attachSessionToActivity, runPostActivityPipeline } from '@/services/activityPipeline';
 import { EmptyRecordingError } from '@/services/postRun';
 import { useGearStore } from '@/stores/gearStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -112,6 +114,7 @@ export default function CreateActivityScreen() {
     ? ((peekRecordedRun(routeParams.run) as Params | undefined) ?? {})
     : routeParams;
   const { save } = usePostRun();
+  const { address } = useViemWallet();
   const hideRouteEnds = useSettingsStore((s) => s.hideRouteEnds);
   const privacyZones = useSettingsStore((s) => s.privacyZones);
 
@@ -229,7 +232,7 @@ export default function CreateActivityScreen() {
       // One dialog at a time: a failure outranks the nudge to verify.
       if (result.onchainFailed) {
         Alert.alert(COPY.saveFailedTitle, COPY.saveFailedBody);
-      } else if (result.needsVerification) {
+      } else if (result.needsVerification && !result.rewardHold) {
         Alert.alert(
           'Verify to claim territory',
           'Verify with World ID Selfie Check to claim territory and help keep the map fair for everyone.',
@@ -240,8 +243,22 @@ export default function CreateActivityScreen() {
         );
       }
 
+      if (isFromTracking && attachSessionToActivity(result.activity.id) && address) {
+        void runPostActivityPipeline({
+          activityId: result.activity.id,
+          onchainActivityId: result.activity.onchainActivityId,
+          name: title,
+          distance,
+          athlete: address,
+        });
+      }
+
       if (routeParams.run) dropRecordedRun(routeParams.run);
       router.replace({ pathname: '/post-upload', params: { id: result.activity.id } });
+      // The finish line is the moment to sign the run, while the athlete is still holding the phone.
+      if (result.rewardHold && !result.onchainFailed) {
+        router.push({ pathname: '/finish-line', params: { id: result.activity.id } });
+      }
     } catch (err) {
       logger.warn('[CreateActivity] Save failed', err);
       if (err instanceof EmptyRecordingError) {

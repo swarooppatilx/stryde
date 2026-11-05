@@ -1,7 +1,14 @@
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  type LayoutChangeEvent,
+  Pressable,
+  Share,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LocateButton } from '@/components/locate-button';
@@ -20,7 +27,7 @@ import { StartCountdownOverlay } from '@/components/start-countdown-overlay';
 import { ThemedText } from '@/components/themed-text';
 import { ZoomControls } from '@/components/zoom-controls';
 import { SPORT_TYPES } from '@/constants/activity';
-import { DEFAULT_CENTER } from '@/constants/config';
+import { DEFAULT_CENTER, ENV } from '@/constants/config';
 import { Palette } from '@/constants/palette';
 import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -36,11 +43,16 @@ import type { RecoveryChoice } from '@/hooks/useRecoveredRun';
 import { useStartCountdown } from '@/hooks/useStartCountdown';
 import { useTrackingSession } from '@/hooks/useTrackingSession';
 import { useVerticalSwipe } from '@/hooks/useVerticalSwipe';
+import { useViemWallet } from '@/hooks/useViemWallet';
 import { getPlatform } from '@/platform';
+import { setFinishedSession } from '@/services/activityPipeline';
+import { endBeacon, pushBeacon } from '@/services/arkivService';
 import { confirmStart } from '@/services/startChecks';
 import { territoryService } from '@/services/territoryService';
+import { trackingService } from '@/services/trackingService';
 import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRecordUiStore } from '@/stores/recordUiStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { ActivityType, Ring } from '@/types';
 import { Alert } from '@/utils/alert';
 import { colorSegments } from '@/utils/colorSegments';
@@ -62,6 +74,7 @@ import { splitMarkers as splitPins } from '@/utils/splitMarkers';
 import { Toast } from '@/utils/toast';
 
 const ZOOM_RANGE = { min: MIN_ZOOM, max: MAX_ZOOM };
+const BEACON_INTERVAL_MS = 30_000;
 /** Slow to fast along the live trail, as on a saved run's map. */
 const PACE_COLORS = [Palette.blue.b4, Palette.yellow.y3, Palette.orange.o3];
 
@@ -221,6 +234,64 @@ export default function TrackingScreen() {
 
   const countdown = useStartCountdown(handleStart);
 
+  // Live beacon: a 10-minute Arkiv entity the server patches every BEACON_INTERVAL_MS, so
+  // friends can follow the run and it vanishes after.
+  const liveBeacon = useSettingsStore((s) => s.liveBeacon);
+  const runIdRef = useRef('');
+  const [beaconLive, setBeaconLive] = useState(false);
+  const beaconInput = useRef({ fix: location, distance, duration });
+  beaconInput.current = { fix: location, distance, duration };
+  const { address: athlete } = useViemWallet();
+  useEffect(() => {
+    if (!isSessionActive || !liveBeacon || !athlete) return;
+    if (!runIdRef.current) {
+      runIdRef.current = getPlatform()
+        .ids.next()
+        .replace(/[^A-Za-z0-9_-]/g, '')
+        .padEnd(8, '0')
+        .slice(0, 32);
+    }
+    const push = () => {
+      const { fix: last, distance: distanceM, duration: durationMs } = beaconInput.current;
+      if (!last) return;
+      const durationSec = durationMs / 1000;
+      pushBeacon({
+        runId: runIdRef.current,
+        athlete,
+        latitude: last.latitude,
+        longitude: last.longitude,
+        paceSecPerKm: distanceM > 50 ? Math.round(durationSec / (distanceM / 1000)) : 0,
+      })
+        .then(() => setBeaconLive(true))
+        .catch((error) => {
+          setBeaconLive(false);
+          logger.warn('[Record] Beacon update failed', error);
+        });
+    };
+    push();
+    const interval = setInterval(push, BEACON_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isSessionActive, liveBeacon, athlete]);
+
+  const endLiveBeacon = () => {
+    if (runIdRef.current && beaconLive) endBeacon(runIdRef.current).catch(() => undefined);
+    runIdRef.current = '';
+    setBeaconLive(false);
+  };
+
+  const shareLiveBeacon = () => {
+    Share.share({
+      message: `Follow my ${activityLabel.toLowerCase()} live on Stryde: ${ENV.API_URL}/api/live/${runIdRef.current}`,
+    }).catch(() => undefined);
+  };
+
+  const captureFinishedTrack = () =>
+    setFinishedSession(
+      trackingService
+        .getLocations()
+        .map((l) => ({ latitude: l.latitude, longitude: l.longitude, timestamp: l.timestamp }))
+    );
+
   const handleResume = async () => {
     const result = await resume();
     if (!result.ok && result.reason === 'gps') showStartFailure(result.message);
@@ -265,6 +336,8 @@ export default function TrackingScreen() {
     }
     finishing.current = true;
     try {
+      captureFinishedTrack();
+      endLiveBeacon();
       const result = await finish();
       if (!result.ok) {
         Alert.alert('Could not finish', result.error);
@@ -293,6 +366,7 @@ export default function TrackingScreen() {
         onPress: async () => {
           finishing.current = true;
           try {
+            endLiveBeacon();
             await finish();
           } finally {
             finishing.current = false;
@@ -535,6 +609,19 @@ export default function TrackingScreen() {
                   </ThemedText>
                 </Pressable>
               )}
+              {beaconLive && (
+                <Pressable
+                  style={styles.liveNote}
+                  onPress={shareLiveBeacon}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share live location"
+                >
+                  <View style={styles.liveDot} />
+                  <ThemedText type="caption" style={styles.liveText}>
+                    LIVE · Tap to share
+                  </ThemedText>
+                </Pressable>
+              )}
               {isPaused && <PausedBar autoPaused={autoPaused} />}
               {lapCard && (
                 <LapCompleteCard
@@ -648,4 +735,16 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   content: { paddingHorizontal: Spacing.four, gap: Spacing.two },
+  liveNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: Spacing.one,
+    backgroundColor: Brand.danger,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.half,
+  },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Brand.white },
+  liveText: { color: Brand.white, fontWeight: '700' },
 });

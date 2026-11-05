@@ -1,12 +1,20 @@
+import { Switch } from '@ant-design/react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import { Platform } from 'react-native';
 import { SettingsRow, SettingsSection } from '@/components/settings-row';
 import { SettingsScreen } from '@/components/settings-screen';
 import { DEV_TOOLS } from '@/constants/devTools';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogout } from '@/hooks/useLogout';
 import { useNotificationPermission } from '@/hooks/useNotificationPermission';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
+import {
+  getHealthAvailability,
+  openHealthSettings,
+  requestHealthPermissions,
+} from '@/services/healthService';
 import { useBodyStore } from '@/stores/bodyStore';
 import { useGearStore } from '@/stores/gearStore';
 import {
@@ -16,6 +24,7 @@ import {
 } from '@/stores/notificationPrefsStore';
 import { useProfileStore } from '@/stores/profileStore';
 import { ACCURACY_MODE_CONFIG, useSettingsStore } from '@/stores/settingsStore';
+import { Alert } from '@/utils/alert';
 import {
   notificationsSummary,
   preferencesSummary,
@@ -35,6 +44,24 @@ export default function SettingsListScreen() {
   const gearCount = useGearStore((s) => s.gear.length);
   const latestWeight = useBodyStore((s) => s.entries.at(-1)?.kg ?? null);
   const settings = useSettingsStore((s) => s);
+  const theme = useTheme();
+
+  const toggleHealthData = async (enabled: boolean) => {
+    if (!enabled) {
+      settings.setHealthData(false);
+      return;
+    }
+    const availability = await getHealthAvailability();
+    if (!availability.available) {
+      Alert.alert('Health data unavailable', availability.reason ?? 'Health data is not available.');
+      return;
+    }
+    if (!(await requestHealthPermissions())) {
+      Alert.alert('Permission needed', 'Allow Stryde to read heart rate to verify your efforts.');
+      return;
+    }
+    settings.setHealthData(true);
+  };
 
   return (
     <SettingsScreen title="Settings">
@@ -98,6 +125,75 @@ export default function SettingsListScreen() {
             NOTIFICATION_KINDS.length
           )}
           onPress={() => router.push('/notifications')}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Wearables and sharing"
+        footer={`Heart rate from your watch (via ${Platform.OS === 'ios' ? 'Apple Health' : 'Samsung Health, Fitbit, Garmin or Wear OS through Health Connect'}) proves real effort on segments. Live beacons expire on Arkiv after 10 minutes. Private routes are encrypted before they reach Swarm.`}
+      >
+        <SettingsRow
+          icon="heart-outline"
+          title={Platform.OS === 'ios' ? 'Apple Health heart rate' : 'Health Connect heart rate'}
+          extra={
+            <Switch
+              checked={settings.healthData}
+              onChange={toggleHealthData}
+              color={theme.brand.primary}
+            />
+          }
+        />
+        <SettingsRow
+          icon="radio-outline"
+          title="Live beacon while recording"
+          extra={
+            <Switch
+              checked={settings.liveBeacon}
+              onChange={settings.setLiveBeacon}
+              color={theme.brand.primary}
+            />
+          }
+        />
+        <SettingsRow
+          icon="lock-closed-outline"
+          title="Private route archive"
+          extra={
+            <Switch
+              checked={settings.privateRoutes}
+              onChange={settings.setPrivateRoutes}
+              color={theme.brand.primary}
+            />
+          }
+        />
+        {settings.healthData && Platform.OS === 'android' ? (
+          <SettingsRow
+            icon="settings-outline"
+            title="Manage Health Connect access"
+            onPress={openHealthSettings}
+          />
+        ) : (
+          <></>
+        )}
+      </SettingsSection>
+
+      <SettingsSection title="Partner features">
+        <SettingsRow
+          icon="sparkles-outline"
+          title="AI Coach and World Agent Pass"
+          subtitle="Let your AI coach read your runs, bound to a verified human"
+          onPress={() => router.push('/coach')}
+        />
+        <SettingsRow
+          icon="flag-outline"
+          title="Segments"
+          subtitle="Create and race segments stored on Arkiv"
+          onPress={() => router.push('/segments')}
+        />
+        <SettingsRow
+          icon="swap-horizontal-outline"
+          title="Cash out STRD"
+          subtitle="Swap through the Uniswap v4 sweat-fee pool"
+          onPress={() => router.push('/cash-out')}
         />
       </SettingsSection>
 

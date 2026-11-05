@@ -7,6 +7,8 @@ import { isAddress } from '../lib/address.js';
 import { getRelayChainConfig } from '../lib/chainConfig.js';
 import { settlementVerdict } from '../lib/challengeSettlement.js';
 import { getContributionLedger } from '../lib/contributionLedgerFromEnv.js';
+import { isWalletBanned } from '../lib/humanPass.js';
+import { checkRewardGate, type RewardGate } from '../lib/humanPresence.js';
 import { getChainIndex } from '../lib/index/runtime.js';
 import { logError } from '../lib/logError.js';
 import { RELAY_ABIS } from '../lib/relayAbis.js';
@@ -150,6 +152,11 @@ relay.post('/mint-achievement', async (c) => {
   });
 });
 
+/** 428: the run is fine, but the reward waits for a World ID check the app can run and then retry. */
+function heldForPresence(c: Context, gate: Extract<RewardGate, { ok: false }>) {
+  return c.json({ error: gate.message, code: gate.code }, 428);
+}
+
 relay.post('/mint-reward', async (c) => {
   const body = await readJsonObject(c);
   if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
@@ -163,6 +170,12 @@ relay.post('/mint-reward', async (c) => {
       400
     );
   }
+
+  if (isWalletBanned(recipient)) {
+    return c.json({ error: 'This athlete is suspended from Stryde.' }, 403);
+  }
+  const claimedGate = checkRewardGate(recipient, activityHash, meters);
+  if (!claimedGate.ok) return heldForPresence(c, claimedGate);
 
   // The reward is for an activity the recipient recorded themselves, at the distance they
   // recorded: without this check the shared API key could mint STRD to anyone.
@@ -183,6 +196,9 @@ relay.post('/mint-reward', async (c) => {
       ? BigInt(MAX_DISTANCE_METERS)
       : recorded.distance;
   if (rewardMeters === 0n) return c.json({ error: 'The recorded activity has no distance' }, 400);
+  // Checked again on the recorded distance: under-reporting must not slip a long run past the finish line.
+  const recordedGate = checkRewardGate(recipient, activityHash, Number(rewardMeters));
+  if (!recordedGate.ok) return heldForPresence(c, recordedGate);
 
   return respondWith(c, () =>
     relayTx({

@@ -14,6 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AboutLines } from '@/components/about-lines';
 import { AchievementBadge } from '@/components/achievement-badge';
+import { AthletePassCard } from '@/components/athlete-pass-card';
 import { BadgeGrid } from '@/components/badge-grid';
 import { FollowCounts } from '@/components/follow-counts';
 import { GoalsCard } from '@/components/goals-card';
@@ -23,7 +24,7 @@ import { ProfileActivitiesTab } from '@/components/profile-activities-tab';
 import { ProfileHero } from '@/components/profile-header';
 import { ProfilePosts } from '@/components/profile-posts';
 import { ProfileStatLists } from '@/components/profile-stat-lists';
-import { ProfileTotals, WalletPills } from '@/components/profile-summary';
+import { PartnerShortcuts, ProfileTotals, WalletPills } from '@/components/profile-summary';
 import { QrSheet } from '@/components/qr-sheet';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
@@ -302,6 +303,8 @@ export default function ProfileScreen() {
                 )}
 
                 <WalletPills address={walletAddress} ensName={ensName} strdWei={balances.strd} />
+                <AthletePassCard />
+                <PartnerShortcuts />
               </ThemedView>
 
               <ProfileTotals

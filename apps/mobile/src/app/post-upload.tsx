@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { ChainSyncRetry } from '@/components/chain-sync-retry';
 import { IconBadge } from '@/components/icon-badge';
+import { RewardHoldBanner } from '@/components/reward-hold-banner';
 import { OffscreenShareImage } from '@/components/share-route-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -88,6 +89,7 @@ export default function PostUploadScreen() {
           {chainRetry.canRetry && (
             <ChainSyncRetry busy={chainRetry.busy} onRetry={chainRetry.retry} />
           )}
+          <RewardHoldBanner activity={activity} />
 
           {stats.length > 0 && (
             <View style={[styles.stats, { backgroundColor: theme.backgroundElement }]}>

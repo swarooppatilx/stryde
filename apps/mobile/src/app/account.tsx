@@ -80,7 +80,7 @@ export default function AccountScreen() {
               ? 'Verified · you are counted as one person on the leaderboard.'
               : 'Not verified · counts you as one person on the leaderboard and gives your score a small bonus.'
           }
-          onPress={isVerified ? undefined : () => router.push('/verify')}
+          onPress={() => router.push('/verify')}
         />
       </SettingsSection>
 

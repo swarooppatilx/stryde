@@ -11,7 +11,8 @@ import { DEV_TOOLS } from '@/constants/devTools';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
-import { useWorldVerification } from '@/hooks/useWorldVerification';
+import { useRefreshAthletePass, useWorldVerification } from '@/hooks/useWorldVerification';
+import { isWorldIdConfigured } from '@/services/worldIdService';
 import { formatLongDate } from '@/utils/dates';
 import { getParsedError } from '@/utils/errors';
 
@@ -26,20 +27,28 @@ export default function VerifyScreen() {
   const {
     isVerified,
     verifiedAt,
+    pass,
     status,
     error,
+    activeKind,
     isConfigured,
     startVerification,
+    startCheck,
     resetFlow,
     isBusy,
   } = useWorldVerification();
+  useRefreshAthletePass();
+  const needsStepUp = pass?.band === 'high' && !pass.steppedUp;
+  // A badge from the older one-time check has no session, so it cannot sign runs: it still needs a pass.
+  const hasPass = Boolean(pass) || (isVerified && !isWorldIdConfigured());
 
   useEffect(() => {
-    if (status === 'success') {
+    // A high band stays here: the next step (Proof of Human) is on this screen.
+    if (status === 'success' && !needsStepUp) {
       const timer = setTimeout(() => goBack(), 1200);
       return () => clearTimeout(timer);
     }
-  }, [status, goBack]);
+  }, [status, goBack, needsStepUp]);
 
   const statusMessage = STATUS_MESSAGE[status] ?? null;
 
@@ -57,7 +66,7 @@ export default function VerifyScreen() {
           >
             <Ionicons name="chevron-back" size={20} color={theme.text} />
           </Tappable>
-          <ThemedText type="headline">Verification</ThemedText>
+          <ThemedText type="headline">Athlete Pass</ThemedText>
           <View style={styles.backBtn} />
         </ThemedView>
 
@@ -65,48 +74,86 @@ export default function VerifyScreen() {
           <ThemedView style={styles.hero}>
             <ThemedView style={[styles.heroIcon, { backgroundColor: theme.backgroundElement }]}>
               <Ionicons
-                name={isVerified ? 'checkmark-circle' : 'shield-checkmark'}
+                name={hasPass ? 'checkmark-circle' : 'shield-checkmark'}
                 size={32}
-                color={isVerified ? Brand.verified : theme.brand.primary}
+                color={hasPass ? Brand.verified : theme.brand.primary}
               />
             </ThemedView>
             <ThemedText type="headline" style={styles.heroTitle}>
-              {isVerified ? 'You are verified' : 'Verify you are human'}
+              {hasPass ? 'Your Athlete Pass is active' : 'One human, one earning account'}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.heroSubtitle}>
-              {isVerified
-                ? `Selfie Check confirmed on ${verifiedDate}. Your profile shows a verified badge.`
-                : 'Stryde uses World ID Selfie Check to reduce fake accounts and protect territory claims.'}
+              {hasPass
+                ? `Selfie Check confirmed on ${verifiedDate}. Your runs can earn STRD, and big ones are signed at the finish line.`
+                : 'Running is free for everyone. Earning STRD needs an Athlete Pass: one World ID Selfie Check, once.'}
             </ThemedText>
           </ThemedView>
 
-          {!isVerified && (
+          {pass && (
             <Card style={styles.card}>
-              <ThemedText type="sectionTitle">Why verify?</ThemedText>
+              <ThemedText type="sectionTitle">Your pass</ThemedText>
+              <PassRow label="Sybil signal" value={BAND_LABEL[pass.band]} />
+              <PassRow
+                label="Finish-Line checks"
+                value={
+                  pass.band === 'low'
+                    ? `Runs over ${(pass.finishLineMeters / 1000).toFixed(0)} km`
+                    : 'Every earning run'
+                }
+              />
+              <PassRow label="Runs signed by you" value={String(pass.presenceCount)} />
+              {pass.steppedUp && <PassRow label="Proof of Human" value="Verified" />}
+            </Card>
+          )}
+
+          {needsStepUp && (
+            <Card style={{ ...styles.card, borderWidth: 1, borderColor: theme.brand.warning }}>
+              <ThemedText type="sectionTitle">Earning is paused</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Your Selfie Check matched many other enrollments. That can be a lookalike, so it is
+                not a verdict, but before paying out we ask for Proof of Human from the Orb. Your
+                runs, records and territory all keep counting.
+              </ThemedText>
+              <AppButton
+                onPress={() => startCheck('step_up')}
+                loading={isBusy && activeKind === 'step_up'}
+                disabled={isBusy}
+              >
+                Verify with Proof of Human
+              </AppButton>
+            </Card>
+          )}
+
+          {!hasPass && (
+            <Card style={styles.card}>
+              <ThemedText type="sectionTitle">Why Selfie Check, and not more?</ThemedText>
               <ThemedView style={styles.benefitRow}>
-                <Ionicons name="person-outline" size={18} color={theme.brand.primary} />
+                <Ionicons name="happy-outline" size={18} color={theme.brand.primary} />
                 <ThemedView style={styles.benefitCopy}>
-                  <ThemedText type="smallBold">Real athlete badge</ThemedText>
+                  <ThemedText type="smallBold">Enough to stop farms</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    Show a verified check on your profile.
+                    A live face check stops bot farms and one person running ten accounts. The
+                    same face signs your big runs, so a borrowed or rented phone cannot earn.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
               <ThemedView style={styles.benefitRow}>
-                <Ionicons name="map-outline" size={18} color={theme.brand.primary} />
+                <Ionicons name="globe-outline" size={18} color={theme.brand.primary} />
                 <ThemedView style={styles.benefitCopy}>
-                  <ThemedText type="smallBold">Fair territory play</ThemedText>
+                  <ThemedText type="smallBold">Open to every runner</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    Selfie Check adds friction against bots and duplicate accounts.
+                    No Orb visit and no passport: anyone with World App can do it in under a
+                    minute. We only ask for the Orb when the risk signal says so.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
               <ThemedView style={styles.benefitRow}>
                 <Ionicons name="lock-closed-outline" size={18} color={theme.brand.primary} />
                 <ThemedView style={styles.benefitCopy}>
-                  <ThemedText type="smallBold">Privacy preserving</ThemedText>
+                  <ThemedText type="smallBold">Nothing about you</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    World ID proves you are a real person without sharing your identity.
+                    We never need your name, age or nationality to pay for a run, so we never
+                    ask. Stryde receives a zero-knowledge proof, not your face.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
@@ -172,7 +219,7 @@ export default function VerifyScreen() {
             </Card>
           )}
 
-          {isVerified ? (
+          {hasPass ? (
             <AppButton variant="secondary" onPress={goBack}>
               Back to profile
             </AppButton>
@@ -183,7 +230,7 @@ export default function VerifyScreen() {
               disabled={!isConfigured || isBusy}
               icon={<Ionicons name="scan-outline" size={18} color={Brand.white} />}
             >
-              Verify with World ID
+              Get Athlete Pass with World ID
             </AppButton>
           )}
 
@@ -197,6 +244,19 @@ export default function VerifyScreen() {
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+const BAND_LABEL = { low: 'Low', medium: 'Elevated', high: 'High' } as const;
+
+function PassRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.passRow}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+      <ThemedText type="smallBold">{value}</ThemedText>
+    </View>
   );
 }
 
@@ -266,6 +326,7 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginTop: Spacing.two,
   },
+  passRow: { flexDirection: 'row', justifyContent: 'space-between' },
   retryLink: {
     alignItems: 'center',
     paddingVertical: Spacing.two,

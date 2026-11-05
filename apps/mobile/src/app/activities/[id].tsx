@@ -12,12 +12,14 @@ import { ActivityActionRow } from '@/components/activity-action-row';
 import { ActivityChartPager } from '@/components/activity-chart-pager';
 import { ActivityDescription } from '@/components/activity-description';
 import { ActivityPrivateDetails } from '@/components/activity-private-details';
+import { ActivityProofCard } from '@/components/activity-proof-card';
 import { ActivitySocialRow } from '@/components/activity-social-row';
 import { BestEfforts } from '@/components/best-efforts';
 import { AppButton } from '@/components/button';
 import { ChainSyncRetry } from '@/components/chain-sync-retry';
 import { CommentsSheet } from '@/components/comments-sheet';
 import { GearPicker } from '@/components/gear-picker';
+import { RewardHoldBanner } from '@/components/reward-hold-banner';
 import { HeartRateZones } from '@/components/heart-rate-zones';
 import { IconBadge } from '@/components/icon-badge';
 import { LapsList } from '@/components/laps-list';
@@ -590,6 +592,9 @@ export default function ActivitySummaryScreen() {
                 onCancel={handleCancelEditDescription}
                 onSave={handleSaveDescription}
               />
+
+              {isOwner && <RewardHoldBanner activity={activity} />}
+              {isOwner && <ActivityProofCard activity={activity} />}
 
               {isOwner && <ActivityPrivateDetails activity={activity} />}
 

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { installFileFetchShim } from './lib/fileFetchShim.js';
@@ -7,12 +7,17 @@ import { ConfigError } from './lib/relayErrors.js';
 import { apiKeyGate } from './middleware/apiKey.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { activities } from './routes/activities.js';
+import { agent } from './routes/agent.js';
+import { arkiv } from './routes/arkiv.js';
 import { health } from './routes/health.js';
+import { humanPass } from './routes/humanPass.js';
 import { ipfs } from './routes/ipfs.js';
 import { maintenance } from './routes/maintenance.js';
 import { push } from './routes/push.js';
 import { relay } from './routes/relay.js';
 import { social } from './routes/social.js';
+import { live } from './routes/live.js';
+import { uniswap } from './routes/uniswap.js';
 import { world } from './routes/world.js';
 
 // @worldcoin/idkit-core loads its wasm via fetch(file://...) which Node's
@@ -40,7 +45,8 @@ app.use(
   cors({
     origin: allowedOrigins,
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    allowHeaders: ['Content-Type', 'X-API-Key'],
+    allowHeaders: ['Content-Type', 'X-API-Key', 'Authorization', 'X-Admin-Key', 'X-Approval-Secret'],
+    exposeHeaders: ['WWW-Authenticate'],
     credentials: true,
   })
 );
@@ -65,6 +71,19 @@ app.use('/push/*', apiKeyGate);
 
 app.use('/world/*', apiKeyGate);
 
+// The mock World approval page is opened in a phone browser, which can't send
+// the API key; it only exists when WORLD_OIDC_MOCK is on outside production.
+const isMockApprovalPage = (c: Context) => c.req.path.startsWith('/api/human/mock/');
+app.use('/human/*', limit(60));
+app.use('/human/*', async (c, next) => (isMockApprovalPage(c) ? next() : apiKeyGate(c, next)));
+// /agent/* authenticates with per-agent bearer tokens instead of the app key.
+app.use('/agent/*', limit(60));
+app.use('/arkiv/*', limit(60));
+app.use('/arkiv/*', apiKeyGate);
+app.use('/live/*', limit(60));
+app.use('/uniswap/*', limit(30));
+app.use('/uniswap/*', apiKeyGate);
+
 app.route('/health', health);
 app.route('/activities', activities);
 app.route('/ipfs', ipfs);
@@ -73,5 +92,10 @@ app.route('/push', push);
 app.route('/world', world);
 app.route('/relay', relay);
 app.route('/maintenance', maintenance);
+app.route('/human', humanPass);
+app.route('/agent', agent);
+app.route('/arkiv', arkiv);
+app.route('/uniswap', uniswap);
+app.route('/live', live);
 
 export default app;
