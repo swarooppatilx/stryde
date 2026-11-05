@@ -166,13 +166,26 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
     const result = await startAndPoll(world);
 
     expect(result.status).toBe('confirmed');
-    // The mirror is fire-and-forget (SWA-72), so let it settle.
-    await vi.waitFor(() => expect(mockWallet.writeContract).toHaveBeenCalledOnce());
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
     expect(mockWallet.writeContract.mock.calls[0]?.[0]).toMatchObject({
       functionName: 'verify',
       args: [WALLET, nullifier],
     });
   });
+
+  it('retries the onchain mirror after a transient failure', async () => {
+    const nullifier = `0x${'ab'.repeat(32)}`;
+    pollStatus.current = { type: 'confirmed', result: { responses: [{ nullifier }] } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
+    mockPublicClient.simulateContract.mockRejectedValueOnce(new Error('rpc unreachable'));
+    const world = await loadWorld({ skip: false });
+
+    const result = await startAndPoll(world);
+
+    expect(result.status).toBe('confirmed');
+    expect(mockPublicClient.simulateContract).toHaveBeenCalledTimes(2);
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+  }, 10_000);
 
   it('hashes a nullifier that is not a bytes32, so different values never collide', async () => {
     pollStatus.current = { type: 'confirmed', result: { responses: [{ nullifier: 'raw-id-1' }] } };

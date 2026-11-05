@@ -12,7 +12,7 @@ import { keccak256, toBytes } from 'viem';
 import { isAddress } from '../lib/address.js';
 import { isProduction } from '../lib/env.js';
 import { logError } from '../lib/logError.js';
-import { ConfigError } from '../lib/relayErrors.js';
+import { ConfigError, classifyRelayError, ReceiptTimeoutError } from '../lib/relayErrors.js';
 import { relayTx } from '../lib/relayerTx.js';
 
 export const world = new Hono();
@@ -65,7 +65,10 @@ function toNullifierHash(nullifier: string): `0x${string}` {
     : keccak256(toBytes(nullifier));
 }
 
-/** Best effort: the caller is already verified by World, so a failed mirror is only logged. */
+const MIRROR_ATTEMPTS = 3;
+const MIRROR_BACKOFF_MS = 2000;
+
+/** Best effort: the caller is already verified by World, so a mirror that still fails after retries is only logged. */
 async function mirrorVerificationOnchain(wallet: string, nullifier: string | null): Promise<void> {
   if (!isAddress(wallet)) {
     console.warn(`[world] Skipping onchain verify mirror: not a wallet address: ${wallet}`);
@@ -76,15 +79,26 @@ async function mirrorVerificationOnchain(wallet: string, nullifier: string | nul
     console.warn(`[world] Skipping onchain verify mirror: no nullifier in the proof for ${wallet}`);
     return;
   }
-  try {
-    const { hash, confirmed } = await relayTx({
-      contract: 'profileRegistry',
-      functionName: 'verify',
-      args: [wallet, toNullifierHash(nullifier)],
-    });
-    console.info(`[world] Mirrored verification for ${wallet}: ${hash} (confirmed=${confirmed})`);
-  } catch (error) {
-    logError(`[world] Onchain verify mirror failed for ${wallet}:`, error);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const { hash, confirmed } = await relayTx({
+        contract: 'profileRegistry',
+        functionName: 'verify',
+        args: [wallet, toNullifierHash(nullifier)],
+      });
+      console.info(`[world] Mirrored verification for ${wallet}: ${hash} (confirmed=${confirmed})`);
+      return;
+    } catch (error) {
+      // A send that may still mine is never repeated; a definite refusal will not change.
+      const failure = classifyRelayError(error);
+      const retryable =
+        !(error instanceof ReceiptTimeoutError) && (!failure || failure.status === 503);
+      if (!retryable || attempt === MIRROR_ATTEMPTS) {
+        logError(`[world] Onchain verify mirror failed for ${wallet}:`, error);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, MIRROR_BACKOFF_MS * attempt));
+    }
   }
 }
 
@@ -298,7 +312,8 @@ async function pollSession(sessionId: string): Promise<PollResult> {
     const nullifier = extractNullifier(
       (status.result ?? {}) as { responses?: Array<Record<string, unknown>> }
     );
-    void mirrorVerificationOnchain(entry.wallet, nullifier);
+    // Awaited: a serverless function may be frozen once it has answered, dropping a detached write.
+    await mirrorVerificationOnchain(entry.wallet, nullifier);
   }
   return { status: 'confirmed', result: status.result };
 }
