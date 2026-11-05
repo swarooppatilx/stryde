@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import {
   advanceApproval,
   banHuman,
@@ -9,6 +10,8 @@ import {
   createApproval,
   HumanPassError,
   humanStatus,
+  openHumanSession,
+  resolveHumanSession,
   toPublicApproval,
   unbanHuman,
 } from '../lib/humanPass.js';
@@ -21,9 +24,20 @@ import {
 import { store } from '../lib/store.js';
 import { ACR_ORB, ACR_SELFIE } from '../lib/worldOidc.js';
 
-export const humanPass = new Hono();
+type HumanEnv = { Variables: { wallet: string } };
 
-const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+export const humanPass = new Hono<HumanEnv>();
+
+/** The acting wallet comes from a signed session, never from the query or body. */
+const requireSession = createMiddleware<HumanEnv>(async (c, next) => {
+  const wallet = resolveHumanSession(c.req.header('authorization'));
+  if (!wallet) {
+    c.header('WWW-Authenticate', 'Bearer error="invalid_token"');
+    return c.json({ error: 'Sign in with your wallet first', code: 'session_required' }, 401);
+  }
+  c.set('wallet', wallet);
+  await next();
+});
 
 export function handleHumanPassError(c: Context, error: unknown) {
   if (error instanceof HumanPassError) {
@@ -41,29 +55,34 @@ function requireAdmin(c: Context) {
   return undefined;
 }
 
-humanPass.get('/status', (c) => {
-  const wallet = c.req.query('wallet') ?? '';
-  if (!HEX_ADDRESS_RE.test(wallet)) return c.json({ error: 'wallet query param required' }, 400);
+humanPass.post('/session', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  try {
+    return c.json(await openHumanSession(body ?? {}), 201);
+  } catch (error) {
+    return handleHumanPassError(c, error);
+  }
+});
+
+humanPass.get('/status', requireSession, (c) => {
   const provider = getIdentityProvider();
   return c.json({
     configured: Boolean(provider),
     mode: provider?.mode ?? null,
-    ...humanStatus(wallet),
+    ...humanStatus(c.get('wallet')),
   });
 });
 
-humanPass.post('/approvals', async (c) => {
+humanPass.post('/approvals', requireSession, async (c) => {
   const body = (await c.req.json().catch(() => null)) as {
-    wallet?: string;
     action?: string;
     params?: Record<string, unknown>;
   } | null;
-  if (!body?.wallet || !body.action)
-    return c.json({ error: 'wallet and action are required' }, 400);
+  if (!body?.action) return c.json({ error: 'action is required' }, 400);
   try {
     const clientSecret = randomBytes(24).toString('base64url');
     const approval = await createApproval({
-      wallet: body.wallet,
+      wallet: c.get('wallet'),
       action: body.action,
       params: body.params ?? {},
       initiator: 'app',
@@ -75,14 +94,14 @@ humanPass.post('/approvals', async (c) => {
   }
 });
 
-humanPass.get('/approvals', (c) => {
-  const wallet = c.req.query('wallet') ?? '';
-  if (!HEX_ADDRESS_RE.test(wallet)) return c.json({ error: 'wallet query param required' }, 400);
-  return c.json({ approvals: store.listApprovals(wallet).slice(0, 20).map(toPublicApproval) });
+humanPass.get('/approvals', requireSession, (c) => {
+  return c.json({
+    approvals: store.listApprovals(c.get('wallet')).slice(0, 20).map(toPublicApproval),
+  });
 });
 
-humanPass.get('/approvals/:id', async (c) => {
-  const wallet = c.req.query('wallet') ?? '';
+humanPass.get('/approvals/:id', requireSession, async (c) => {
+  const wallet = c.get('wallet');
   try {
     const existing = store.getApproval(c.req.param('id'));
     if (!existing || existing.wallet.toLowerCase() !== wallet.toLowerCase()) {
@@ -96,19 +115,17 @@ humanPass.get('/approvals/:id', async (c) => {
   }
 });
 
-humanPass.post('/approvals/:id/cancel', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { wallet?: string } | null;
+humanPass.post('/approvals/:id/cancel', requireSession, async (c) => {
   try {
-    const approval = cancelApproval(c.req.param('id'), body?.wallet ?? '');
+    const approval = cancelApproval(c.req.param('id'), c.get('wallet'));
     return c.json(toPublicApproval(approval));
   } catch (error) {
     return handleHumanPassError(c, error);
   }
 });
 
-humanPass.delete('/agents/:id', (c) => {
-  const wallet = c.req.query('wallet') ?? '';
-  const revoked = store.revokeAgentGrant(c.req.param('id'), wallet);
+humanPass.delete('/agents/:id', requireSession, (c) => {
+  const revoked = store.revokeAgentGrant(c.req.param('id'), c.get('wallet'));
   return revoked ? c.json({ revoked: true }) : c.json({ error: 'Agent grant not found' }, 404);
 });
 

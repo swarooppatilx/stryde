@@ -54,7 +54,7 @@ export class HumanPassError extends Error {
   constructor(
     readonly code: string,
     message: string,
-    readonly status: 400 | 403 | 404 | 409 | 428 | 503 = 400
+    readonly status: 400 | 401 | 403 | 404 | 409 | 428 | 503 = 400
   ) {
     super(message);
   }
@@ -477,7 +477,7 @@ export async function advanceApproval(id: string): Promise<Approval> {
 
   // Single use: flip to executing before any side effect runs.
   const fresh = store.getApproval(id);
-  if (!fresh || fresh.status !== 'pending') return fresh ?? approval;
+  if (fresh?.status !== 'pending') return fresh ?? approval;
   store.updateApproval(id, { status: 'executing' });
 
   const executor = ACTIONS[approval.action];
@@ -528,6 +528,57 @@ export function consumeOneTimeSecrets(
   if (!holdsSecret) return rest;
   store.updateApproval(approval.id, { result: { ...rest, tokenDelivered: true } });
   return { ...rest, token };
+}
+
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const SESSION_PROOF_MAX_AGE_MS = 5 * 60 * 1000;
+
+/** What the app signs to prove it holds `wallet` before any /human call. */
+export function humanSessionMessage(wallet: string, issuedAt: number): string {
+  return `Stryde Coach session\nwallet:${wallet.toLowerCase()}\nissued:${issuedAt}`;
+}
+
+/**
+ * Trades a wallet signature for a session token. Without it, anyone could link their
+ * World ID to someone else's wallet, or read and revoke that athlete's agents.
+ */
+export async function openHumanSession(input: {
+  wallet?: unknown;
+  issuedAt?: unknown;
+  signature?: unknown;
+}): Promise<{ token: string; wallet: string; expiresAt: number }> {
+  const { wallet, issuedAt, signature } = input;
+  if (typeof wallet !== 'string' || !HEX_ADDRESS_RE.test(wallet)) {
+    throw new HumanPassError('bad_wallet', 'wallet must be an address');
+  }
+  if (typeof issuedAt !== 'number' || Math.abs(Date.now() - issuedAt) > SESSION_PROOF_MAX_AGE_MS) {
+    throw new HumanPassError('stale_proof', 'issuedAt must be within 5 minutes of now');
+  }
+  if (typeof signature !== 'string' || !signature.startsWith('0x')) {
+    throw new HumanPassError('bad_signature', 'signature required');
+  }
+  // ERC-1271/6492 aware, so Privy smart wallets work before they are deployed.
+  const valid = await getRelayerPublicClient()
+    .verifyMessage({
+      address: wallet as `0x${string}`,
+      message: humanSessionMessage(wallet, issuedAt),
+      signature: signature as `0x${string}`,
+    })
+    .catch(() => false);
+  if (!valid) throw new HumanPassError('bad_signature', 'Wallet signature is invalid', 401);
+
+  const token = `stryde_human_${randomBytes(24).toString('base64url')}`;
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  store.addHumanSession({ tokenHash: hashToken(token), wallet, expiresAt });
+  return { token, wallet, expiresAt };
+}
+
+/** The wallet a /human request proved it holds, or null. */
+export function resolveHumanSession(authorization: string | undefined): string | null {
+  const match = authorization?.match(/^Bearer\s+(stryde_human_[A-Za-z0-9_-]+)$/);
+  const token = match?.[1];
+  if (!token) return null;
+  return store.findHumanSession(hashToken(token))?.wallet ?? null;
 }
 
 export function resolveAgentToken(authorization: string | undefined) {

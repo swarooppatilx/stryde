@@ -73,11 +73,19 @@ export interface Approval {
   updatedAt: number;
 }
 
+/** A wallet that proved ownership with a signature; the app sends the token on /human calls. */
+export interface HumanSession {
+  tokenHash: string;
+  wallet: string;
+  expiresAt: number;
+}
+
 interface StoreShape {
   links: HumanLink[];
   bans: Ban[];
   agentGrants: AgentGrant[];
   approvals: Approval[];
+  humanSessions: HumanSession[];
 }
 
 const STORE_FILE = process.env.STORE_FILE || '.data/stryde-store.json';
@@ -88,7 +96,7 @@ let persistDisabled = false;
 
 function load(): StoreShape {
   if (state) return state;
-  state = { links: [], bans: [], agentGrants: [], approvals: [] };
+  state = { links: [], bans: [], agentGrants: [], approvals: [], humanSessions: [] };
   try {
     if (existsSync(STORE_FILE)) {
       const parsed = JSON.parse(readFileSync(STORE_FILE, 'utf8')) as Partial<StoreShape>;
@@ -97,6 +105,7 @@ function load(): StoreShape {
         bans: parsed.bans ?? [],
         agentGrants: parsed.agentGrants ?? [],
         approvals: parsed.approvals ?? [],
+        humanSessions: parsed.humanSessions ?? [],
       };
     }
   } catch (error) {
@@ -194,8 +203,18 @@ export const store = {
     persist();
     return approval;
   },
+  addHumanSession(session: HumanSession): void {
+    const s = load();
+    const now = Date.now();
+    s.humanSessions = s.humanSessions.filter((x) => x.expiresAt > now);
+    s.humanSessions.push(session);
+    persist();
+  },
+  findHumanSession(tokenHash: string): HumanSession | undefined {
+    return load().humanSessions.find((x) => x.tokenHash === tokenHash && x.expiresAt > Date.now());
+  },
   /** Test helper. */
   reset(): void {
-    state = { links: [], bans: [], agentGrants: [], approvals: [] };
+    state = { links: [], bans: [], agentGrants: [], approvals: [], humanSessions: [] };
   },
 };
