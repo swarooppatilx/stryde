@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Address } from '../address.js';
 import {
   type AthletePass,
   bandFor,
@@ -8,12 +9,12 @@ import {
   rewardGate,
 } from '../humanPresence.js';
 
-const WALLET = '0x00000000000000000000000000000000000000aa';
-const OTHER = '0x00000000000000000000000000000000000000bb';
+const WALLET: Address = '0x00000000000000000000000000000000000000aa';
+const OTHER: Address = '0x00000000000000000000000000000000000000bb';
 const RUN = `0x${'ab'.repeat(32)}` as const;
 const SESSION = 'session_abc' as const;
 
-function enrolled(score: number | null = 0, wallet = WALLET) {
+function enrolled(score: number | null = 0, wallet: Address = WALLET) {
   const store = new HumanPresenceStore();
   const pass = store.enroll({
     wallet,
@@ -113,7 +114,7 @@ describe('HumanPresenceStore', () => {
   it('lets the same human refresh their session, keeping the enrollment date', () => {
     const { store } = enrolled();
     const pass = store.enroll({
-      wallet: WALLET.toUpperCase().replace('0X', '0x'),
+      wallet: WALLET.toUpperCase().replace('0X', '0x') as Address,
       sessionId: 'session_new',
       nullifier: '1',
       sybilScore: 0,

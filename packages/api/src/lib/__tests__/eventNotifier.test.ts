@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Address } from '../address.js';
 import {
   decodeLog,
   FIRST_RUN_LOOKBACK_BLOCKS,
@@ -9,8 +10,8 @@ import {
   type WatchedLog,
 } from '../eventNotifier.js';
 
-const ALICE = '0x00000000000000000000000000000000000000a1' as const;
-const BOB = '0x00000000000000000000000000000000000000b2' as const;
+const ALICE: Address = '0x00000000000000000000000000000000000000a1';
+const BOB: Address = '0x00000000000000000000000000000000000000b2';
 const tx = (n: number) => `0x${n.toString(16).padStart(64, '0')}` as `0x${string}`;
 
 const kudos = (n: number, giver = BOB, block = 1000n, activityId = 7n): WatchedLog => ({
@@ -21,18 +22,20 @@ const kudos = (n: number, giver = BOB, block = 1000n, activityId = 7n): WatchedL
   args: { activityId, giver },
 });
 
-function setup(options: Partial<NotifyDeps> & { stored?: bigint | null; head?: bigint } = {}) {
+function setup(
+  options: { stored?: bigint | null; head?: bigint; notify?: NotifyDeps['notify']; resolveRecipient?: NotifyDeps['resolveRecipient'] } = {}
+) {
   const { stored: initial, head, ...overrides } = options;
   let stored = initial === undefined ? 900n : initial;
   const set = vi.fn(async (block: bigint) => {
     stored = block;
   });
-  const notify = vi.fn(async () => {});
+  const notify = vi.fn<NotifyDeps['notify']>(async () => {});
   const getLogs = vi.fn(async () => [] as WatchedLog[]);
   const deps: NotifyDeps = {
     head: async () => head ?? 1100n,
     getLogs,
-    resolveRecipient: async () => ALICE,
+    resolveRecipient: vi.fn<NotifyDeps['resolveRecipient']>(async () => ALICE),
     notify,
     checkpoint: { get: async () => stored, set },
     ...overrides,
