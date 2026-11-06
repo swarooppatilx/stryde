@@ -26,12 +26,37 @@ export interface TrackImportOptions {
   splitMeters: number;
 }
 
+/** An activity with no GPS track, such as one done indoors: distance and time come from the file's own totals. */
+function activityFromSummary(track: ImportedTrack, options: TrackImportOptions): TrackImport {
+  const { summary } = track;
+  if (!summary || summary.durationMs <= 0) return { ok: false, reason: 'no-times' };
+  const base = activityInputFromWorkout({
+    id: `file:${summary.startTime}`,
+    sport: track.sport,
+    startTime: summary.startTime,
+    endTime: summary.startTime + summary.durationMs,
+    distanceM: summary.distanceM,
+    ...(track.name && { title: track.name }),
+  });
+  return {
+    ok: true,
+    input: {
+      ...base,
+      description: options.description,
+      ...(summary.heartRate && { heartRate: summary.heartRate }),
+      ...(track.laps && track.laps.length > 1 && { laps: track.laps }),
+    },
+    key: `file:${summary.startTime}:${Math.round(summary.distanceM)}`,
+  };
+}
+
 /**
  * The activity a track from a file becomes. Like any import from another app it is marked manual,
  * so it never counts toward records. Every point needs a time, in order: without them there is no
  * moving time, pace or splits to show.
  */
 export function activityFromTrack(track: ImportedTrack, options: TrackImportOptions): TrackImport {
+  if (track.points.length === 0) return activityFromSummary(track, options);
   const route: NonNullable<HealthWorkout['route']> = [];
   for (const p of track.points) {
     if (p.timestamp === undefined) return { ok: false, reason: 'no-times' };

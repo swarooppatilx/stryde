@@ -15,7 +15,7 @@ import { formatDateTime } from '@/utils/dates';
 import { formatDistance } from '@/utils/format';
 import { describeFileImport, IMPORT_COPY } from '@/utils/importMessage';
 
-/** Bring in activities saved as GPX or TCX files: choose them, review the list, keep what you want. */
+/** Bring in activities saved as GPX, TCX or FIT files: choose them, review the list, keep what you want. */
 export default function ImportActivitiesScreen() {
   const goBack = useGoBack();
   const theme = useTheme();

@@ -32,6 +32,7 @@ describe('activityFromTrack', () => {
     expect(input).toMatchObject({
       activityType: 'run',
       isManual: true,
+      isImported: true,
       startedAt: START,
       duration: 600_000,
       description: 'Imported from a file',
@@ -78,5 +79,39 @@ describe('activityFromTrack', () => {
     const a = activityFromTrack(track(), options);
     const b = activityFromTrack(track(), options);
     expect(a.ok && b.ok && a.key === b.key).toBe(true);
+  });
+
+  it('builds an indoor activity from its summary alone', () => {
+    const result = activityFromTrack(
+      {
+        sport: 'run',
+        points: [],
+        summary: {
+          startTime: START,
+          durationMs: 1_800_000,
+          distanceM: 5_000,
+          heartRate: { avg: 140, max: 170 },
+        },
+      },
+      options
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.input).toMatchObject({
+      distance: 5_000,
+      duration: 1_800_000,
+      polyline: '',
+      startedAt: START,
+      isManual: true,
+      heartRate: { avg: 140, max: 170 },
+    });
+    expect(result.key).toBe(`file:${START}:5000`);
+  });
+
+  it('refuses a track with neither points nor a usable summary', () => {
+    expect(activityFromTrack({ sport: 'run', points: [] }, options)).toEqual({
+      ok: false,
+      reason: 'no-times',
+    });
   });
 });

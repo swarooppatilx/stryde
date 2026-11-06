@@ -15,6 +15,10 @@ describe('describeFileImport', () => {
     );
   });
 
+  it('names the three formats', () => {
+    expect(IMPORT_COPY.formats).toBe('GPX, TCX and FIT files');
+  });
+
   it('keeps the screen copy free of banned words', () => {
     for (const line of Object.values(IMPORT_COPY)) expect(line).not.toMatch(BANNED_USER_WORDS);
   });
