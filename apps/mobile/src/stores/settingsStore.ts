@@ -62,6 +62,8 @@ interface SettingsState {
   audioCueInterval: AudioCueInterval;
   /** Hold the screen awake while recording. */
   keepScreenOn: boolean;
+  /** Start the paired Apple Watch's workout with each recording and use its readings. */
+  useAppleWatch: boolean;
   /** How long the screen stays bright without a touch while it is held awake; 0 never dims. */
   /** Say aloud when a run starts, pauses, resumes and stops, and how each lap went. */
   announceActions: boolean;
@@ -106,6 +108,7 @@ interface SettingsState {
   setAudioCueInterval: (interval: AudioCueInterval) => void;
   setAnnounceActions: (enabled: boolean) => void;
   setKeepScreenOn: (enabled: boolean) => void;
+  setUseAppleWatch: (enabled: boolean) => void;
   setAccuracyMode: (mode: AccuracyMode) => void;
   setHideRouteEnds: (enabled: boolean) => void;
   setDefaultPrivacy: (privacy: ActivityPrivacy) => void;
@@ -129,6 +132,7 @@ const INITIAL_STATE = {
   audioCueInterval: 'off' as AudioCueInterval,
   announceActions: false,
   keepScreenOn: true,
+  useAppleWatch: true,
   // 1 s fixes: coarser sampling made distance and pace noticeably worse on winding routes.
   accuracyMode: 'best' as AccuracyMode,
   hideRouteEnds: false,
@@ -156,6 +160,7 @@ export const useSettingsStore = create<SettingsState>()(
       setAudioCueInterval: (interval) => set({ audioCueInterval: interval }),
       setAnnounceActions: (enabled) => set({ announceActions: enabled }),
       setKeepScreenOn: (enabled) => set({ keepScreenOn: enabled }),
+      setUseAppleWatch: (enabled) => set({ useAppleWatch: enabled }),
       setAccuracyMode: (mode) => set({ accuracyMode: mode }),
       setHideRouteEnds: (enabled) => set({ hideRouteEnds: enabled }),
       setDefaultPrivacy: (privacy) => set({ defaultPrivacy: privacy }),

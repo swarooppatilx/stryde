@@ -27,6 +27,11 @@ interface Props {
   onStartEditName: () => void;
 }
 
+/** "Mon 3 Nov at 7:02 · Pegasus 41 · Apple Watch": when, with which shoes, and the watch it was recorded with. */
+function headerLine(when: string, gearName: string | undefined, withWatch: boolean | undefined) {
+  return [when, gearName, withWatch ? 'Apple Watch' : undefined].filter(Boolean).join(' · ');
+}
+
 /** Sport badge, the name (editable by its owner), when and with what gear it happened. */
 export function ActivityTitleBlock({
   activity,
@@ -80,8 +85,11 @@ export function ActivityTitleBlock({
             </Tappable>
           )}
           <ThemedText type="small" themeColor="textSecondary">
-            {formatWeekdayDay(date)} at {formatTimeOfDay(date)}
-            {gearName ? ` · ${gearName}` : ''}
+            {headerLine(
+              `${formatWeekdayDay(date)} at ${formatTimeOfDay(date)}`,
+              gearName,
+              activity.recordedWithWatch
+            )}
           </ThemedText>
           <ActivityWeather polyline={activity.polyline} startedAt={date} />
           {isOwner && chainRetry.canRetry && (

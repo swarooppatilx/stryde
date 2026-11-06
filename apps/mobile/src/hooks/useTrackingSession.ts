@@ -23,6 +23,7 @@ export function useTrackingSession() {
     announceActions,
     keepScreenOn,
     verboseTrackingLog,
+    useAppleWatch,
   } = useSettingsStore(
     useShallow((s) => ({
       verboseTrackingLog: s.verboseTrackingLog,
@@ -33,6 +34,7 @@ export function useTrackingSession() {
       audioCueInterval: s.audioCueInterval,
       announceActions: s.announceActions,
       keepScreenOn: s.keepScreenOn,
+      useAppleWatch: s.useAppleWatch,
     }))
   );
 
@@ -55,6 +57,7 @@ export function useTrackingSession() {
       announceActions,
       keepScreenOn,
       unitSystem,
+      useWatch: useAppleWatch,
     }),
     [
       accuracyMode,
@@ -65,6 +68,7 @@ export function useTrackingSession() {
       announceActions,
       keepScreenOn,
       unitSystem,
+      useAppleWatch,
     ]
   );
 

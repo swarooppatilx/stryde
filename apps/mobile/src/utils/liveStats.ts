@@ -1,4 +1,5 @@
 import type { Ionicons } from '@expo/vector-icons';
+import type { LiveWatch } from '@/services/watchRecording';
 import type { ActivityType, Lap, Split } from '@/types';
 import {
   formatArea,
@@ -41,6 +42,8 @@ export interface LiveStatData {
   altitude: number | null;
   /** The stretch since Lap was last pressed (or since the start). Moving time in ms. */
   currentLap: { distance: number; duration: number };
+  /** The Apple Watch's latest readings; absent when no watch is recording. */
+  watch?: LiveWatch | null;
 }
 
 /** A GPS speed older than this no longer says how fast the athlete is moving. */
@@ -66,7 +69,11 @@ export type LiveStatId =
   | 'lapDistance'
   | 'lapPace'
   | 'lapSpeed'
-  | 'laps';
+  | 'laps'
+  | 'heartRate'
+  | 'cadence'
+  | 'power'
+  | 'calories';
 
 export interface LiveStatField {
   id: LiveStatId;
@@ -110,6 +117,9 @@ const sensorStale = (d: LiveStatData) => d.fixAgeMs === null || d.fixAgeMs > STA
 const speedUnit = (unitSystem: UnitSystem) => (unitSystem === 'imperial' ? 'mph' : 'km/h');
 const splitLabel = (unitSystem: UnitSystem) => (unitSystem === 'imperial' ? 'Last mi' : 'Last km');
 const lastSplit = (data: LiveStatData) => data.splits.at(-1);
+/** A watch reading rounded with its unit, or a dash while the watch has none (or dropped out). */
+const watchFigure = (value: number | undefined, unit: string) =>
+  finite(value) ? `${Math.round(value)} ${unit}` : DASH;
 
 export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
   time: {
@@ -270,6 +280,42 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     icon: 'repeat',
     families: BOTH,
     value: (d) => (finite(d.lapCount) ? String(d.lapCount) : DASH),
+  },
+  heartRate: {
+    id: 'heartRate',
+    name: 'Heart rate',
+    label: () => 'Heart rate',
+    icon: 'heart',
+    families: BOTH,
+    value: (d) => watchFigure(d.watch?.heartRate, 'bpm'),
+    available: (d) => d.watch?.heartRate !== undefined,
+  },
+  cadence: {
+    id: 'cadence',
+    name: 'Cadence',
+    label: () => 'Cadence',
+    icon: 'footsteps-outline',
+    families: PACE,
+    value: (d) => watchFigure(d.watch?.cadence, 'spm'),
+    available: (d) => d.watch?.cadence !== undefined,
+  },
+  power: {
+    id: 'power',
+    name: 'Power',
+    label: () => 'Power',
+    icon: 'flash-outline',
+    families: BOTH,
+    value: (d) => watchFigure(d.watch?.power, 'W'),
+    available: (d) => d.watch?.power !== undefined,
+  },
+  calories: {
+    id: 'calories',
+    name: 'Calories',
+    label: () => 'Calories',
+    icon: 'flame-outline',
+    families: BOTH,
+    value: (d) => watchFigure(d.watch?.calories, 'kcal'),
+    available: (d) => d.watch?.calories !== undefined,
   },
 };
 

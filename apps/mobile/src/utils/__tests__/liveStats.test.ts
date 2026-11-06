@@ -239,7 +239,7 @@ describe('resolveLiveStatLayout', () => {
   });
 
   it('puts the default back in a slot whose saved id is unknown, unsuitable or not a string', () => {
-    const saved = ['heartRate', 'avgSpeed', 'distance', 7, null, 'laps'];
+    const saved = ['vo2max', 'avgSpeed', 'distance', 7, null, 'laps'];
     expect(resolveLiveStatLayout('pace', saved)).toEqual([
       'time',
       'avgPace',
@@ -312,5 +312,25 @@ describe('sanitizeLiveStatSlots', () => {
       pace: ['laps', 'avgPace', 'distance', 'territory', 'currentPace', 'climb'],
       speed: DEFAULT_LIVE_STAT_SLOTS.speed,
     });
+  });
+});
+
+describe('watch figures', () => {
+  const withWatch: LiveStatData = {
+    ...moving,
+    watch: { state: 'running', heartRate: 151.6, cadence: 171, power: 248.2, calories: 312.7 },
+  };
+
+  it('shows the watch readings with their units', () => {
+    expect(LIVE_STAT_FIELDS.heartRate.value(withWatch, 'metric')).toBe('152 bpm');
+    expect(LIVE_STAT_FIELDS.cadence.value(withWatch, 'metric')).toBe('171 spm');
+    expect(LIVE_STAT_FIELDS.power.value(withWatch, 'metric')).toBe('248 W');
+    expect(LIVE_STAT_FIELDS.calories.value(withWatch, 'metric')).toBe('313 kcal');
+  });
+
+  it('leaves them out without a watch, and dashes them when it drops out', () => {
+    expect(LIVE_STAT_FIELDS.heartRate.available?.(moving)).toBe(false);
+    const dropped: LiveStatData = { ...moving, watch: { state: 'disconnected' } };
+    expect(LIVE_STAT_FIELDS.heartRate.value(dropped, 'metric')).toBe('—');
   });
 });

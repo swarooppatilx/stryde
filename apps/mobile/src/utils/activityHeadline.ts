@@ -37,6 +37,7 @@ export function activityHeadlineStats(
           weightKg: isOwner ? ownWeightKg : undefined,
         }),
       heartRate: activity.heartRate,
+      avgPower: activity.avgPower,
       elapsed: activity.stream ? (activity.stream.t.at(-1) ?? 0) * 1000 : undefined,
     },
     unitSystem

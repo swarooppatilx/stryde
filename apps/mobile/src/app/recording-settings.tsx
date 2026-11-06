@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/shallow';
 import { AppSwitch } from '@/components/app-switch';
+import { AppleWatchSettings } from '@/components/apple-watch-settings';
 import { Segmented } from '@/components/form-controls';
 import { ListIcon } from '@/components/list-icon';
 import { Tappable } from '@/components/tappable';
@@ -98,6 +99,8 @@ export default function RecordingSettingsScreen() {
               <List.Item.Brief>Rides and other sports pause from your GPS speed.</List.Item.Brief>
             </List.Item>
           </List>
+
+          <AppleWatchSettings />
 
           <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
             AUDIO CUES

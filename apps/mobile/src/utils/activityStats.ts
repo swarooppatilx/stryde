@@ -25,6 +25,8 @@ interface StatSource {
   /** Start to finish in ms, pauses included. Pass it where there is room to show both times. */
   elapsed?: number;
   heartRate?: { avg: number; max: number } | null;
+  /** Average watts a watch measured. */
+  avgPower?: number;
   /** Estimated kcal; left out when there is no honest estimate. */
   calories?: number | null;
   stream?: ActivityStream;
@@ -57,6 +59,9 @@ export function activityStats(activity: StatSource, unitSystem: UnitSystem): Act
   if (activity.heartRate && activity.heartRate.avg > 0) {
     const { avg, max } = activity.heartRate;
     stats.push({ label: 'Heart rate', value: `${avg}–${max} bpm` });
+  }
+  if (activity.avgPower && activity.avgPower > 0) {
+    stats.push({ label: 'Power', value: `${Math.round(activity.avgPower)} W` });
   }
   if (elevationGain != null && elevationGain > 0) {
     stats.push({ label: 'Elevation', value: formatElevation(elevationGain, unitSystem) });
@@ -92,7 +97,7 @@ const FAMILY_LABELS: Record<SportFamily, readonly string[]> = {
   water: ['Distance', 'Moving time', 'Time', 'Elapsed time'],
   other: ['Distance', 'Moving time', 'Time', 'Elapsed time'],
 };
-const MEASURED_LABELS = ['Heart rate', 'Calories'] as const;
+const MEASURED_LABELS = ['Heart rate', 'Power', 'Calories'] as const;
 
 /** The tiles for the detail grid: the figures that matter for the sport's family, then heart rate and calories if there are any. */
 export function sportStatSet(activity: StatSource, unitSystem: UnitSystem): ActivityStat[] {
