@@ -10,7 +10,7 @@ import type { Activity } from '@/types';
 const COPY: Record<NonNullable<Activity['rewardHold']>, { title: string; body: string }> = {
   enroll_required: {
     title: 'Reward waiting for your Athlete Pass',
-    body: 'One Selfie Check in World App, once, and this run starts earning.',
+    body: 'One World ID check in World App, once, and this run starts earning.',
   },
   presence_required: {
     title: 'Sign this run to release the reward',

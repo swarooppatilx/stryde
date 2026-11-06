@@ -26,8 +26,12 @@ export type WorldCheckKind = 'enroll' | 'presence' | 'step_up';
 export type SybilBand = 'low' | 'medium' | 'high';
 
 /** Mirrors the API's public pass: no session id or nullifier ever reaches the app. */
+export type PassCredential = 'selfie' | 'proof_of_human';
+
 export interface AthletePass {
   wallet: string;
+  /** Absent on passes this device stored before the server reported it. */
+  credential?: PassCredential;
   band: SybilBand;
   sybilScore: number | null;
   enrolledAt: number;

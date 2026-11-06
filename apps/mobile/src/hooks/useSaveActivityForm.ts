@@ -49,7 +49,7 @@ function announceOutcome(result: SaveResult, openVerify: () => void) {
   } else if (result.needsVerification && !result.rewardHold) {
     Alert.alert(
       'Verify to claim territory',
-      'Verify with World ID Selfie Check to claim territory and help keep the map fair for everyone.',
+      'Verify with World ID to claim territory and help keep the map fair for everyone.',
       [
         { text: 'Not now', style: 'cancel' },
         { text: 'Verify', onPress: openVerify },

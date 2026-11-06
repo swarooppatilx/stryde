@@ -217,7 +217,7 @@ export default function CoachScreen() {
             <ThemedText type="sectionTitle">Your human credentials</ThemedText>
             <LadderStep
               done={selfieVerified}
-              title="Selfie Check"
+              title="Athlete Pass"
               caption="Verified badge, territory claims, onchain ProfileRegistry."
             />
             <LadderStep
@@ -237,7 +237,7 @@ export default function CoachScreen() {
             )}
             {!selfieVerified && (
               <AppButton variant="secondary" onPress={() => router.push('/verify')}>
-                Do Selfie Check
+                Get Athlete Pass
               </AppButton>
             )}
           </Card>

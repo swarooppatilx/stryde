@@ -134,6 +134,6 @@ describe('runSelfieCheck', () => {
     script(SESSION, confirmed({ something: 'else' }));
 
     const result = await run();
-    expect(String((result as { error: Error }).error)).toContain('no nullifier');
+    expect(String((result as { error: Error }).error)).toContain('could not read');
   });
 });

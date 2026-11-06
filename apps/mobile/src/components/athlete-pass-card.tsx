@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useWorldVerificationStore } from '@/stores/worldVerificationStore';
 
 function passSubtitle(pass: ReturnType<typeof useWorldVerificationStore.getState>['pass']): string {
-  if (!pass) return 'Earn STRD for your runs: one World ID Selfie Check';
+  if (!pass) return 'Earn STRD for your runs: one World ID check';
   if (pass.band === 'high' && !pass.steppedUp) return 'Earning paused: verify with Proof of Human';
   return `${pass.presenceCount} ${pass.presenceCount === 1 ? 'run' : 'runs'} signed by you`;
 }

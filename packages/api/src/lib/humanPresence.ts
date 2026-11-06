@@ -3,10 +3,10 @@ import { dirname } from 'node:path';
 import { type Address, toAddress } from './address.js';
 
 /**
- * "Signed by a Human": who may earn STRD for a run, decided from World ID Selfie Check.
+ * "Signed by a Human": who may earn STRD for a run, decided from World ID.
  *
- * Recording a run is never gated. Earning is: an Athlete Pass (one Selfie Check uniqueness
- * proof that also opens a World ID session) proves one human holds this earning account, and a
+ * Recording a run is never gated. Earning is: an Athlete Pass (one Proof of Human or Selfie Check
+ * uniqueness proof that also opens a World ID session) proves one human holds this earning account, and a
  * Finish-Line check (a proof of that same session, with the run's activity hash as signal)
  * proves the human who enrolled vouches for this exact run. How often the Finish-Line check is
  * asked for follows the reward at stake and the pass's Sybil score band; only a high band is
@@ -15,7 +15,12 @@ import { type Address, toAddress } from './address.js';
 
 export type SybilBand = 'low' | 'medium' | 'high';
 
+/** The World ID credential an Athlete Pass was made with. */
+export type PassCredential = 'selfie' | 'proof_of_human';
+
 export interface AthletePass {
+  /** Absent on passes saved before it was recorded; those were Selfie Checks. */
+  credential?: PassCredential;
   wallet: Address;
   /** Opaque `session_...` id from World; required on every Finish-Line check. Never sent to clients. */
   sessionId: `session_${string}`;
@@ -47,6 +52,7 @@ export type RewardGate =
 /** What the app may know about a pass: never the session id or the nullifier. */
 export interface PublicPass {
   wallet: Address;
+  credential: PassCredential;
   band: SybilBand;
   sybilScore: number | null;
   enrolledAt: number;
@@ -94,7 +100,7 @@ export function rewardGate(
     return {
       ok: false,
       code: 'enroll_required',
-      message: 'Get your Athlete Pass with World ID Selfie Check to earn STRD. Your run is saved.',
+      message: 'Get your Athlete Pass with World ID to earn STRD. Your run is saved.',
     };
   }
   if (pass.band === 'high' && !pass.steppedUpAt) {
@@ -105,12 +111,12 @@ export function rewardGate(
         'Your Selfie Check matched many enrollments, so earning needs Proof of Human. Your run is saved.',
     };
   }
-  // One Selfie Check is the whole ask: per-run checks are opt-in for events that set a threshold.
+  // The pass is the whole ask: per-run checks are opt-in for events that set a threshold.
   if (threshold > 0 && meters >= threshold && !ticket) {
     return {
       ok: false,
       code: 'presence_required',
-      message: 'Prove you ran this with a Finish-Line Selfie Check to release the reward.',
+      message: 'Prove you ran this with a Finish-Line World ID check to release the reward.',
     };
   }
   if (ticket) return { ok: true, reason: 'finish-line proof' };
@@ -120,6 +126,7 @@ export function rewardGate(
 export function toPublicPass(pass: AthletePass): PublicPass {
   return {
     wallet: pass.wallet,
+    credential: pass.credential ?? 'selfie',
     band: pass.band,
     sybilScore: pass.sybilScore,
     enrolledAt: pass.enrolledAt,
@@ -186,6 +193,7 @@ export class HumanPresenceStore {
     sessionId: `session_${string}`;
     nullifier: string;
     sybilScore: number | null;
+    credential?: PassCredential;
     now: number;
   }): AthletePass {
     const wallet = input.wallet.toLowerCase() as Address;
@@ -204,12 +212,15 @@ export class HumanPresenceStore {
         'This account already has an Athlete Pass from a different World ID.'
       );
     }
+    const credential = input.credential ?? 'selfie';
     const pass: AthletePass = {
       wallet,
+      credential,
       sessionId: input.sessionId,
       nullifier,
       sybilScore: input.sybilScore,
-      band: bandFor(input.sybilScore),
+      // The Orb is World's strongest uniqueness proof and carries no Sybil score: there is no risk left to band.
+      band: credential === 'proof_of_human' ? 'low' : bandFor(input.sybilScore),
       enrolledAt: existing?.enrolledAt ?? input.now,
       steppedUpAt: existing?.steppedUpAt,
       lastPresenceAt: existing?.lastPresenceAt,

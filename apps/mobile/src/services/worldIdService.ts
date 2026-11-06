@@ -137,7 +137,7 @@ function mapIdKitError(error: string, detail?: string): WorldVerificationError {
       return {
         code: error,
         message:
-          'World rejected the proof. Selfie Check may not be enabled for your app yet — email developers@toolsforhumanity.com.',
+          'World rejected the proof. Start the check again; your run is saved either way.',
       };
     default:
       return {
@@ -159,7 +159,7 @@ const WALLET_RE = /^0x[0-9a-fA-F]{40}$/;
 
 /**
  * Runs one World ID check end to end: the server signs and holds the IDKit request, World App
- * does the camera step, and the server verifies the proof before anything is unlocked.
+ * makes the proof, and the server verifies it before anything is unlocked.
  */
 export async function runWorldCheck(
   kind: WorldCheckKind,
@@ -214,7 +214,7 @@ export async function runWorldCheck(
       const nullifier = extractNullifier(poll.result);
       if (!nullifier) {
         throw new Error(
-          'Proof received but no nullifier found. Selfie Check may not be fully enabled for your app.'
+          'World App returned a proof Stryde could not read. Start the check again.'
         );
       }
 
@@ -227,7 +227,7 @@ export async function runWorldCheck(
   }
 }
 
-/** Athlete Pass enrollment: a Selfie Check uniqueness proof that also opens a World ID session. */
+/** Athlete Pass enrollment: a World ID uniqueness proof that also opens a World ID session. */
 export function runSelfieCheck(signal: string): Promise<SelfieCheckResult> {
   return runWorldCheck('enroll', signal);
 }
