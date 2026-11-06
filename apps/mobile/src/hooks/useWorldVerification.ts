@@ -15,6 +15,7 @@ import type {
   WorldVerificationError,
   WorldVerificationStatus,
 } from '@/types/worldId';
+import { friendlyError } from '@/utils/friendlyError';
 import { logger } from '@/utils/logger';
 
 /**
@@ -86,7 +87,7 @@ export function useWorldVerification() {
           return null;
         }
 
-        const message = err instanceof Error ? err.message : 'Verification failed';
+        const message = friendlyError(err, 'Verification failed');
         logger.warn('[WorldId] Check failed', err);
         setError({ code: 'unknown', message });
         setStatus('error');

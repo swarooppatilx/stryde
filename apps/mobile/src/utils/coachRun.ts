@@ -1,6 +1,7 @@
 import type { Activity } from '@/types';
 import { type DebriefReading, type EffortSignal, effortSignal } from '@/utils/effortSignal';
 import { timeInZones, type ZoneFloors } from '@/utils/heartRateZones';
+import { friendlyError } from './friendlyError';
 
 /** What the coach is told about one activity. */
 export interface CoachRun {
@@ -190,4 +191,13 @@ export function localDay(now: Date): string {
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/** A message fit to show for a failed coach call. */
+export function coachErrorMessage(error: unknown): string {
+  return friendlyError(
+    error,
+    'Something went wrong. Try again.',
+    "The coach can't be reached right now. Check your connection and try again."
+  );
 }

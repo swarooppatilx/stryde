@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity } from '@/types';
-import { localDay, recentHistory, toCoachRun, toCoachVitals } from '@/utils/coachRun';
+import {
+  coachErrorMessage,
+  localDay,
+  recentHistory,
+  toCoachRun,
+  toCoachVitals,
+} from '@/utils/coachRun';
 
 const NOW = new Date('2026-11-06T09:00:00Z').getTime();
 const DAY = 24 * 60 * 60 * 1000;
@@ -137,5 +143,36 @@ describe('recentHistory: signal, feel and heart rate', () => {
 describe('localDay', () => {
   it('formats the local date', () => {
     expect(localDay(new Date(2026, 0, 5, 23, 30))).toBe('2026-01-05');
+  });
+});
+
+describe('coachErrorMessage', () => {
+  const UNREACHABLE = "The coach can't be reached right now. Check your connection and try again.";
+
+  it('keeps a readable message from the server', () => {
+    expect(coachErrorMessage(new Error("You have used today's coach reviews."))).toBe(
+      "You have used today's coach reviews."
+    );
+  });
+
+  it.each([
+    'fetch failed: java.io.IOException: unexpected end of stream on http://localhost:3000/...',
+    'Network request failed',
+    'Failed to fetch',
+    'The operation was aborted due to timeout',
+    'connect ECONNREFUSED 127.0.0.1:3000',
+  ])('hides a technical network error: %s', (message) => {
+    expect(coachErrorMessage(new Error(message))).toBe(UNREACHABLE);
+  });
+
+  it('never shows a URL', () => {
+    expect(coachErrorMessage(new Error('Bad gateway at https://api.example.com/coach'))).toBe(
+      UNREACHABLE
+    );
+  });
+
+  it('falls back for anything that is not an error', () => {
+    expect(coachErrorMessage('boom')).toBe('Something went wrong. Try again.');
+    expect(coachErrorMessage(new Error(''))).toBe('Something went wrong. Try again.');
   });
 });
