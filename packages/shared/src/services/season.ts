@@ -96,7 +96,7 @@ export interface LeaderboardEntry {
   contribution: bigint;
 }
 
-export async function getLeaderboard(
+async function getLeaderboard(
   seasonId: bigint,
   participants: `0x${string}`[]
 ): Promise<LeaderboardEntry[]> {

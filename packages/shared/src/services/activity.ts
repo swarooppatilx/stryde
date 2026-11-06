@@ -112,7 +112,7 @@ export async function recordActivity(
 }
 
 /** Uploads an activity's off-chain metadata (name/description/photos) to IPFS via the relay API; on-chain ActivityRegistry stores only hash/owner/timestamp. */
-export async function uploadActivityMetadata(
+async function uploadActivityMetadata(
   metadata: ActivityMetadata
 ): Promise<{ cid: string; size: number }> {
   return uploadJsonToIpfs(`activity-metadata-${Date.now()}`, metadata as Record<string, unknown>);

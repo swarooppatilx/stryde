@@ -1,6 +1,5 @@
 import { getContracts, getPublicClient, type getWalletClient } from './client';
 import { relayMintTerritoryNFT } from './relay';
-import { writeAndConfirm } from './tx';
 
 export async function isMinted(polygonHash: `0x${string}`): Promise<boolean> {
   const client = getPublicClient();
@@ -9,16 +8,6 @@ export async function isMinted(polygonHash: `0x${string}`): Promise<boolean> {
     ...contracts.territoryNFT,
     functionName: 'isMinted',
     args: [polygonHash],
-  });
-}
-
-export async function getOwnedTerritoryIds(owner: `0x${string}`): Promise<readonly bigint[]> {
-  const client = getPublicClient();
-  const contracts = getContracts();
-  return client.readContract({
-    ...contracts.territoryNFT,
-    functionName: 'getTokenIds',
-    args: [owner],
   });
 }
 
@@ -58,16 +47,4 @@ export async function mintTerritoryNFT(
   recipient: `0x${string}`
 ): Promise<{ confirmed: boolean }> {
   return relayMintTerritoryNFT(recipient, polygonHash);
-}
-
-/** Burns a territory NFT once TerritoryRegistry reports the territory as lost to decay. */
-export async function burnTerritoryNFT(
-  wallet: ReturnType<typeof getWalletClient>,
-  polygonHash: `0x${string}`
-): Promise<{ confirmed: boolean }> {
-  const { confirmed } = await writeAndConfirm(wallet, 'territoryNFT', {
-    functionName: 'burnTerritory',
-    args: [polygonHash],
-  });
-  return { confirmed };
 }

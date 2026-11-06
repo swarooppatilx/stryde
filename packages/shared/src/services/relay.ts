@@ -43,10 +43,6 @@ export function setRelayQueueConnectivity(online: () => boolean): void {
   isOnline = online;
 }
 
-export function isRelayQueueEnabled(): boolean {
-  return queueStorage !== null;
-}
-
 async function readQueue(): Promise<RelayQueueState> {
   if (!queueStorage) {
     throw new Error('Relay queue not configured — call setRelayQueueStorage() first');

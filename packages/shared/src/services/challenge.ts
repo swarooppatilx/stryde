@@ -67,7 +67,7 @@ export async function getChallenge(challengeId: bigint): Promise<OnchainChalleng
   };
 }
 
-export async function getUserChallengeIds(
+async function getUserChallengeIds(
   user: `0x${string}`,
   offset = 0n,
   limit = 100n

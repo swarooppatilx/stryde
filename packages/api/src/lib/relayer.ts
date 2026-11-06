@@ -38,9 +38,3 @@ export function getRelayerPublicClient(): ReturnType<typeof createPublicClient> 
   _public = client;
   return client;
 }
-
-export function getRelayerAddress(): `0x${string}` {
-  const address = getRelayerWallet().account?.address;
-  if (!address) throw new ConfigError('RELAYER_PRIVATE_KEY');
-  return address;
-}

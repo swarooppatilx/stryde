@@ -7,7 +7,7 @@ export interface OnchainAchievement {
   exists: boolean;
 }
 
-export function computeAchievementId(id: string): `0x${string}` {
+function computeAchievementId(id: string): `0x${string}` {
   return keccak256(toBytes(id));
 }
 

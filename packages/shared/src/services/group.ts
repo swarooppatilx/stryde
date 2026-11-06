@@ -74,16 +74,6 @@ export async function getMemberCount(groupId: bigint): Promise<bigint> {
   });
 }
 
-export async function isGroupMember(groupId: bigint, user: `0x${string}`): Promise<boolean> {
-  const client = getPublicClient();
-  const contracts = getContracts();
-  return client.readContract({
-    ...contracts.groupRegistry,
-    functionName: 'isMember',
-    args: [groupId, user],
-  });
-}
-
 export async function getUserGroupIds(
   user: `0x${string}`,
   offset = 0n,

@@ -124,26 +124,7 @@ export function getChainConfig(mode: ChainMode): ChainConfig {
   return config;
 }
 
-export function getChainConfigByChainId(chainId: number): ChainConfig | undefined {
-  return Object.values(CHAIN_CONFIGS).find((c) => c.chainId === chainId);
-}
-
 export const DEFAULT_CHAIN_MODE: ChainMode = 'ethereum-sepolia';
-
-export const ACTIVITY_TYPES = [
-  'run',
-  'ride',
-  'walk',
-  'hike',
-  'swim',
-  'yoga',
-  'workout',
-  'hiit',
-  'dance',
-  'climb',
-  'skate',
-  'row',
-] as const;
 
 export const ACTIVITY_TYPE_MAP: Record<ActivityType, number> = {
   run: 0,
@@ -174,11 +155,3 @@ export const ACTIVITY_TYPE_BY_ID: Record<number, ActivityType> = {
   10: 'skate',
   11: 'row',
 };
-
-export const TERRITORY_MIN_AREA = 1000;
-
-export const SUPPORTED_CHAINS = Object.entries(CHAIN_CONFIGS).map(([mode, config]) => ({
-  mode: mode as ChainMode,
-  chainId: config.chainId,
-  name: config.chain.name,
-})) as Array<{ mode: ChainMode; chainId: number; name: string }>;
