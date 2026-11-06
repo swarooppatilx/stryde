@@ -19,7 +19,7 @@
     "@hono/node-server": "^2.1.6",
     "@types/node": "catalog:",
     "@worldcoin/idkit-core": "4.6.0",
-    "@worldcoin/idkit-server": "^1.1.1",
+    "@worldcoin/idkit-server": "^1.2.0",
     "expo-server-sdk": "^7.2.0",
     "hono": "^4.13.16",
     "jose": "6.2.15",
@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
-    "tsx": "^4.19.0",
+    "tsx": "^4.23.15",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
