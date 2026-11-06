@@ -10,6 +10,8 @@ describe('createLocalDevWallet', () => {
     expect(address).toBe('0x70997970C51812dc3A010C7d01b50e0d17dc79C8');
     expect(wallet.account?.address).toBe(address);
     expect(wallet.chain?.id).toBe(31337);
+    // Anvil signs for its own accounts: nothing is signed on the phone.
+    expect(wallet.account?.type).toBe('json-rpc');
   });
 
   it('gives each slot its own athlete and never the relayer account #0', () => {

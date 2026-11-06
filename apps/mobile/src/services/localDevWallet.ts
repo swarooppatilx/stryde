@@ -23,7 +23,10 @@ export function createLocalDevWallet(
   address: `0x${string}`;
 } {
   const key = ANVIL_PRIVATE_KEYS[slot % ANVIL_PRIVATE_KEYS.length] as `0x${string}`;
-  const account = privateKeyToAccount(key);
-  const wallet = createWalletClient({ chain: anvil, transport: http(rpcUrl), account });
-  return { wallet, address: account.address };
+  const { address } = privateKeyToAccount(key);
+  // Anvil holds these default accounts' keys, so it signs: transactions and typed data go to the node
+  // (eth_sendTransaction, eth_signTypedData_v4) instead of being signed on the phone. On-device signing
+  // returned no transaction in an optimised Hermes build (eth_sendRawTransaction with null).
+  const wallet = createWalletClient({ chain: anvil, transport: http(rpcUrl), account: address });
+  return { wallet, address };
 }
