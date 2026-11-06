@@ -1,12 +1,21 @@
-import { MapScreen } from '../_components/maps/MapScreen';
-import { fetchTerritories } from '../_lib/territories';
+"use client";
 
-export default async function MapsPage() {
-  // A subgraph outage shows the plain map rather than an error page.
-  const territories = (await fetchTerritories()) ?? {
-    type: 'FeatureCollection' as const,
-    features: [],
-  };
+import type { Map as MapLibreMapType } from "maplibre-gl";
+import { useState } from "react";
+import { SiteHeader } from "../_components/layout/site-header";
+import { MapToolbar } from "../_components/maps/map-toolbar";
+import { TerritoryMap } from "../_components/maps/territory-map";
 
-  return <MapScreen territories={territories} />;
+export default function MapsPage() {
+  const [map, setMap] = useState<MapLibreMapType | null>(null);
+
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#faf9f8]">
+      <SiteHeader />
+      <div className="relative flex-1">
+        <TerritoryMap onMapReady={setMap} />
+        <MapToolbar map={map} />
+      </div>
+    </div>
+  );
 }
