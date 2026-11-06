@@ -24,6 +24,9 @@ const PAYMASTER_ERROR_NAMES = new Set([
 const GASLESS_NOT_CONFIGURED_MESSAGE = "Saving isn't set up for this app yet. Contact support.";
 
 export const FRIENDLY_MESSAGES: Record<string, string> = {
+  // MoveToEarnToken
+  RewardRateTooHigh: 'That reward rate is above the limit. Try again in a moment.',
+
   // ChallengeRegistry
   AlreadyAccepted: 'This challenge has already been accepted.',
   AlreadyCancelled: 'This challenge has already been cancelled.',
