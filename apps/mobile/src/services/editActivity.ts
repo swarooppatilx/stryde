@@ -50,16 +50,8 @@ export type EditResult =
   | { published: false; reason: 'unchanged' | 'local-only' }
   | { published: false; reason: 'failed'; error?: unknown };
 
-/**
- * Edits a saved activity. It changes on this device at once; if it is onchain it is also republished,
- * because other people read its title and description from the IPFS metadata. The route is republished
- * exactly as it was first published (ends hidden or not), so an edit can never reveal what was hidden.
- */
-export async function editActivity(
-  { store, chain, uploader }: EditDeps,
-  activity: Activity,
-  edit: ActivityEdit
-): Promise<EditResult> {
+/** The fields an edit actually changes; empty when it leaves the activity as it is. */
+function changesOf(activity: Activity, edit: ActivityEdit): Partial<Activity> {
   const patch: Partial<Activity> = {};
   const name = edit.name?.trim();
   if (name && name !== activity.name) patch.name = name;
@@ -70,6 +62,20 @@ export async function editActivity(
   if (edit.photos && !sameList(edit.photos, activity.images ?? [])) {
     patch.images = edit.photos.length > 0 ? [...edit.photos] : undefined;
   }
+  return patch;
+}
+
+/**
+ * Edits a saved activity. It changes on this device at once; if it is onchain it is also republished,
+ * because other people read its title and description from the IPFS metadata. The route is republished
+ * exactly as it was first published (ends hidden or not), so an edit can never reveal what was hidden.
+ */
+export async function editActivity(
+  { store, chain, uploader }: EditDeps,
+  activity: Activity,
+  edit: ActivityEdit
+): Promise<EditResult> {
+  const patch = changesOf(activity, edit);
   if (Object.keys(patch).length === 0) return { published: false, reason: 'unchanged' };
 
   store.updateActivity(activity.id, patch);

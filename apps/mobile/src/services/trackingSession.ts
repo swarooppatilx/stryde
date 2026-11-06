@@ -809,6 +809,41 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     };
   }
 
+  /** Lets fixes that waited out the reorder window into the track, then fetches the background ones. */
+  function reconcileBackgroundFixes(): void {
+    if (release(deps.clock.now() - REORDER_MS)) absorbNewLocations();
+    void pullBackground().then(() => {
+      if (!release(deps.clock.now() - REORDER_MS)) return;
+      syncStatusFromTracker();
+      absorbNewLocations();
+      measure();
+      emit();
+    });
+  }
+
+  function addStepEstimate(): void {
+    const stepPoint = tracking.generateInterpolatedPoint();
+    if (!stepPoint) return;
+    // The service builds its saved distance and polyline from its own
+    // interpolated set. Without this the map drew the step-estimated
+    // point but the saved track fell back to GPS-only.
+    tracking.addInterpolatedLocation(stepPoint);
+    route = downsampleRoute([...route, [stepPoint.longitude, stepPoint.latitude]]);
+  }
+
+  function traceTick(): void {
+    if (!isTrackTraceOn()) return;
+    trackTrace('tick', {
+      t: duration,
+      status,
+      dist: distance,
+      stepAhead: tracking.getInterpolatedStepDistance(),
+      steps: motionRunning ? deps.motion.getStepCount() : null,
+      fixes: tracking.getLocations().length,
+      sinceFix: lastFix ? deps.clock.now() - lastFix.timestamp : null,
+    });
+  }
+
   const session: TrackingSession = {
     getSnapshot: () => snapshot,
 
@@ -1106,29 +1141,11 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     tick() {
       if (status === 'idle') return;
       const before = { status, distance, duration };
-      if (merging()) {
-        if (release(deps.clock.now() - REORDER_MS)) absorbNewLocations();
-        void pullBackground().then(() => {
-          if (!release(deps.clock.now() - REORDER_MS)) return;
-          syncStatusFromTracker();
-          absorbNewLocations();
-          measure();
-          emit();
-        });
-      }
+      if (merging()) reconcileBackgroundFixes();
       if (status === 'tracking') tracking.checkSignalLoss();
       expireStaleWatch();
       syncStatusFromTracker();
-      if (status === 'tracking' && options?.useGyroscope) {
-        const stepPoint = tracking.generateInterpolatedPoint();
-        if (stepPoint) {
-          // The service builds its saved distance and polyline from its own
-          // interpolated set. Without this the map drew the step-estimated
-          // point but the saved track fell back to GPS-only.
-          tracking.addInterpolatedLocation(stepPoint);
-          route = downsampleRoute([...route, [stepPoint.longitude, stepPoint.latitude]]);
-        }
-      }
+      if (status === 'tracking' && options?.useGyroscope) addStepEstimate();
       applyMotion();
       // Cadence rides the already-running pedometer (auto-pause for stepping
       // sports, or the gyro-assist); sampling it once per tick costs nothing extra.
@@ -1136,17 +1153,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         stepSamples.push({ t: Date.now(), steps: deps.motion.getStepCount() });
       }
       measure();
-      if (isTrackTraceOn()) {
-        trackTrace('tick', {
-          t: duration,
-          status,
-          dist: distance,
-          stepAhead: tracking.getInterpolatedStepDistance(),
-          steps: motionRunning ? deps.motion.getStepCount() : null,
-          fixes: tracking.getLocations().length,
-          sinceFix: lastFix ? deps.clock.now() - lastFix.timestamp : null,
-        });
-      }
+      traceTick();
       const changed =
         status !== before.status || distance !== before.distance || duration !== before.duration;
       if (changed || (status === 'tracking' && options?.useGyroscope)) emit();

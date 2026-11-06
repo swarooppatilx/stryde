@@ -85,6 +85,23 @@ type FixOutcome =
   | 'filtered-still'
   | Exclude<FixClass, 'accept'>;
 
+/** What a persisted session may hold; each field is checked before it is used. */
+interface StoredSession {
+  locations?: unknown;
+  interpolatedLocations?: unknown;
+  activityType?: unknown;
+  startTime?: unknown;
+  isTracking?: unknown;
+  pausedDuration?: unknown;
+  pauseStartTime?: unknown;
+  lastPersistTime?: unknown;
+  stepLength?: unknown;
+  lastGpsLocation?: Location | null;
+  lastInterpolatedLocation?: Location | null;
+  autoPaused?: unknown;
+  pauseLocation?: Location | null;
+}
+
 export class TrackingService implements ITrackingService {
   private isTracking = false;
   private locations: Location[] = [];
@@ -830,61 +847,54 @@ export class TrackingService implements ITrackingService {
   async restoreSession(): Promise<void> {
     try {
       const stored = await this.storage.getItem(TRACKING_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (Array.isArray(data.locations)) {
-          this.locations = data.locations;
-        }
-        if (Array.isArray(data.interpolatedLocations)) {
-          this.interpolatedLocations = data.interpolatedLocations;
-        }
-        if (typeof data.activityType === 'string') {
-          this.activityType = data.activityType;
-        }
-        this.kalman = this.filterFixes ? new PositionKalman(this.accelStd()) : null;
-        if (typeof data.startTime === 'number') {
-          this.startTime = data.startTime;
-        }
-        this.isTracking = data.isTracking === true;
-        if (typeof data.pausedDuration === 'number') {
-          this.pausedDuration = data.pausedDuration;
-        }
-        if (typeof data.pauseStartTime === 'number') {
-          this.pauseStartTime = data.pauseStartTime;
-        }
-        if (this.isTracking && typeof data.lastPersistTime === 'number') {
-          // A quick relaunch keeps all its time; a long one only gets a minute,
-          // not the hours the app spent dead.
-          const gap = this.clock.now() - data.lastPersistTime;
-          const addedPausedMs = Math.max(0, gap - MAX_RESTORE_ACTIVE_GAP_MS);
-          this.pausedDuration += addedPausedMs;
-          this.trace.record('restore.gap', { gapMs: gap, addedPausedMs });
-        }
-        if (typeof data.stepLength === 'number') {
-          this.stepLength = data.stepLength;
-        }
-        if (data.lastGpsLocation) {
-          this.lastGpsLocation = data.lastGpsLocation;
-        }
-        if (data.lastInterpolatedLocation) {
-          this.lastInterpolatedLocation = data.lastInterpolatedLocation;
-        }
-        if (typeof data.autoPaused === 'boolean') {
-          this.autoPaused = data.autoPaused;
-        }
-        if (data.pauseLocation) {
-          this.pauseLocation = data.pauseLocation;
-        }
-        this.lastFixTimestamp = Math.max(
-          this.locations[this.locations.length - 1]?.timestamp ?? 0,
-          this.lastGpsLocation?.timestamp ?? 0,
-          this.pauseLocation?.timestamp ?? 0
-        );
-      }
+      if (!stored) return;
+      const data: StoredSession = JSON.parse(stored);
+      this.restoreTrack(data);
+      this.restoreTimeline(data);
+      this.restoreMotion(data);
+      this.lastFixTimestamp = Math.max(
+        this.locations[this.locations.length - 1]?.timestamp ?? 0,
+        this.lastGpsLocation?.timestamp ?? 0,
+        this.pauseLocation?.timestamp ?? 0
+      );
     } catch (err) {
       logger.warn('[TrackingService] Failed to restore session:', err);
       await this.storage.removeItem(TRACKING_KEY);
     }
+  }
+
+  private restoreTrack(data: StoredSession): void {
+    if (Array.isArray(data.locations)) this.locations = data.locations as Location[];
+    if (Array.isArray(data.interpolatedLocations)) {
+      this.interpolatedLocations = data.interpolatedLocations as Location[];
+    }
+    if (typeof data.activityType === 'string') this.activityType = data.activityType;
+    this.kalman = this.filterFixes ? new PositionKalman(this.accelStd()) : null;
+  }
+
+  private restoreTimeline(data: StoredSession): void {
+    if (typeof data.startTime === 'number') this.startTime = data.startTime;
+    this.isTracking = data.isTracking === true;
+    if (typeof data.pausedDuration === 'number') this.pausedDuration = data.pausedDuration;
+    if (typeof data.pauseStartTime === 'number') this.pauseStartTime = data.pauseStartTime;
+    if (this.isTracking && typeof data.lastPersistTime === 'number') {
+      // A quick relaunch keeps all its time; a long one only gets a minute,
+      // not the hours the app spent dead.
+      const gap = this.clock.now() - data.lastPersistTime;
+      const addedPausedMs = Math.max(0, gap - MAX_RESTORE_ACTIVE_GAP_MS);
+      this.pausedDuration += addedPausedMs;
+      this.trace.record('restore.gap', { gapMs: gap, addedPausedMs });
+    }
+  }
+
+  private restoreMotion(data: StoredSession): void {
+    if (typeof data.stepLength === 'number') this.stepLength = data.stepLength;
+    if (data.lastGpsLocation) this.lastGpsLocation = data.lastGpsLocation;
+    if (data.lastInterpolatedLocation) {
+      this.lastInterpolatedLocation = data.lastInterpolatedLocation;
+    }
+    if (typeof data.autoPaused === 'boolean') this.autoPaused = data.autoPaused;
+    if (data.pauseLocation) this.pauseLocation = data.pauseLocation;
   }
 
   getLocations(): Location[] {

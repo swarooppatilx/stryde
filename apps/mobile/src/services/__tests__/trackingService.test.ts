@@ -288,6 +288,93 @@ describe('TrackingService restore after the app was killed', () => {
   });
 });
 
+describe('TrackingService restoring a stored session', () => {
+  async function restoreFrom(stored: unknown): Promise<TrackingService> {
+    await platform.storage.setItem(
+      TRACKING_KEY,
+      typeof stored === 'string' ? stored : JSON.stringify(stored)
+    );
+    const restored = createTrackingService(platform);
+    restored.setUseGyroscope(false);
+    await restored.restoreSession();
+    return restored;
+  }
+
+  it('takes back every field of a complete stored session', async () => {
+    const here = loc(0, LAT, LNG);
+    const restored = await restoreFrom({
+      locations: [here],
+      interpolatedLocations: [loc(500, LAT, LNG)],
+      activityType: 'ride',
+      startTime: BASE_MS - 10_000,
+      isTracking: false,
+      pausedDuration: 2_000,
+      pauseStartTime: BASE_MS - 1_000,
+      stepLength: 0.9,
+      lastGpsLocation: here,
+      autoPaused: true,
+      pauseLocation: loc(4_000, LAT, LNG),
+    });
+
+    expect(restored.getLocations()).toEqual([here]);
+    expect(restored.getAllLocations()).toHaveLength(2);
+    expect(restored.getActivityType()).toBe('ride');
+    expect(restored.getStartTime()).toBe(BASE_MS - 10_000);
+    expect(restored.getIsTracking()).toBe(false);
+    expect(restored.getIsAutoPaused()).toBe(true);
+    expect(restored.getDiagnostics()).toMatchObject({ stepLength: 0.9, pausedDurationMs: 3_000 });
+  });
+
+  it('ignores fields of the wrong type and keeps a fresh service otherwise', async () => {
+    const restored = await restoreFrom({
+      locations: 'nope',
+      interpolatedLocations: {},
+      activityType: 7,
+      startTime: '1',
+      isTracking: 'yes',
+      pausedDuration: '5',
+      pauseStartTime: null,
+      stepLength: '1',
+      autoPaused: 'true',
+    });
+
+    expect(restored.getLocations()).toEqual([]);
+    expect(restored.getActivityType()).toBeNull();
+    expect(restored.getStartTime()).toBeNull();
+    expect(restored.getIsTracking()).toBe(false);
+    expect(restored.getIsAutoPaused()).toBe(false);
+    expect(restored.getDiagnostics().pausedDurationMs).toBe(0);
+  });
+
+  it('adds no paused time when the app was relaunched while not tracking', async () => {
+    platform.clock.set(BASE_MS + 3_600_000);
+
+    const restored = await restoreFrom({
+      startTime: BASE_MS,
+      isTracking: false,
+      lastPersistTime: BASE_MS,
+    });
+
+    expect(restored.getDiagnostics().pausedDurationMs).toBe(0);
+  });
+
+  it('does nothing when no session was stored', async () => {
+    const restored = createTrackingService(platform);
+    await platform.storage.removeItem(TRACKING_KEY);
+
+    await restored.restoreSession();
+
+    expect(restored.getIsTracking()).toBe(false);
+    expect(restored.getStartTime()).toBeNull();
+  });
+
+  it('discards a stored session it cannot read', async () => {
+    await restoreFrom('{not json');
+
+    expect(platform.storage.peek(TRACKING_KEY)).toBeUndefined();
+  });
+});
+
 describe('TrackingService speed limits', () => {
   it('measures a ride at cycling speed instead of discarding it as a run', () => {
     service.setMaxSpeed(50);
