@@ -213,17 +213,16 @@ export default function CoachScreen() {
           {loadError && (
             <Card style={styles.card}>
               <ThemedText type="small" themeColor="textSecondary">
-                Can't reach the Stryde API ({loadError}). Check EXPO_PUBLIC_API_URL.
+                The coach can't reach Stryde right now. Check your connection and try again.
               </ThemedText>
             </Card>
           )}
 
           {status && !status.configured && (
             <Card style={{ ...styles.card, borderWidth: 1, borderColor: theme.brand.warning }}>
-              <ThemedText type="sectionTitle">World ID Agent Pass not configured</ThemedText>
+              <ThemedText type="sectionTitle">World ID Agent Pass isn't available yet</ThemedText>
               <ThemedText type="caption" themeColor="textSecondary">
-                Set WORLD_OIDC_CLIENT_ID / WORLD_OIDC_CLIENT_SECRET on the API, or
-                WORLD_OIDC_MOCK=true for a local demo.
+                This server can't link a coach to a verified human yet. Check back soon.
               </ThemedText>
             </Card>
           )}
