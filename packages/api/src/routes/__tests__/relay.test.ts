@@ -369,6 +369,43 @@ describe('POST /mint-reward', () => {
     expect(res.status).toBe(503);
     expect(mockWallet.writeContract).not.toHaveBeenCalled();
   });
+
+  describe('with a daily allowance', () => {
+    const ATHLETE = '0x00000000000000000000000000000000000000cc';
+
+    beforeEach(() => {
+      process.env.STRD_DAILY_REWARD_METERS = '10000';
+    });
+    afterEach(() => {
+      delete process.env.STRD_DAILY_REWARD_METERS;
+    });
+
+    it('stops paying once the day’s distance is used, however many activities were recorded', async () => {
+      recordedBy(ATHLETE, 6_000n);
+      const first = await post({ recipient: ATHLETE, activityHash: HASH, distance: 6_000 });
+      const second = await post({
+        recipient: ATHLETE,
+        activityHash: `0x${'cd'.repeat(32)}`,
+        distance: 6_000,
+      });
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(429);
+      expect(await second.json()).toMatchObject({ code: 'daily_reward_limit' });
+      expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+    });
+
+    it('gives the allowance back when the mint fails, so a retry is not charged twice', async () => {
+      const ALSO = '0x00000000000000000000000000000000000000dd';
+      recordedBy(ALSO, 9_000n);
+      mockWallet.writeContract.mockRejectedValueOnce(outOfGas());
+      const failed = await post({ recipient: ALSO, activityHash: HASH, distance: 9_000 });
+      const retried = await post({ recipient: ALSO, activityHash: HASH, distance: 9_000 });
+
+      expect(failed.status).not.toBe(200);
+      expect(retried.status).toBe(200);
+    });
+  });
 });
 
 describe('POST /record-contribution', () => {

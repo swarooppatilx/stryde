@@ -12,6 +12,10 @@ const mockPublicClient = vi.hoisted(() => ({
   simulateContract: vi.fn(async (request: unknown) => ({ request })),
   estimateFeesPerGas: vi.fn(async () => ({ maxFeePerGas: 1n })),
   waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: 'success' as const }),
+  // A registered profile that is not verified yet, unless a test says otherwise.
+  readContract: vi.fn(async ({ functionName }: { functionName: string }) => {
+    return functionName === 'isRegistered';
+  }),
 }));
 
 // What the next World poll reports; each test sets it before polling.
@@ -87,13 +91,13 @@ const ENV_KEYS = [
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
 // world.ts reads its env at import time, so each scenario re-imports it.
-async function loadWorld(env: { skip: boolean; vercelEnv?: string }) {
+async function loadWorld(env: { skip: boolean; vercelEnv?: string; presenceFile?: string }) {
   vi.resetModules();
   process.env.WORLD_RP_SIGNING_KEY = `0x${'11'.repeat(32)}`;
   process.env.WORLD_APP_ID = 'app_test';
   process.env.WORLD_RP_ID = 'rp_test';
   process.env.WORLD_SKIP_REMOTE_VERIFY = env.skip ? 'true' : 'false';
-  process.env.WORLD_PRESENCE_FILE = '';
+  process.env.WORLD_PRESENCE_FILE = env.presenceFile ?? '';
   if (env.vercelEnv) process.env.VERCEL_ENV = env.vercelEnv;
   else delete process.env.VERCEL_ENV;
   const { world } = await import('../world.js');
@@ -243,6 +247,84 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
   });
 });
 
+describe('mirroring the verification onchain', () => {
+  const nullifier = `0x${'ab'.repeat(32)}`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
+  });
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
+    mockPublicClient.readContract.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const registry = (state: { registered: boolean; verified: boolean }) =>
+    mockPublicClient.readContract.mockImplementation(async ({ functionName }) =>
+      functionName === 'isRegistered' ? state.registered : state.verified
+    );
+
+  it('sends nothing for a wallet that is already verified', async () => {
+    registry({ registered: true, verified: true });
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
+    const world = await loadWorld({ skip: false });
+
+    const result = await startAndPoll(world);
+
+    expect(result.status).toBe('confirmed');
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it('waits for a wallet with no profile instead of sending a transaction that reverts', async () => {
+    registry({ registered: false, verified: false });
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
+    const world = await loadWorld({ skip: false });
+
+    const result = await startAndPoll(world);
+
+    expect(result.status).toBe('confirmed');
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it('finishes the mirror from the stored pass once the profile exists', async () => {
+    registry({ registered: false, verified: false });
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
+    const world = await loadWorld({ skip: false });
+    await startAndPoll(world);
+
+    const early = await world.request(`/pass/${WALLET}/mirror`, { method: 'POST' });
+    expect(await early.json()).toEqual({ outcome: 'not_registered' });
+
+    registry({ registered: true, verified: false });
+    const res = await world.request(`/pass/${WALLET}/mirror`, { method: 'POST' });
+
+    expect(await res.json()).toEqual({ outcome: 'mirrored' });
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+    expect(mockWallet.writeContract.mock.calls[0]?.[0]).toMatchObject({
+      functionName: 'verify',
+      args: [WALLET, nullifier],
+    });
+  });
+
+  it('answers 409 when the wallet holds no pass, so the caller cannot spend relayer gas', async () => {
+    const world = await loadWorld({ skip: false });
+
+    const res = await world.request(`/pass/${WALLET}/mirror`, { method: 'POST' });
+
+    expect(res.status).toBe(409);
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+});
+
 describe('polling a session', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -265,6 +347,87 @@ describe('polling a session', () => {
 
     expect(result.status).toBe('pending');
     expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it('settles a confirmed proof once when two polls overlap', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    pollStatus.current = { type: 'confirmed', result: enrollment(`0x${'ab'.repeat(32)}`) };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return new Response('{"success":true}');
+      })
+    );
+    const world = await loadWorld({ skip: false });
+    const session = await world.request('/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signal: WALLET }),
+    });
+    const { sessionId } = (await session.json()) as { sessionId: string };
+
+    const polls = await Promise.all(
+      [1, 2].map(async () => {
+        const res = await world.request(`/session/${sessionId}/poll`, { method: 'POST' });
+        return (await res.json()) as { status: string };
+      })
+    );
+
+    expect(polls.map((p) => p.status).sort()).toEqual(['confirmed', 'pending']);
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('WORLD_ENVIRONMENT on the production deployment', () => {
+  afterEach(() => {
+    for (const k of [...ENV_KEYS, 'WORLD_ENVIRONMENT'] as const) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['sandbox', true],
+    [undefined, true],
+    ['production', false],
+  ])('with %s, warns loudly: %s', async (environment, warns) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    if (environment) process.env.WORLD_ENVIRONMENT = environment;
+    else delete process.env.WORLD_ENVIRONMENT;
+
+    await loadWorld({ skip: false, vercelEnv: 'production' });
+
+    const warned = error.mock.calls.some(([line]) => String(line).includes('WORLD_ENVIRONMENT'));
+    expect(warned).toBe(warns);
+  });
+});
+
+describe('Athlete Pass storage', () => {
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
+    vi.restoreAllMocks();
+  });
+
+  const warnsAboutStorage = async (file: string) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await loadWorld({ skip: false, presenceFile: file });
+    return error.mock.calls.some(([line]) => String(line).includes('WORLD_PRESENCE_FILE'));
+  };
+
+  it('warns when passes have nowhere to live between restarts', async () => {
+    expect(await warnsAboutStorage('')).toBe(true);
+  });
+
+  it('is quiet when a file is configured', async () => {
+    expect(await warnsAboutStorage('.data/test-presence.json')).toBe(false);
   });
 });
 

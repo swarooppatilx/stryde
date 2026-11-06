@@ -13,6 +13,20 @@ vi.mock('../../lib/relayerTx.js', () => ({
   relayTx: vi.fn().mockResolvedValue({ hash: '0xhash', confirmed: true }),
 }));
 
+// The registry pre-check reads a registered, unverified profile; no chain client is built.
+vi.mock('../../lib/relayer.js', () => ({
+  getRelayerPublicClient: () => ({
+    readContract: async ({ functionName }: { functionName: string }) =>
+      functionName === 'isRegistered',
+  }),
+}));
+
+vi.mock('../../lib/chainConfig.js', () => ({
+  getRelayChainConfig: () => ({
+    contracts: { profileRegistry: '0x0000000000000000000000000000000000000005' },
+  }),
+}));
+
 vi.mock('@worldcoin/idkit-server', () => ({
   signRequest: () => ({ sig: '0xsig', nonce: 'nonce', createdAt: 0, expiresAt: 1 }),
 }));

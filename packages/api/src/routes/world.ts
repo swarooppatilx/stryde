@@ -20,6 +20,7 @@ import {
   PresenceError,
   type PresenceTicket,
   type PublicPass,
+  presenceFile,
   rewardGate,
   toPublicPass,
 } from '../lib/humanPresence.js';
@@ -47,6 +48,21 @@ const SKIP_REMOTE_VERIFY = SKIP_REMOTE_VERIFY_REQUESTED && !IS_PRODUCTION_DEPLOY
 if (SKIP_REMOTE_VERIFY_REQUESTED && IS_PRODUCTION_DEPLOY) {
   console.error(
     '[world] WORLD_SKIP_REMOTE_VERIFY=true is ignored on the production deployment — every proof is verified with World.'
+  );
+}
+
+if (IS_PRODUCTION_DEPLOY && WORLD_ENVIRONMENT !== 'production') {
+  // Sandbox proofs are free to make, yet each accepted enrollment writes a permanent ProfileRegistry badge.
+  console.error(
+    `[world] WORLD_ENVIRONMENT is '${WORLD_ENVIRONMENT}' on the production deployment — proofs made by anyone in the World simulator are accepted.`
+  );
+}
+
+if (RP_SIGNING_KEY && !presenceFile()) {
+  // Athlete Passes, the nullifiers that keep one human to one pass, and pending checks all live in this
+  // process: a restart, or another instance answering a poll, forgets them.
+  console.error(
+    '[world] No WORLD_PRESENCE_FILE on a host without a lasting disk — Athlete Passes and pending World checks do not survive a restart, and a second instance cannot see them. Run one instance with a persistent volume until they live in shared storage.'
   );
 }
 
@@ -79,6 +95,8 @@ interface SessionEntry {
   wallet: Address;
   /** The run a Finish-Line check vouches for; its hash is the proof's signal. */
   activityHash?: `0x${string}`;
+  /** Set once a poll has taken the confirmed proof, so an overlapping poll cannot settle it twice. */
+  settling?: boolean;
 }
 
 const DECIMAL_RE = /^[0-9]+$/;
@@ -96,16 +114,56 @@ function toNullifierHash(nullifier: string | null): `0x${string}` {
 const MIRROR_ATTEMPTS = 3;
 const MIRROR_BACKOFF_MS = 2000;
 
-/** Best effort: the caller is already verified by World, so a mirror that still fails after retries is only logged. */
-async function mirrorVerificationOnchain(wallet: string, nullifier: string | null): Promise<void> {
+type MirrorOutcome = 'mirrored' | 'already_verified' | 'not_registered' | 'failed' | 'skipped';
+
+/** What the registry already says about the wallet; null when it cannot be read, in which case the send decides. */
+async function registryState(
+  wallet: Address
+): Promise<{ registered: boolean; verified: boolean } | null> {
+  try {
+    // Loaded here, not at the top, so routes that never mirror do not pay for the chain client.
+    const [{ getRelayerPublicClient }, { getRelayChainConfig }, { RELAY_ABIS }] = await Promise.all(
+      [import('../lib/relayer.js'), import('../lib/chainConfig.js'), import('../lib/relayAbis.js')]
+    );
+    const client = getRelayerPublicClient();
+    const address = getRelayChainConfig().contracts.profileRegistry as Address;
+    const read = (functionName: 'isRegistered' | 'isVerified') =>
+      client.readContract({
+        address,
+        abi: RELAY_ABIS.profileRegistry,
+        functionName,
+        args: [wallet],
+      }) as Promise<boolean>;
+    const [registered, verified] = await Promise.all([read('isRegistered'), read('isVerified')]);
+    return { registered, verified };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best effort: the caller is already verified by World, so a mirror that still fails after retries is only
+ * logged. A wallet without a profile cannot be verified yet and one already verified needs nothing, so
+ * neither costs the relayer a reverted transaction; the app asks again once the profile exists.
+ */
+async function mirrorVerificationOnchain(
+  wallet: string,
+  nullifier: string | null
+): Promise<MirrorOutcome> {
   if (!isAddress(wallet)) {
     console.warn(`[world] Skipping onchain verify mirror: not a wallet address: ${wallet}`);
-    return;
+    return 'skipped';
   }
   // The nullifier is what stops one human verifying many wallets; without it there is nothing to bind.
   if (!nullifier) {
     console.warn(`[world] Skipping onchain verify mirror: no nullifier in the proof for ${wallet}`);
-    return;
+    return 'skipped';
+  }
+  const state = await registryState(wallet);
+  if (state?.verified) return 'already_verified';
+  if (state && !state.registered) {
+    console.warn(`[world] ${wallet} has no profile yet; the verify mirror waits for it`);
+    return 'not_registered';
   }
   for (let attempt = 1; ; attempt++) {
     try {
@@ -115,7 +173,7 @@ async function mirrorVerificationOnchain(wallet: string, nullifier: string | nul
         args: [wallet, toNullifierHash(nullifier)],
       });
       console.info(`[world] Mirrored verification for ${wallet}: ${hash} (confirmed=${confirmed})`);
-      return;
+      return 'mirrored';
     } catch (error) {
       // A send that may still mine is never repeated; a definite refusal will not change.
       const failure = classifyRelayError(error);
@@ -123,7 +181,7 @@ async function mirrorVerificationOnchain(wallet: string, nullifier: string | nul
         !(error instanceof ReceiptTimeoutError) && (!failure || failure.status === 503);
       if (!retryable || attempt === MIRROR_ATTEMPTS) {
         logError(`[world] Onchain verify mirror failed for ${wallet}:`, error);
-        return;
+        return 'failed';
       }
       await new Promise((resolve) => setTimeout(resolve, MIRROR_BACKOFF_MS * attempt));
     }
@@ -492,6 +550,10 @@ async function pollSession(sessionId: string): Promise<PollResult> {
     return { status: 'failed', kind, error, message: worldErrorMessage(error, kind) };
   }
 
+  // Verifying and settling take several awaits; a second poll arriving meanwhile must not repeat them.
+  if (entry.settling) return { status: 'pending', kind };
+  entry.settling = true;
+
   if (SKIP_REMOTE_VERIFY) {
     console.warn('[world] Skipping remote verify (WORLD_SKIP_REMOTE_VERIFY=true)');
   } else {
@@ -648,12 +710,25 @@ world.get('/pass/:wallet', (c) => {
   const pass = store.getPass(wallet);
   const activityHash = c.req.query('activityHash');
   const meters = Number(c.req.query('meters') ?? 0);
-  const ticket = activityHash ? store.getTicket(activityHash) : undefined;
+  const ticket = activityHash ? store.getTicket(wallet, activityHash) : undefined;
   return c.json({
     pass: pass ? toPublicPass(pass) : null,
     ticket: ticket ?? null,
     gate: rewardGate(pass, ticket, Number.isFinite(meters) ? meters : 0),
   });
+});
+
+/**
+ * Puts an enrolled athlete's badge onchain once their profile exists. The nullifier comes from the stored
+ * pass, never the caller, so this can only finish a verification World already vouched for.
+ */
+world.post('/pass/:wallet/mirror', async (c) => {
+  const wallet = toAddress(c.req.param('wallet'));
+  if (!wallet) return c.json({ error: 'Not a wallet address' }, 400);
+  const pass = getHumanPresenceStore().getPass(wallet);
+  if (!pass) return c.json({ error: 'Get your Athlete Pass first.', code: 'enroll_required' }, 409);
+  const outcome = await mirrorVerificationOnchain(wallet, pass.nullifier);
+  return c.json({ outcome });
 });
 
 world.post('/verify', limitBody(MAX_BODY_BYTES), async (c) => {

@@ -140,12 +140,43 @@ contract MoveToEarnTokenTest is Test {
     }
 
     function testFuzz_SetRewardPerMeter(uint128 rate, uint96 distance) public {
-        vm.assume(rate > 0);
+        rate = uint128(bound(rate, 1, token.MAX_REWARD_PER_METER()));
         vm.assume(distance > 0);
 
         token.setRewardPerMeter(rate);
         token.mintForActivity(alice, ACTIVITY_A, distance);
 
         assertEq(token.balanceOf(alice), uint256(distance) * uint256(rate));
+    }
+
+    // ─── Governance ─────────────────────────────────────────────────
+
+    function test_SetRewardPerMeter_RevertAboveCap() public {
+        uint256 cap = token.MAX_REWARD_PER_METER();
+        token.setRewardPerMeter(cap);
+        assertEq(token.rewardPerMeter(), cap);
+
+        vm.expectRevert(IMoveToEarnToken.RewardRateTooHigh.selector);
+        token.setRewardPerMeter(cap + 1);
+    }
+
+    function test_OwnershipTransfer_MovesTheAdminRole() public {
+        address deployer = address(this);
+        token.transferOwnership(bob);
+        // Nothing moves until the new owner accepts.
+        assertTrue(token.hasRole(token.DEFAULT_ADMIN_ROLE(), deployer));
+        assertFalse(token.hasRole(token.DEFAULT_ADMIN_ROLE(), bob));
+
+        vm.prank(bob);
+        token.acceptOwnership();
+
+        assertEq(token.owner(), bob);
+        assertTrue(token.hasRole(token.DEFAULT_ADMIN_ROLE(), bob));
+        assertFalse(token.hasRole(token.DEFAULT_ADMIN_ROLE(), deployer));
+        // The old owner can no longer change the rate.
+        vm.expectRevert();
+        token.setRewardPerMeter(1);
+        // The relayer's minting is untouched by the handover.
+        assertTrue(token.hasRole(token.MINTER_ROLE(), deployer));
     }
 }

@@ -150,6 +150,8 @@ interface Snapshot {
   tickets: PresenceTicket[];
   sessionNullifiers: string[];
   stepUpNullifiers: string[];
+  /** Which pass each Proof of Human nullifier stepped up; absent in snapshots saved before this was recorded. */
+  stepUpOwners?: Record<string, Address>;
 }
 
 /** Holds passes and tickets in memory, mirrored to a JSON file when one is given. */
@@ -158,7 +160,8 @@ export class HumanPresenceStore {
   private walletByNullifier = new Map<string, Address>();
   private tickets = new Map<string, PresenceTicket>();
   private sessionNullifiers = new Set<string>();
-  private stepUpNullifiers = new Set<string>();
+  /** Proof of Human nullifier -> the pass it stepped up; null when saved before owners were recorded. */
+  private stepUpNullifiers = new Map<string, Address | null>();
 
   constructor(private readonly file: string | null = null) {
     if (file) this.load(file);
@@ -169,8 +172,9 @@ export class HumanPresenceStore {
     return address ? this.passes.get(address) : undefined;
   }
 
-  getTicket(activityHash: string): PresenceTicket | undefined {
-    return this.tickets.get(activityHash.toLowerCase());
+  /** A ticket vouches for one wallet's run: another wallet's ticket for the same hash is not this one's. */
+  getTicket(wallet: string, activityHash: string): PresenceTicket | undefined {
+    return this.tickets.get(ticketKey(wallet, activityHash));
   }
 
   /**
@@ -253,7 +257,7 @@ export class HumanPresenceStore {
       verifiedAt: input.now,
       sybilScore: input.sybilScore,
     };
-    this.tickets.set(ticket.activityHash, ticket);
+    this.tickets.set(ticketKey(ticket.wallet, ticket.activityHash), ticket);
     this.save();
     return { pass, ticket };
   }
@@ -263,13 +267,17 @@ export class HumanPresenceStore {
     const pass = this.getPass(input.wallet);
     if (!pass) throw new PresenceError('no_pass', 'Get your Athlete Pass first.');
     const key = toDecimal(input.nullifier);
-    if (this.stepUpNullifiers.has(key) && !pass.steppedUpAt) {
+    const owner = this.stepUpNullifiers.get(key);
+    // An owner from before owners were recorded can only be told apart by the pass having stepped up.
+    const legacy = owner === null && !pass.steppedUpAt;
+    const taken = legacy || (owner !== undefined && owner !== null && owner !== pass.wallet);
+    if (taken) {
       throw new PresenceError(
         'step_up_taken',
         'This Proof of Human already vouches for another account.'
       );
     }
-    this.stepUpNullifiers.add(key);
+    this.stepUpNullifiers.set(key, pass.wallet);
     pass.steppedUpAt = input.now;
     this.save();
     return pass;
@@ -286,9 +294,13 @@ export class HumanPresenceStore {
       this.passes.set(pass.wallet, pass);
       this.walletByNullifier.set(pass.nullifier, pass.wallet);
     }
-    for (const ticket of snapshot.tickets ?? []) this.tickets.set(ticket.activityHash, ticket);
+    for (const ticket of snapshot.tickets ?? []) {
+      this.tickets.set(ticketKey(ticket.wallet, ticket.activityHash), ticket);
+    }
     for (const n of snapshot.sessionNullifiers ?? []) this.sessionNullifiers.add(n);
-    for (const n of snapshot.stepUpNullifiers ?? []) this.stepUpNullifiers.add(n);
+    for (const n of snapshot.stepUpNullifiers ?? []) {
+      this.stepUpNullifiers.set(n, snapshot.stepUpOwners?.[n] ?? null);
+    }
   }
 
   private save() {
@@ -297,7 +309,10 @@ export class HumanPresenceStore {
       passes: [...this.passes.values()],
       tickets: [...this.tickets.values()],
       sessionNullifiers: [...this.sessionNullifiers],
-      stepUpNullifiers: [...this.stepUpNullifiers],
+      stepUpNullifiers: [...this.stepUpNullifiers.keys()],
+      stepUpOwners: Object.fromEntries(
+        [...this.stepUpNullifiers].filter((entry): entry is [string, Address] => entry[1] !== null)
+      ),
     };
     try {
       mkdirSync(dirname(this.file), { recursive: true });
@@ -306,6 +321,10 @@ export class HumanPresenceStore {
       console.error('[world] Could not persist Athlete Passes:', error);
     }
   }
+}
+
+function ticketKey(wallet: string, activityHash: string): string {
+  return `${wallet.toLowerCase()}:${activityHash.toLowerCase()}`;
 }
 
 /** Nullifiers arrive as decimal or 0x hex strings; one canonical form keeps casing and padding from splitting them. */
@@ -319,12 +338,15 @@ export function toDecimal(value: string): string {
 
 let store: HumanPresenceStore | null = null;
 
+/** Where passes are kept between restarts; null on a host with no disk that outlives the process. */
+export function presenceFile(): string | null {
+  const file =
+    process.env.WORLD_PRESENCE_FILE ?? (process.env.VERCEL ? null : '.data/human-presence.json');
+  return file || null;
+}
+
 export function getHumanPresenceStore(): HumanPresenceStore {
-  if (!store) {
-    const file =
-      process.env.WORLD_PRESENCE_FILE ?? (process.env.VERCEL ? null : '.data/human-presence.json');
-    store = new HumanPresenceStore(file || null);
-  }
+  if (!store) store = new HumanPresenceStore(presenceFile());
   return store;
 }
 
@@ -336,5 +358,5 @@ export function isPresenceGateEnabled(): boolean {
 export function checkRewardGate(wallet: string, activityHash: string, meters: number): RewardGate {
   if (!isPresenceGateEnabled()) return { ok: true, reason: 'gate disabled' };
   const presence = getHumanPresenceStore();
-  return rewardGate(presence.getPass(wallet), presence.getTicket(activityHash), meters);
+  return rewardGate(presence.getPass(wallet), presence.getTicket(wallet, activityHash), meters);
 }

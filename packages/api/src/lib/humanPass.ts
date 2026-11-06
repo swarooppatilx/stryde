@@ -7,6 +7,7 @@ import { lookupRecordedActivity } from './recordedActivity.js';
 import { RELAY_ABIS } from './relayAbis.js';
 import { RetryLaterError } from './relayErrors.js';
 import { getRelayerPublicClient, getRelayerWallet } from './relayer.js';
+import { DAILY_REWARD_MESSAGE, rewardLedger } from './rewardLimit.js';
 import { type Approval, type ApprovalStatus, store } from './store.js';
 import {
   ACR_ORB,
@@ -56,7 +57,7 @@ export class HumanPassError extends Error {
   constructor(
     readonly code: string,
     message: string,
-    readonly status: 400 | 401 | 403 | 404 | 409 | 428 | 503 = 400
+    readonly status: 400 | 401 | 403 | 404 | 409 | 428 | 429 | 503 = 400
   ) {
     super(message);
   }
@@ -228,14 +229,24 @@ export const ACTIONS: Record<string, ActionPolicy> = {
       const relayer = getRelayerWallet();
       const account = relayer.account;
       if (!account) throw new Error('Relayer wallet has no account');
-      const hash = await relayer.writeContract({
-        address: contractAddress(config, 'moveToEarnToken'),
-        abi: RELAY_ABIS.moveToEarnToken,
-        functionName: 'mintForActivity',
-        args: [wallet, activityHash, meters],
-        account,
-        chain: config.chain,
-      });
+      const meterCount = Number(meters);
+      if (!rewardLedger.reserve(wallet, meterCount)) {
+        throw new HumanPassError('daily_reward_limit', DAILY_REWARD_MESSAGE, 429);
+      }
+      let hash: `0x${string}`;
+      try {
+        hash = await relayer.writeContract({
+          address: contractAddress(config, 'moveToEarnToken'),
+          abi: RELAY_ABIS.moveToEarnToken,
+          functionName: 'mintForActivity',
+          args: [wallet, activityHash, meters],
+          account,
+          chain: config.chain,
+        });
+      } catch (error) {
+        rewardLedger.release(wallet, meterCount);
+        throw error;
+      }
       const receipt = await getRelayerPublicClient().waitForTransactionReceipt({ hash });
       return {
         txHash: hash,
