@@ -335,6 +335,25 @@ describe('photos', () => {
     expect(images[1]).toMatch(/^https:\/\/ipfs\.test\//);
   });
 
+  it('retries the metadata upload once when the first try fails on the network', async () => {
+    chain.failOnce.add('setMetadata');
+
+    const { steps, activity } = await savePostRun(INPUT, deps({ retryDelayMs: 0 }));
+
+    expect(chain.callsTo('setMetadata')).toHaveLength(2);
+    expect(steps.metadata.status).toBe('ok');
+    expect(store.activities.get(activity.id)?.metadataCid).toBeTruthy();
+  });
+
+  it('still reports the metadata step as failed when the retry fails too', async () => {
+    chain.failures.setMetadata = new Error('pinning down');
+
+    const { steps } = await savePostRun(INPUT, deps({ retryDelayMs: 0 }));
+
+    expect(chain.callsTo('setMetadata')).toHaveLength(2);
+    expect(steps.metadata.status).toBe('failed');
+  });
+
   it('never publishes a photo that only exists on this device', async () => {
     uploader.failFor.add('file:///bad.jpg');
 
@@ -342,6 +361,34 @@ describe('photos', () => {
 
     const [, metadata] = chain.callsTo('setMetadata')[0] as [bigint, { photos?: string[] }];
     expect(metadata.photos).toEqual(['https://ipfs.test/file%3A%2F%2F%2Fok.jpg']);
+  });
+
+  it('keeps the feed mute and hidden stats on the activity and publishes them with it', async () => {
+    const result = await savePostRun(
+      { ...INPUT, mutedFromFeeds: true, hiddenStats: ['pace', 'start_time'] },
+      deps()
+    );
+
+    expect(result.activity).toMatchObject({
+      mutedFromFeeds: true,
+      hiddenStats: ['pace', 'start_time'],
+    });
+    const [, metadata] = chain.callsTo('setMetadata')[0] as [
+      bigint,
+      { mutedFromFeeds?: boolean; hiddenStats?: string[] },
+    ];
+    expect(metadata.mutedFromFeeds).toBe(true);
+    expect(metadata.hiddenStats).toEqual(['pace', 'start_time']);
+  });
+
+  it('leaves both out when they are off or empty', async () => {
+    const result = await savePostRun({ ...INPUT, mutedFromFeeds: false, hiddenStats: [] }, deps());
+
+    expect(result.activity.mutedFromFeeds).toBeUndefined();
+    expect(result.activity.hiddenStats).toBeUndefined();
+    const [, metadata] = chain.callsTo('setMetadata')[0] as [bigint, Record<string, unknown>];
+    expect(metadata).not.toHaveProperty('mutedFromFeeds');
+    expect(metadata).not.toHaveProperty('hiddenStats');
   });
 
   it('uploads a still-local photo when the onchain sync is retried', async () => {
@@ -958,5 +1005,74 @@ describe('recording while a retry could start', () => {
     await savePostRun(INPUT, deps());
 
     expect(isSyncing('id-1')).toBe(false);
+  });
+});
+
+describe('telling the caller the activity is safe on the device', () => {
+  it('calls onSaved with the stored activity while the chain is still working', async () => {
+    let release: () => void = () => {};
+    chain.recordGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const saved: string[] = [];
+
+    const pending = savePostRun(
+      INPUT,
+      deps({ onSaved: (activity) => saved.push(`${activity.id}:${store.get(activity.id).name}`) })
+    );
+    // Let the pipeline run up to the gated chain call.
+    await vi.waitFor(() => expect(chain.callsTo('recordActivity')).toHaveLength(1));
+
+    expect(saved).toEqual(['id-1:Evening Run']);
+    release();
+    await pending;
+  });
+
+  it('does not call onSaved when the recording is refused', async () => {
+    const onSaved = vi.fn();
+    await expect(savePostRun({ ...INPUT, polyline: '' }, deps({ onSaved }))).rejects.toBeInstanceOf(
+      EmptyRecordingError
+    );
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+describe('remembering that an activity was imported', () => {
+  it('keeps the imported flag on the saved activity, and leaves it off for a recording', async () => {
+    const imported = await savePostRun(
+      { ...INPUT, isManual: true, isImported: true, polyline: '' },
+      deps()
+    );
+    expect(imported.activity.isImported).toBe(true);
+    expect(store.get('id-1').isImported).toBe(true);
+
+    const recorded = await savePostRun(INPUT, deps());
+    expect(recorded.activity.isImported).toBeUndefined();
+  });
+});
+
+describe('save progress', () => {
+  const phasesFor = async (input: Partial<PostRunInput>) => {
+    const phases: string[] = [];
+    await savePostRun({ ...INPUT, ...input }, deps({ onProgress: (phase) => phases.push(phase) }));
+    return phases;
+  };
+
+  it('reports the photo upload, then the rest of the save', async () => {
+    expect(await phasesFor({ photos: ['file:///a.jpg'] })).toEqual(['uploading-photos', 'saving']);
+  });
+
+  it('goes straight to saving when there is nothing to upload', async () => {
+    expect(await phasesFor({})).toEqual(['saving']);
+    expect(await phasesFor({ photos: ['https://cdn.test/a.jpg'] })).toEqual(['saving']);
+  });
+
+  it('does not claim an upload for an Only Me activity, whose photos stay on the phone', async () => {
+    expect(await phasesFor({ photos: ['file:///a.jpg'], privacy: 'only_me' })).toEqual(['saving']);
+  });
+
+  it('saves the same without a listener', async () => {
+    const result = await savePostRun({ ...INPUT, photos: ['file:///a.jpg'] }, deps());
+    expect(result.activity.images).toBeDefined();
   });
 });

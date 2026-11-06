@@ -22,6 +22,15 @@ describe('feedSubtext', () => {
     expect(feedSubtext({ ...base, manual: false })).toBe('Sun, 18 Oct at 23:12\nRun');
   });
 
+  it('says an activity came from a file or another app, not that it was typed in', () => {
+    expect(feedSubtext({ ...base, manual: true, imported: true })).toBe(
+      'Sun, 18 Oct at 23:12\nRun · Imported'
+    );
+    expect(feedSubtext({ ...base, place: 'Pune', manual: true, imported: true })).toBe(
+      'Sun, 18 Oct at 23:12\nRun · Pune · Imported'
+    );
+  });
+
   it('skips an empty place', () => {
     expect(feedSubtext({ ...base, place: '  ' })).toBe('Sun, 18 Oct at 23:12\nRun');
   });

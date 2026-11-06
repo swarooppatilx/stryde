@@ -7,6 +7,7 @@ import {
   filterFeed,
   mergeLocalActivities,
   withCommentLike,
+  withoutMutedFromOthers,
 } from './socialFeed';
 
 const local: Activity = {
@@ -328,5 +329,65 @@ describe('comment likes', () => {
     });
 
     expect(rebuilt[0]?.comments[0]?.likedBy).toEqual([FRIEND]);
+  });
+});
+
+describe('withoutMutedFromOthers', () => {
+  const ME = '0xaaaa000000000000000000000000000000000001';
+  const post = (id: string, userId: string, mutedFromFeeds?: boolean): SocialActivity => ({
+    ...local,
+    id,
+    userId,
+    mutedFromFeeds,
+    kudos: [],
+    comments: [],
+  });
+
+  it('drops muted posts by other athletes', () => {
+    const feed = [post('a', '0xbbbb'), post('b', '0xbbbb', true)];
+    expect(withoutMutedFromOthers(feed, ME).map((a) => a.id)).toEqual(['a']);
+  });
+
+  it('keeps my own muted post, whatever the address casing', () => {
+    const feed = [post('mine', ME.toUpperCase().replace('0X', '0x'), true)];
+    expect(withoutMutedFromOthers(feed, ME)).toHaveLength(1);
+  });
+
+  it('keeps posts that are not muted', () => {
+    expect(withoutMutedFromOthers([post('a', '0xbbbb', false)], ME)).toHaveLength(1);
+  });
+});
+
+describe('feedFromChain visibility flags', () => {
+  const ME = '0xaaaa000000000000000000000000000000000001';
+  const base = {
+    local: [],
+    existing: {},
+    social: { kudos: [], comments: [] },
+    me: ME,
+  };
+
+  it('reads the mute and the known hidden stats from the published metadata', () => {
+    const { activities } = feedFromChain({
+      ...base,
+      chain: [
+        {
+          ...chainActivity('0xh1', 1n),
+          metadataMuted: true,
+          metadataHiddenStats: ['pace', 'heart_rate'],
+        },
+      ],
+    });
+    expect(activities[0]).toMatchObject({ mutedFromFeeds: true, hiddenStats: ['pace'] });
+  });
+
+  it('prefers what this device saved for my own activity', () => {
+    const mine: Activity = { ...local, activityHash: '0xh1', mutedFromFeeds: true };
+    const { activities } = feedFromChain({
+      ...base,
+      local: [mine],
+      chain: [chainActivity('0xh1', 1n)],
+    });
+    expect(activities[0]?.mutedFromFeeds).toBe(true);
   });
 });

@@ -17,6 +17,8 @@ type ChainMethod = keyof ActivityChain;
 export class FakeActivityChain implements ActivityChain {
   calls: Array<{ method: ChainMethod; args: unknown[] }> = [];
   failures: Partial<Record<ChainMethod, unknown>> = {};
+  /** Methods that fail on their next call only, then work: a transient network error. */
+  failOnce = new Set<ChainMethod>();
   /** While set, `recordActivity` waits for it: lets a test look at the world mid-record. */
   recordGate: Promise<void> | null = null;
 
@@ -40,6 +42,7 @@ export class FakeActivityChain implements ActivityChain {
   private async run<T>(method: ChainMethod, args: unknown[], result: T): Promise<T> {
     this.calls.push({ method, args });
     if (method === 'recordActivity' && this.recordGate) await this.recordGate;
+    if (this.failOnce.delete(method)) throw new Error('network blip');
     if (method in this.failures) throw this.failures[method];
     return result;
   }
