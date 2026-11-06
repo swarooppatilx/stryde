@@ -43,8 +43,6 @@ const STEP_UP_ACTION = process.env.WORLD_STEP_UP_ACTION || 'stryde-step-up';
 const SKIP_REMOTE_VERIFY_REQUESTED = process.env.WORLD_SKIP_REMOTE_VERIFY === 'true';
 const IS_PRODUCTION_DEPLOY = isProduction();
 const SKIP_REMOTE_VERIFY = SKIP_REMOTE_VERIFY_REQUESTED && !IS_PRODUCTION_DEPLOY;
-const WORLD_DEVELOPER_API_KEY = process.env.WORLD_DEVELOPER_API_KEY;
-
 if (SKIP_REMOTE_VERIFY_REQUESTED && IS_PRODUCTION_DEPLOY) {
   console.error(
     '[world] WORLD_SKIP_REMOTE_VERIFY=true is ignored on the production deployment — every proof is verified with World.'
@@ -218,19 +216,15 @@ async function verifyWithWorld(idkitResponse: unknown): Promise<unknown> {
   if (!targetId) {
     throw new Error('World ID verification not configured');
   }
-  const environment = (idkitResponse as ProofResult | null)?.environment;
-  if (environment && environment !== WORLD_ENVIRONMENT) {
+  // The verify API treats a missing environment as production.
+  const environment = (idkitResponse as ProofResult | null)?.environment ?? 'production';
+  if (environment !== WORLD_ENVIRONMENT) {
     throw new Error(`invalid_proof: environment ${environment}, expected ${WORLD_ENVIRONMENT}`);
-  }
-
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (WORLD_DEVELOPER_API_KEY) {
-    headers.Authorization = `Bearer ${WORLD_DEVELOPER_API_KEY}`;
   }
 
   const response = await fetch(`https://developer.world.org/api/v4/verify/${targetId}`, {
     method: 'POST',
-    headers,
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(idkitResponse),
   });
 
@@ -239,7 +233,19 @@ async function verifyWithWorld(idkitResponse: unknown): Promise<unknown> {
     throw new Error(text || `Verification failed (${response.status})`);
   }
 
-  return text ? JSON.parse(text) : { success: true };
+  const verification = (text ? JSON.parse(text) : {}) as {
+    success?: boolean;
+    environment?: string;
+  };
+  if (verification.success !== true) {
+    throw new Error(text || 'Verification failed');
+  }
+  if (verification.environment && verification.environment !== WORLD_ENVIRONMENT) {
+    throw new Error(
+      `invalid_proof: verified in ${verification.environment}, expected ${WORLD_ENVIRONMENT}`
+    );
+  }
+  return verification;
 }
 
 export interface SessionCreateResponse {

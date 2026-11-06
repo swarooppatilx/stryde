@@ -141,7 +141,7 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
   it('is ignored on the production deployment: a proof is still sent to World', async () => {
     pollStatus.current = {
       type: 'confirmed',
-      result: { responses: [{ nullifier: `0x${'ab'.repeat(32)}` }] },
+      result: { environment: 'sandbox', responses: [{ nullifier: `0x${'ab'.repeat(32)}` }] },
     };
     const fetchMock = vi.fn().mockResolvedValue(new Response('bad proof', { status: 400 }));
     vi.stubGlobal('fetch', fetchMock);
