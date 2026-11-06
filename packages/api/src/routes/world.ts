@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  any,
   CredentialRequest,
   hashSignal,
   IDKit,
@@ -182,9 +183,39 @@ function extractNullifier(result: { responses?: ResultItem[] }): string | null {
   return null;
 }
 
-function selfieItem(result: ProofResult): ResultItem | undefined {
+type LivenessCredential = 'selfie' | 'proof_of_human';
+const KNOWN_LIVENESS: readonly LivenessCredential[] = ['selfie', 'proof_of_human'];
+
+/**
+ * Credentials that prove a live, unique human for the Athlete Pass: a Selfie Check, the Orb's Proof of
+ * Human, or either. WORLD_PASS_CREDENTIALS picks them (comma-separated); by default either is accepted.
+ * World App in production hangs on an either/or that includes Selfie Check while Selfie Check isn't
+ * enabled for the app, so production can be narrowed to `proof_of_human`.
+ */
+const LIVENESS_CREDENTIALS: readonly LivenessCredential[] = (() => {
+  const picked = (process.env.WORLD_PASS_CREDENTIALS ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part): part is LivenessCredential =>
+      (KNOWN_LIVENESS as readonly string[]).includes(part)
+    );
+  return picked.length > 0 ? picked : KNOWN_LIVENESS;
+})();
+
+/** One credential is asked for as is; several as "any of", and World returns whichever the person holds. */
+function livenessConstraint(signal: string) {
+  const requests = LIVENESS_CREDENTIALS.map((type) => CredentialRequest(type, { signal }));
+  return requests.length === 1
+    ? (requests[0] as ReturnType<typeof CredentialRequest>)
+    : any(...requests);
+}
+
+function livenessItem(result: ProofResult): ResultItem | undefined {
   return result.responses?.find(
-    (item) => item.identifier === 'selfie' || item.issuer_schema_id === 11
+    (item) =>
+      (typeof item.identifier === 'string' &&
+        (LIVENESS_CREDENTIALS as readonly string[]).includes(item.identifier)) ||
+      item.issuer_schema_id === 11
   );
 }
 
@@ -289,7 +320,7 @@ async function buildRequest(
       rp_context: rpContext(ENROLL_ACTION),
       allow_legacy_proofs: false,
       action_description: 'Get your Stryde Athlete Pass',
-    }).constraints(CredentialRequest('selfie', { signal: wallet }));
+    }).constraints(livenessConstraint(wallet));
   }
 
   if (kind === 'presence') {
@@ -299,7 +330,7 @@ async function buildRequest(
       ...common,
       rp_context: rpContext(),
       action_description: 'Finish line: confirm you ran this',
-    }).constraints(CredentialRequest('selfie', { signal: activityHash as string }));
+    }).constraints(livenessConstraint(activityHash as string));
   }
 
   return IDKit.request({
@@ -338,6 +369,12 @@ async function createSession(
   return { sessionId, connectorURI, kind };
 }
 
+/** An Orb Proof of Human is World's strongest uniqueness check and carries no Sybil score: it counts as the lowest risk. */
+function enrollmentSybilScore(item: ResultItem | undefined): number | null {
+  if (item?.identifier === 'proof_of_human' && item.sybil_score === undefined) return 0;
+  return normalizeSybilScore(item?.sybil_score);
+}
+
 /** Stryde's checks on a proof World has accepted, and what it unlocks. */
 function settle(entry: SessionEntry, result: ProofResult): Pick<PollResult, 'pass' | 'ticket'> {
   const store = getHumanPresenceStore();
@@ -350,7 +387,7 @@ function settle(entry: SessionEntry, result: ProofResult): Pick<PollResult, 'pas
         'World returned a proof for a different request.'
       );
     }
-    const item = selfieItem(result);
+    const item = livenessItem(result);
     requireSignal(item, entry.wallet);
     const nullifier = typeof item?.nullifier === 'string' ? item.nullifier : null;
     if (!nullifier) throw new ProofCheckError('unexpected_proof', 'The proof has no nullifier.');
@@ -358,14 +395,14 @@ function settle(entry: SessionEntry, result: ProofResult): Pick<PollResult, 'pas
       wallet: entry.wallet,
       sessionId: result.session_id as `session_${string}`,
       nullifier,
-      sybilScore: normalizeSybilScore(item?.sybil_score),
+      sybilScore: enrollmentSybilScore(item),
       now,
     });
     return { pass: toPublicPass(pass) };
   }
 
   if (entry.kind === 'presence') {
-    const item = selfieItem(result);
+    const item = livenessItem(result);
     requireSignal(item, entry.activityHash as string);
     const sessionNullifier = Array.isArray(item?.session_nullifier)
       ? item.session_nullifier[0]

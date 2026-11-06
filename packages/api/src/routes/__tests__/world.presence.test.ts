@@ -37,6 +37,7 @@ vi.mock('@worldcoin/idkit-core', () => {
   return {
     IDKitErrorCodes: { UserRejected: 'user_rejected', Cancelled: 'cancelled' },
     CredentialRequest: (type: string, options?: object) => ({ type, ...options }),
+    any: (...nodes: unknown[]) => ({ any: nodes }),
     proofOfHuman: (options: object) => ({ type: 'ProofOfHuman', ...options }),
     hashSignal: (signal: string) => signalHash(signal),
     IDKit: { request: builder('request'), proveSession: builder('proveSession') },
@@ -123,7 +124,12 @@ describe('Signed by a Human', () => {
     expect(built.calls[0]).toMatchObject({
       via: 'request',
       config: { action: 'stryde-athlete-pass', session_id: 'create', allow_legacy_proofs: false },
-      with: { type: 'selfie', signal: WALLET },
+      with: {
+        any: [
+          { type: 'selfie', signal: WALLET },
+          { type: 'proof_of_human', signal: WALLET },
+        ],
+      },
     });
   });
 
@@ -133,6 +139,35 @@ describe('Signed by a Human', () => {
     expect(result).toMatchObject({ httpStatus: 409, code: 'enroll_required' });
   });
 
+  it('asks for just the credentials WORLD_PASS_CREDENTIALS names', async () => {
+    process.env.WORLD_PASS_CREDENTIALS = 'proof_of_human';
+    try {
+      const world = await loadWorld();
+      await check(world, {}, enrollment(0));
+      expect(built.calls[0]).toMatchObject({
+        with: { type: 'proof_of_human', signal: WALLET },
+      });
+    } finally {
+      delete process.env.WORLD_PASS_CREDENTIALS;
+    }
+  });
+
+  it('enrolls with an Orb Proof of Human when the person has no Selfie Check credential', async () => {
+    const world = await loadWorld();
+    const orb = enrollment(0);
+    orb.responses = [
+      {
+        identifier: 'proof_of_human',
+        nullifier: '43',
+        signal_hash: signalHash(WALLET),
+        sybil_score: 0,
+      },
+    ];
+    const result = await check(world, {}, orb);
+
+    expect(result).toMatchObject({ status: 'confirmed', kind: 'enroll', pass: { band: 'low' } });
+  });
+
   it('proves the saved session with the run hash as signal, and issues a ticket for that run', async () => {
     const world = await loadWorld();
     await check(world, {}, enrollment(0));
@@ -140,7 +175,12 @@ describe('Signed by a Human', () => {
 
     expect(built.calls[1]).toMatchObject({
       via: 'proveSession',
-      with: { type: 'selfie', signal: RUN },
+      with: {
+        any: [
+          { type: 'selfie', signal: RUN },
+          { type: 'proof_of_human', signal: RUN },
+        ],
+      },
     });
     expect(result).toMatchObject({
       status: 'confirmed',
