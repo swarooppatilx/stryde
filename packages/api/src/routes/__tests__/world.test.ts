@@ -50,6 +50,7 @@ vi.mock('@worldcoin/idkit-core', () => {
   return {
     IDKitErrorCodes: { UserRejected: 'user_rejected', Cancelled: 'cancelled' },
     CredentialRequest: (type: string, options?: object) => ({ type, ...options }),
+    any: (...nodes: unknown[]) => ({ any: nodes }),
     proofOfHuman: () => ({}),
     hashSignal: (signal: string) => mockSignalHash(signal),
     IDKit: { request: builder, proveSession: builder },
