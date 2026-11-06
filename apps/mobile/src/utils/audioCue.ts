@@ -1,4 +1,5 @@
 import { getSportLabel } from '@/constants/activity';
+import { t as defaultT, type TFunction } from '@/i18n';
 import type { ActivityType, Lap, Split } from '@/types';
 import { countRegular } from '@/utils/plural';
 import { METERS_PER_MILE, showsSpeed, type UnitSystem } from './format';
@@ -82,11 +83,15 @@ export type AudioCueInterval = 'off' | 'unit' | 'half';
 
 export const AUDIO_CUE_INTERVALS: readonly AudioCueInterval[] = ['off', 'unit', 'half'];
 
-export function audioCueIntervalLabel(interval: AudioCueInterval, unitSystem: UnitSystem): string {
+export function audioCueIntervalLabel(
+  interval: AudioCueInterval,
+  unitSystem: UnitSystem,
+  t: TFunction = defaultT
+): string {
   const unit = unitSystem === 'imperial' ? 'mi' : 'km';
-  if (interval === 'unit') return `Every ${unit}`;
-  if (interval === 'half') return `Every half ${unit}`;
-  return 'Off';
+  if (interval === 'unit') return t('audioCue.everyUnit', { unit });
+  if (interval === 'half') return t('audioCue.everyHalfUnit', { unit });
+  return t('audioCue.off');
 }
 
 /** A point where a cue is due, counted in half units from the start: 1 is half a unit, 2 a whole one. */

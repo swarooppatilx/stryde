@@ -6,13 +6,24 @@ import { SettingsScreen } from '@/components/settings-screen';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useDeleteLocalData } from '@/hooks/useDeleteLocalData';
+import { type TKey, useT } from '@/i18n';
 import { backUpMyData, restoreFromBackup } from '@/services/backupMyData';
 import { countActivitiesInRange, exportActivitiesZip, exportMyData } from '@/services/exportMyData';
-import { EXPORT_RANGE_OPTIONS, type ExportRange } from '@/utils/bulkExport';
+import type { ExportRange } from '@/utils/bulkExport';
 import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
 
+const RANGE_KEY: Record<ExportRange, TKey> = {
+  all: 'data.rangeAll',
+  '30d': 'data.range30d',
+  year: 'data.rangeYear',
+  lastYear: 'data.rangeLastYear',
+};
+
+const RANGES: readonly ExportRange[] = ['all', '30d', 'year', 'lastYear'];
+
 export default function DataScreen() {
+  const t = useT();
   const router = useRouter();
   const handleDeleteLocalData = useDeleteLocalData();
   const [range, setRange] = useState<ExportRange>('all');
@@ -21,7 +32,7 @@ export default function DataScreen() {
   const exportZip = async () => {
     if (zipping) return;
     if (countActivitiesInRange(range) === 0) {
-      Toast.info('No activities in that range');
+      Toast.info(t('data.noActivities'));
       return;
     }
     setZipping(true);
@@ -29,71 +40,72 @@ export default function DataScreen() {
       await exportActivitiesZip(range);
     } catch (e) {
       logger.warn('[Data] Activity export failed', e);
-      Toast.fail("Couldn't export your activities", 2);
+      Toast.fail(t('data.zipFailed'), 2);
     } finally {
       setZipping(false);
     }
   };
 
   return (
-    <SettingsScreen title="Data">
-      <SettingsSection title="Your workouts and data">
+    <SettingsScreen title={t('data.title')}>
+      <SettingsSection title={t('data.sectionYour')}>
         <SettingsRow
           icon="fitness-outline"
-          title="Import workouts"
-          subtitle="Bring in workouts from your phone's health app"
+          title={t('data.importWorkouts')}
+          subtitle={t('data.importWorkoutsHint')}
           onPress={() => router.push('/health-import')}
         />
         <SettingsRow
           icon="download-outline"
-          title="Export my data"
-          subtitle="Save a copy of your activities and profile"
+          title={t('data.export')}
+          subtitle={t('data.exportHint')}
           onPress={() =>
             exportMyData().catch((e) => {
               logger.warn('[Data] Export failed', e);
-              Toast.fail("Couldn't export your data", 2);
+              Toast.fail(t('data.exportFailed'), 2);
             })
           }
         />
         <SettingsRow
           icon="map-outline"
-          title="Offline maps"
-          subtitle="Save map areas for places with no signal"
+          title={t('data.offlineMaps')}
+          subtitle={t('data.offlineMapsHint')}
           onPress={() => router.push('/offline-maps')}
         />
         <SettingsRow
           icon="cloud-upload-outline"
-          title="Back up my data"
-          subtitle="Save a file with your private activities, notes, gear, goals and settings"
+          title={t('data.backUp')}
+          subtitle={t('data.backUpHint')}
           onPress={() =>
             backUpMyData().catch((e) => {
               logger.warn('[Data] Backup failed', e);
-              Toast.fail("Couldn't make the backup", 2);
+              Toast.fail(t('data.backUpFailed'), 2);
             })
           }
         />
         <SettingsRow
           icon="cloud-download-outline"
-          title="Restore from a backup"
-          subtitle="Add what is in a backup file; what is on this phone is never overwritten"
+          title={t('data.restore')}
+          subtitle={t('data.restoreHint')}
           onPress={() =>
             restoreFromBackup().catch((e) => {
               logger.warn('[Data] Restore failed', e);
-              Toast.fail("Couldn't restore the backup", 2);
+              Toast.fail(t('data.restoreFailed'), 2);
             })
           }
         />
       </SettingsSection>
 
-      <SettingsSection
-        title="Export activities as files"
-        footer="One ZIP with a GPX file for each activity that has a route, plus an index of all of them. Heart rate and cadence are in the TCX and FIT files you can export from a single activity."
-      >
-        <ChipRow options={EXPORT_RANGE_OPTIONS} value={range} onChange={setRange} />
+      <SettingsSection title={t('data.sectionZip')} footer={t('data.zipFooter')}>
+        <ChipRow
+          options={RANGES.map((value) => ({ value, label: t(RANGE_KEY[value]) }))}
+          value={range}
+          onChange={setRange}
+        />
         <SettingsRow
           icon="archive-outline"
-          title={zipping ? 'Preparing your files...' : 'Export as ZIP'}
-          subtitle="GPX files and an index, for the range above"
+          title={zipping ? t('data.zipPreparing') : t('data.zipExport')}
+          subtitle={t('data.zipHint')}
           onPress={() => void exportZip()}
         />
       </SettingsSection>
@@ -104,23 +116,23 @@ export default function DataScreen() {
         accessibilityRole="header"
         style={{ marginTop: Spacing.four }}
       >
-        DANGER ZONE
+        {t('data.dangerZone')}
       </ThemedText>
-      <SettingsSection footer="Removes everything this phone holds about your account, including changes not sent yet, and logs you out. You are told what would be lost before anything is deleted.">
+      <SettingsSection footer={t('data.deleteLocalFooter')}>
         <SettingsRow
           icon="trash-outline"
-          title="Delete data on this device"
-          subtitle="Removes local data and logs you out"
+          title={t('data.deleteLocal')}
+          subtitle={t('data.deleteLocalHint')}
           onPress={handleDeleteLocalData}
           danger
         />
       </SettingsSection>
 
-      <SettingsSection footer="Removes what Stryde stored for your account, then wipes this phone and logs you out. Anything already saved to the public record cannot be erased. You can export first.">
+      <SettingsSection footer={t('data.deleteAccountFooter')}>
         <SettingsRow
           icon="close-circle-outline"
-          title="Delete my account"
-          subtitle="Removes your account data from Stryde"
+          title={t('data.deleteAccount')}
+          subtitle={t('data.deleteAccountHint')}
           onPress={() => router.push('/delete-account')}
           danger
         />

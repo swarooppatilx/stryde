@@ -10,20 +10,22 @@ import { ListIcon } from '@/components/list-icon';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { LOW_POWER_COPY } from '@/constants/copy';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useGoBack } from '@/hooks/useGoBack';
-import {
-  ACCURACY_MODE_CONFIG,
-  ACCURACY_MODES,
-  COUNTDOWN_OPTIONS,
-  useSettingsStore,
-} from '@/stores/settingsStore';
+import { useT } from '@/i18n';
+import { ACCURACY_MODES, COUNTDOWN_OPTIONS, useSettingsStore } from '@/stores/settingsStore';
 import { AUDIO_CUE_INTERVALS, audioCueIntervalLabel } from '@/utils/audioCue';
 
+const ACCURACY_TEXT = {
+  best: { label: 'accuracy.best', caption: 'recordingSettings.accuracyBestCaption' },
+  balanced: { label: 'accuracy.balanced', caption: 'recordingSettings.accuracyBalancedCaption' },
+  power: { label: 'accuracy.lowPower', caption: 'recordingSettings.accuracyPowerCaption' },
+} as const;
+
 export default function RecordingSettingsScreen() {
+  const t = useT();
   const goBack = useGoBack();
   const theme = useTheme();
   const unitSystem = useUnitSystem();
@@ -60,16 +62,16 @@ export default function RecordingSettingsScreen() {
               hitSlop={8}
               style={styles.backButton}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel={t('common.goBack')}
             >
               <Ionicons name="chevron-back" size={24} color={theme.text} />
             </Tappable>
-            <ThemedText type="headline">Recording</ThemedText>
+            <ThemedText type="headline">{t('recordingSettings.title')}</ThemedText>
             <View style={styles.headerSpacer} />
           </ThemedView>
 
           <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-            AUTO-PAUSE
+            {t('recordingSettings.headingAutoPause')}
           </ThemedText>
           <List>
             <List.Item
@@ -78,15 +80,12 @@ export default function RecordingSettingsScreen() {
                 <AppSwitch
                   checked={s.autoPauseOnFoot}
                   onChange={s.setAutoPauseOnFoot}
-                  label="Auto-pause runs and walks"
+                  label={t('recordingSettings.runsWalksLabel')}
                 />
               }
             >
-              Runs and walks
-              <List.Item.Brief>
-                Pauses when you stop moving, using the phone's motion sensor. A phone in your hand
-                reads steps less reliably.
-              </List.Item.Brief>
+              {t('recordingSettings.runsWalks')}
+              <List.Item.Brief>{t('recordingSettings.runsWalksHint')}</List.Item.Brief>
             </List.Item>
             <List.Item
               thumb={<ListIcon name="bicycle-outline" />}
@@ -94,19 +93,19 @@ export default function RecordingSettingsScreen() {
                 <AppSwitch
                   checked={s.autoPause}
                   onChange={s.setAutoPause}
-                  label="Auto-pause rides"
+                  label={t('recordingSettings.ridesLabel')}
                 />
               }
             >
-              Rides
-              <List.Item.Brief>Rides and other sports pause from your GPS speed.</List.Item.Brief>
+              {t('recordingSettings.rides')}
+              <List.Item.Brief>{t('recordingSettings.ridesHint')}</List.Item.Brief>
             </List.Item>
           </List>
 
           <AppleWatchSettings />
 
           <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-            AUDIO CUES
+            {t('recordingSettings.headingAudio')}
           </ThemedText>
           <List>
             <List.Item
@@ -115,26 +114,26 @@ export default function RecordingSettingsScreen() {
                 <AppSwitch
                   checked={s.announceActions}
                   onChange={s.setAnnounceActions}
-                  label="Announce start, pause and stop"
+                  label={t('recordingSettings.announce')}
                 />
               }
             >
-              Announce start, pause and stop
+              {t('recordingSettings.announce')}
             </List.Item>
           </List>
           <Segmented
-            label="Distance announcements"
+            label={t('recordingSettings.distanceAnnouncements')}
             showLabel
             value={s.audioCueInterval}
             options={AUDIO_CUE_INTERVALS.map((interval) => ({
               value: interval,
-              label: audioCueIntervalLabel(interval, unitSystem),
+              label: audioCueIntervalLabel(interval, unitSystem, t),
             }))}
             onChange={s.setAudioCueInterval}
           />
 
           <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-            SCREEN
+            {t('recordingSettings.headingScreen')}
           </ThemedText>
           <List>
             <List.Item
@@ -143,42 +142,42 @@ export default function RecordingSettingsScreen() {
                 <AppSwitch
                   checked={s.keepScreenOn}
                   onChange={s.setKeepScreenOn}
-                  label="Keep screen on while recording"
+                  label={t('recordingSettings.keepScreenOn')}
                 />
               }
             >
-              Keep screen on while recording
-              <List.Item.Brief>Uses more battery.</List.Item.Brief>
+              {t('recordingSettings.keepScreenOn')}
+              <List.Item.Brief>{t('recordingSettings.keepScreenOnHint')}</List.Item.Brief>
             </List.Item>
           </List>
           <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-            COUNTDOWN
+            {t('recordingSettings.headingCountdown')}
           </ThemedText>
           <Segmented
-            label="Countdown before recording starts"
+            label={t('recordingSettings.countdownLabel')}
             value={s.countdownSeconds}
             options={COUNTDOWN_OPTIONS.map((seconds) => ({
               value: seconds,
-              label: seconds === 0 ? 'Off' : `${seconds} s`,
+              label: seconds === 0 ? t('common.off') : t('recordingSettings.seconds', { seconds }),
             }))}
             onChange={s.setCountdownSeconds}
           />
 
           <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-            ADVANCED
+            {t('recordingSettings.headingAdvanced')}
           </ThemedText>
           <Segmented
-            label="GPS accuracy"
+            label={t('recordingSettings.gpsAccuracy')}
             showLabel
             value={s.accuracyMode}
             options={ACCURACY_MODES.map((mode) => ({
               value: mode,
-              label: ACCURACY_MODE_CONFIG[mode].label,
+              label: t(ACCURACY_TEXT[mode].label),
             }))}
             onChange={s.setAccuracyMode}
           />
           <ThemedText type="caption" themeColor="textSecondary">
-            {ACCURACY_MODE_CONFIG[s.accuracyMode].caption}
+            {t(ACCURACY_TEXT[s.accuracyMode].caption)}
           </ThemedText>
           <List>
             <List.Item
@@ -187,12 +186,12 @@ export default function RecordingSettingsScreen() {
                 <AppSwitch
                   checked={s.adjustGpsInBatterySaver}
                   onChange={s.setAdjustGpsInBatterySaver}
-                  label={LOW_POWER_COPY.settingLabel}
+                  label={t('recordingSettings.lowPowerLabel')}
                 />
               }
             >
-              {LOW_POWER_COPY.settingLabel}
-              <List.Item.Brief>{LOW_POWER_COPY.settingBrief}</List.Item.Brief>
+              {t('recordingSettings.lowPowerLabel')}
+              <List.Item.Brief>{t('recordingSettings.lowPowerHint')}</List.Item.Brief>
             </List.Item>
             <List.Item
               thumb={<ListIcon name="hardware-chip-outline" />}
@@ -200,12 +199,12 @@ export default function RecordingSettingsScreen() {
                 <AppSwitch
                   checked={s.useGyroscopeAssist}
                   onChange={s.setGyroscopeAssist}
-                  label="Gyroscope assist"
+                  label={t('recordingSettings.gyro')}
                 />
               }
             >
-              Gyroscope assist
-              <List.Item.Brief>Fills gaps in the route when the GPS signal drops.</List.Item.Brief>
+              {t('recordingSettings.gyro')}
+              <List.Item.Brief>{t('recordingSettings.gyroHint')}</List.Item.Brief>
             </List.Item>
           </List>
         </ScrollView>

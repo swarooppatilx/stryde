@@ -4,24 +4,26 @@ import { Linking } from 'react-native';
 import { SettingsRow, SettingsSection } from '@/components/settings-row';
 import { SettingsScreen } from '@/components/settings-screen';
 import { ENV } from '@/constants/config';
+import { useT } from '@/i18n';
 import { legalLinks } from '@/utils/legalLinks';
 import { Toast } from '@/utils/toast';
 
 export default function AboutScreen() {
   const router = useRouter();
-  const links = legalLinks(ENV.WEB_URL);
+  const t = useT();
+  const links = legalLinks(ENV.WEB_URL, t);
   return (
-    <SettingsScreen title="Help and About">
+    <SettingsScreen title={t('settings.help')}>
       <SettingsSection>
         <SettingsRow
           icon="information-circle-outline"
-          title="Version"
+          title={t('about.version')}
           subtitle={Constants.expoConfig?.version ?? '—'}
         />
         <SettingsRow
           icon="document-text-outline"
-          title="Licences"
-          subtitle="Open-source software Stryde is built with"
+          title={t('about.licences')}
+          subtitle={t('about.licencesHint')}
           onPress={() => router.push('/licences')}
         />
       </SettingsSection>
@@ -34,7 +36,9 @@ export default function AboutScreen() {
               title={link.title}
               subtitle={link.subtitle}
               onPress={() =>
-                Linking.openURL(link.url).catch(() => Toast.fail(`Could not open ${link.title}`, 2))
+                Linking.openURL(link.url).catch(() =>
+                  Toast.fail(t('about.openFailed', { name: link.title }), 2)
+                )
               }
             />
           ))}

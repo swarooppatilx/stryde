@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { en } from '@/i18n/locales/en';
 
 /**
  * Surfaces the owner has said must stay on screen. Vitest has no React Native runtime here, so
@@ -30,10 +31,13 @@ describe('the wallet and token stay visible', () => {
   });
 
   it('Settings > Account has a copyable address and both balances', () => {
-    expect(account).toContain('Wallet address');
+    expect(en.account.walletAddress).toBe('Wallet address');
+    expect(en.account.strdBalance).toBe('STRD balance');
+    expect(en.account.challengeFunds).toBe('Challenge funds');
+    expect(account).toContain("t('account.walletAddress')");
     expect(account).toContain('clipboard.copyText(address)');
-    expect(account).toContain('STRD balance');
-    expect(account).toContain('Challenge funds');
+    expect(account).toContain("t('account.strdBalance')");
+    expect(account).toContain("t('account.challengeFunds')");
   });
 
   it('balances are read through the balance source, so the Sandbox can supply its own', () => {

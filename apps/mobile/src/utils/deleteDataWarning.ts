@@ -1,24 +1,17 @@
-const BASE_MESSAGE =
-  'This removes your activities, gear, saved routes and settings from this phone, drops anything still waiting to be sent, and logs you out. Anything already saved to the public record cannot be erased.';
+import { t as defaultT, type TFunction } from '@/i18n';
 
 /** Says exactly what would be lost; the sentence is left out when nothing is waiting. */
-export function deleteDataMessage(unsentChanges: number, unsavedActivities: number): string {
+export function deleteDataMessage(
+  unsentChanges: number,
+  unsavedActivities: number,
+  t: TFunction = defaultT
+): string {
   const parts: string[] = [];
-  if (unsentChanges > 0) {
-    // The verb agrees with the count, so the noun and the verb are chosen together.
-    parts.push(
-      unsentChanges === 1
-        ? "1 change hasn't been sent yet"
-        : `${unsentChanges} changes haven't been sent yet`
-    );
-  }
+  if (unsentChanges > 0) parts.push(t('deleteData.unsentChanges', { count: unsentChanges }));
   if (unsavedActivities > 0) {
-    parts.push(
-      unsavedActivities === 1
-        ? "1 activity isn't saved to the chain"
-        : `${unsavedActivities} activities aren't saved to the chain`
-    );
+    parts.push(t('deleteData.unsavedActivities', { count: unsavedActivities }));
   }
-  if (parts.length === 0) return BASE_MESSAGE;
-  return `${parts.join(' and ')}. Deleting removes them for good.\n\n${BASE_MESSAGE}`;
+  const base = t('deleteData.base');
+  if (parts.length === 0) return base;
+  return t('deleteData.removesForGood', { parts: parts.join(t('deleteData.joiner')), base });
 }

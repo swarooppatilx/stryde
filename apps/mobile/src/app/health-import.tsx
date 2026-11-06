@@ -10,13 +10,14 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useHealthImport } from '@/hooks/useHealthImport';
-import { describeAutoSync } from '@/services/healthSync';
+import { useT } from '@/i18n';
 import { formatDateTime } from '@/utils/dates';
 import { formatRelativeTime } from '@/utils/format';
 import { describeImport } from '@/utils/healthImportMessage';
 
 /** Bring workouts recorded by a watch or another app into Stryde, from the phone's health data. */
 export default function HealthImportScreen() {
+  const t = useT();
   const goBack = useGoBack();
   const theme = useTheme();
   const {
@@ -40,21 +41,21 @@ export default function HealthImportScreen() {
       return (
         <ThemedText type="smallBold" themeColor="warningText">
           {status === 'update-required'
-            ? 'Update Health Connect from the Play Store, then come back.'
-            : 'Health Connect is not installed or not available on this phone, so there is nothing to import.'}
+            ? t('healthImport.updateNeeded')
+            : t('healthImport.notAvailable')}
         </ThemedText>
       );
     }
     if (hasAccess) {
       return (
         <AppButton loading={importing} onPress={() => void importNow()}>
-          Import now
+          {t('healthImport.importNow')}
         </AppButton>
       );
     }
     return (
       <AppButton disabled={status === 'checking'} onPress={() => void connect()}>
-        Allow Stryde to read workouts
+        {t('healthImport.allow')}
       </AppButton>
     );
   };
@@ -67,52 +68,53 @@ export default function HealthImportScreen() {
             onPress={goBack}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t('healthImport.back')}
           >
             <Ionicons name="chevron-back" size={24} color={theme.text} />
           </Tappable>
-          <ThemedText type="sectionTitle">Import workouts</ThemedText>
+          <ThemedText type="sectionTitle">{t('healthImport.title')}</ThemedText>
           <View style={styles.spacer} />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <ThemedText themeColor="textSecondary">
-            Stryde can read the workouts your watch or other apps saved to Health Connect (running,
-            cycling, walking, hiking and more) and add them to your activities. It only reads; it
-            never writes to your health data. Imported workouts are saved on this device first and
-            then recorded on-chain like any other activity.
-          </ThemedText>
+          <ThemedText themeColor="textSecondary">{t('healthImport.intro')}</ThemedText>
 
           {action()}
 
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
-              <ThemedText type="smallBold">Sync automatically</ThemedText>
+              <ThemedText type="smallBold">{t('healthImport.autoSync')}</ThemedText>
               <ThemedText type="caption" themeColor="textSecondary">
-                Checks for new workouts when you open the app.
+                {t('healthImport.autoSyncHint')}
               </ThemedText>
             </View>
             <AppSwitch
               checked={autoSync}
               onChange={(on) => void setAutoSync(on)}
-              label="Sync automatically"
+              label={t('healthImport.autoSync')}
               disabled={unavailable || status === 'checking'}
             />
           </View>
           {notInstalled && autoSync && (
             <ThemedText type="caption" themeColor="warningText">
-              Health Connect is unavailable right now, so nothing will be checked.
+              {t('healthImport.unavailableNow')}
             </ThemedText>
           )}
           {autoSync && lastAutoSync && (
             <ThemedText type="caption" themeColor="textSecondary">
-              {describeAutoSync(lastAutoSync, formatRelativeTime(new Date(lastAutoSync.at)))}
+              {t('healthImport.lastChecked', {
+                ago: formatRelativeTime(new Date(lastAutoSync.at)),
+                found:
+                  lastAutoSync.imported === 0
+                    ? t('healthImport.noNew')
+                    : t('healthImport.newWorkouts', { count: lastAutoSync.imported }),
+              })}
             </ThemedText>
           )}
 
-          {result && <ThemedText type="smallBold">{describeImport(result)}</ThemedText>}
+          {result && <ThemedText type="smallBold">{describeImport(result, t)}</ThemedText>}
           {lastImportAt !== null && (
             <ThemedText type="caption" themeColor="textSecondary">
-              Last imported {formatDateTime(lastImportAt)}
+              {t('healthImport.lastImported', { when: formatDateTime(lastImportAt) })}
             </ThemedText>
           )}
         </ScrollView>

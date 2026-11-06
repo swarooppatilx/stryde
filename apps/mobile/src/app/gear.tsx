@@ -14,6 +14,7 @@ import { Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useGoBack } from '@/hooks/useGoBack';
+import { type TKey, useT } from '@/i18n';
 import { useActivityStore } from '@/stores/activityStore';
 import { useGearStore } from '@/stores/gearStore';
 import type { GearKind } from '@/types';
@@ -22,13 +23,12 @@ import { formatDistance, METERS_PER_MILE } from '@/utils/format';
 import { gearAlertLevel } from '@/utils/gearComponents';
 import { gearMileage } from '@/utils/gearMileage';
 
-const KINDS: { value: GearKind; label: string }[] = [
-  { value: 'shoes', label: 'Shoes' },
-  { value: 'bike', label: 'Bike' },
-];
+const KIND_KEY: Record<GearKind, TKey> = { shoes: 'gear.kindShoes', bike: 'gear.kindBike' };
+const KIND_ORDER: readonly GearKind[] = ['shoes', 'bike'];
 
 /** Shoes and bikes kept on this device, with the distance each has covered. */
 export default function GearScreen() {
+  const t = useT();
   const goBack = useGoBack();
   const theme = useTheme();
   const unitSystem = useUnitSystem();
@@ -66,19 +66,16 @@ export default function GearScreen() {
             onPress={goBack}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t('healthImport.back')}
           >
             <Ionicons name="chevron-back" size={24} color={theme.text} />
           </Tappable>
-          <ThemedText type="sectionTitle">Gear</ThemedText>
+          <ThemedText type="sectionTitle">{t('gear.title')}</ThemedText>
           <View style={styles.spacer} />
         </View>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {active.length === 0 && (
-            <ThemedText themeColor="textSecondary">
-              Add your shoes or bike to see how far each has gone. You pick one when you save an
-              activity.
-            </ThemedText>
+            <ThemedText themeColor="textSecondary">{t('gear.empty')}</ThemedText>
           )}
           {active.map((g) => {
             const alert = gearAlertLevel(g, activities);
@@ -106,18 +103,18 @@ export default function GearScreen() {
                         type="small"
                         style={{ color: alert === 'over' ? Brand.danger : theme.warningText }}
                       >
-                        {alert === 'over' ? 'A part is past its limit' : 'A part is nearly worn'}
+                        {alert === 'over' ? t('gear.partOver') : t('gear.partWorn')}
                       </ThemedText>
                     )}
                   </View>
                   <Tappable
-                    onPress={() => confirmRetire(g.name, () => retireGear(g.id))}
+                    onPress={() => confirmRetire(g.name, () => retireGear(g.id), t)}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={`Retire ${g.name}`}
+                    accessibilityLabel={t('gear.retireLabel', { name: g.name })}
                   >
                     <ThemedText type="small" themeColor="textSecondary">
-                      Retire
+                      {t('gear.retire')}
                     </ThemedText>
                   </Tappable>
                 </View>
@@ -127,23 +124,29 @@ export default function GearScreen() {
           })}
 
           <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.addLabel}>
-            Add gear
+            {t('gear.addHeading')}
           </ThemedText>
           <TextField
-            placeholder="Name, e.g. Daily trainers"
+            placeholder={t('gear.namePlaceholder')}
             value={name}
             onChangeText={setName}
             maxLength={GEAR_NAME_MAX}
           />
-          <SegmentedChoice<GearKind> options={KINDS} selected={kind} onSelect={setKind} />
+          <SegmentedChoice<GearKind>
+            options={KIND_ORDER.map((value) => ({ value, label: t(KIND_KEY[value]) }))}
+            selected={kind}
+            onSelect={setKind}
+          />
           <TextField
-            placeholder={`Already covered (${unitSystem === 'imperial' ? 'mi' : 'km'}), optional`}
+            placeholder={t('gear.alreadyPlaceholder', {
+              unit: unitSystem === 'imperial' ? 'mi' : 'km',
+            })}
             value={already}
             onChangeText={setAlready}
             keyboardType="decimal-pad"
           />
           <AppButton disabled={!canAdd} onPress={handleAdd}>
-            Add
+            {t('gear.add')}
           </AppButton>
         </ScrollView>
       </SafeAreaView>

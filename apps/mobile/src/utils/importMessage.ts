@@ -1,3 +1,5 @@
+import { t as defaultT, type TFunction } from '@/i18n';
+
 /** What the import screen says; none of it names how activities are stored. */
 export const IMPORT_COPY = {
   title: 'Import activities',
@@ -19,7 +21,10 @@ export interface FileImportCounts {
 }
 
 /** The result line after an import: how many went in, how many were left out, and any that failed. */
-export function describeFileImport({ imported, skipped, failed }: FileImportCounts): string {
-  const base = `${imported} imported, ${skipped} skipped`;
-  return failed > 0 ? `${base}, ${failed} could not be saved` : base;
+export function describeFileImport(
+  { imported, skipped, failed }: FileImportCounts,
+  t: TFunction = defaultT
+): string {
+  if (failed > 0) return t('importFiles.resultFailed', { imported, skipped, failed });
+  return t('importFiles.result', { imported, skipped });
 }

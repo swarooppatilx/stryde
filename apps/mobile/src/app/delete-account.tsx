@@ -8,18 +8,14 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useWipeLocalData } from '@/hooks/useDeleteLocalData';
 import { useOutboxEntries } from '@/hooks/useOutbox';
+import { useT } from '@/i18n';
 import {
   ACCOUNT_DELETE_KEY,
   requestAccountDeletion,
   takeDeletionCounts,
 } from '@/services/accountDeletion';
 import { exportMyData } from '@/services/exportMyData';
-import {
-  DELETE_CONFIRM_WORD,
-  deletionCopy,
-  isDeleteConfirmed,
-  removedSummary,
-} from '@/utils/accountDeletion';
+import { DELETE_CONFIRM_WORD, isDeleteConfirmed, removedSummary } from '@/utils/accountDeletion';
 import { Alert } from '@/utils/alert';
 import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
@@ -27,6 +23,7 @@ import { Toast } from '@/utils/toast';
 type Phase = 'form' | 'sending' | 'queued' | 'refused';
 
 export default function DeleteAccountScreen() {
+  const t = useT();
   const wipe = useWipeLocalData();
   const entries = useOutboxEntries();
   const waiting = entries.some((entry) => entry.key === ACCOUNT_DELETE_KEY);
@@ -38,15 +35,12 @@ export default function DeleteAccountScreen() {
     try {
       await wipe();
       Alert.alert(
-        'Account deleted',
-        `${counts ? removedSummary(counts) : 'Your request was sent.'}\n\n${deletionCopy.permanent}`
+        t('deleteAccount.deletedTitle'),
+        `${counts ? removedSummary(counts, t) : t('deleteAccount.requestSent')}\n\n${t('deleteAccount.permanent')}`
       );
     } catch (error) {
       logger.error('[DeleteAccount] Wiping this phone failed', error);
-      Alert.alert(
-        'Could not clear this phone',
-        'Your account data was removed. Log out to finish.'
-      );
+      Alert.alert(t('deleteAccount.wipeFailedTitle'), t('deleteAccount.wipeFailedBody'));
     }
   };
 
@@ -76,35 +70,35 @@ export default function DeleteAccountScreen() {
   const confirmed = isDeleteConfirmed(typed);
 
   return (
-    <SettingsScreen title="Delete my account">
-      <ThemedText>{deletionCopy.intro}</ThemedText>
-      <ThemedText themeColor="textSecondary">{deletionCopy.permanent}</ThemedText>
+    <SettingsScreen title={t('deleteAccount.title')}>
+      <ThemedText>{t('deleteAccount.intro')}</ThemedText>
+      <ThemedText themeColor="textSecondary">{t('deleteAccount.permanent')}</ThemedText>
 
       {phase === 'queued' ? (
-        <ThemedText accessibilityLiveRegion="polite">{deletionCopy.queued}</ThemedText>
+        <ThemedText accessibilityLiveRegion="polite">{t('deleteAccount.queued')}</ThemedText>
       ) : null}
       {phase === 'refused' ? (
         <ThemedText themeColor="dangerText" accessibilityLiveRegion="polite">
-          {deletionCopy.refused}
+          {t('deleteAccount.refused')}
         </ThemedText>
       ) : null}
 
       {phase === 'form' || phase === 'sending' || phase === 'refused' ? (
         <View style={{ gap: Spacing.three, marginTop: Spacing.two }}>
-          <ThemedText themeColor="textSecondary">{deletionCopy.exportFirst}</ThemedText>
+          <ThemedText themeColor="textSecondary">{t('deleteAccount.exportFirst')}</ThemedText>
           <AppButton
             variant="secondary"
             onPress={() =>
               exportMyData().catch((error) => {
                 logger.warn('[DeleteAccount] Export failed', error);
-                Toast.fail("Couldn't export your data", 2);
+                Toast.fail(t('deleteAccount.exportFailed'), 2);
               })
             }
           >
-            Export my data
+            {t('deleteAccount.exportButton')}
           </AppButton>
           <TextField
-            label={`Type ${DELETE_CONFIRM_WORD} to confirm`}
+            label={t('deleteAccount.typeToConfirm', { word: DELETE_CONFIRM_WORD })}
             value={typed}
             onChangeText={setTyped}
             autoCapitalize="characters"
@@ -116,7 +110,7 @@ export default function DeleteAccountScreen() {
             loading={phase === 'sending'}
             onPress={request}
           >
-            Delete my account
+            {t('deleteAccount.title')}
           </AppButton>
         </View>
       ) : null}

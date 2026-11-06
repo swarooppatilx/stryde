@@ -3,47 +3,73 @@ import { SettingsRow, SettingsSection } from '@/components/settings-row';
 import { SettingsScreen } from '@/components/settings-screen';
 import { ThemedText } from '@/components/themed-text';
 import { useNotificationPermission } from '@/hooks/useNotificationPermission';
+import { type TKey, useT } from '@/i18n';
 import { getPlatform } from '@/platform';
-import { NOTIFICATION_KINDS, useNotificationPrefsStore } from '@/stores/notificationPrefsStore';
+import {
+  NOTIFICATION_KINDS,
+  type NotificationKind,
+  useNotificationPrefsStore,
+} from '@/stores/notificationPrefsStore';
 import { logger } from '@/utils/logger';
 import { notificationPermissionLabel } from '@/utils/settingsSummary';
+
+const KIND_KEY: Record<NotificationKind, TKey> = {
+  newFollower: 'notifications.kindNewFollower',
+  kudos: 'notifications.kindKudos',
+  comments: 'notifications.kindComments',
+  mentions: 'notifications.kindMentions',
+  friendActivities: 'notifications.kindFriendActivities',
+  clubUpdates: 'notifications.kindClubUpdates',
+  challenges: 'notifications.kindChallenges',
+  milestones: 'notifications.kindMilestones',
+  segments: 'notifications.kindSegments',
+  goalReached: 'notifications.kindGoalReached',
+  streakAtRisk: 'notifications.kindStreakAtRisk',
+  weeklySummary: 'notifications.kindWeeklySummary',
+  recordingNotice: 'notifications.kindRecordingNotice',
+  uploadFailure: 'notifications.kindUploadFailure',
+};
 
 const ACTIVITY_KINDS = NOTIFICATION_KINDS.filter((k) => !k.local);
 const DEVICE_KINDS = NOTIFICATION_KINDS.filter((k) => k.local);
 
 export default function NotificationsScreen() {
+  const t = useT();
   const allowed = useNotificationPermission();
   const prefs = useNotificationPrefsStore((s) => s.prefs);
   const setEnabled = useNotificationPrefsStore((s) => s.setEnabled);
 
-  const renderKind = ({ kind, label }: (typeof NOTIFICATION_KINDS)[number]) => (
-    <SettingsRow
-      key={kind}
-      icon="notifications-outline"
-      title={label}
-      subtitle={prefs[kind] ? 'On' : 'Off'}
-      extra={
-        <AppSwitch checked={prefs[kind]} onChange={(on) => setEnabled(kind, on)} label={label} />
-      }
-    />
-  );
+  const renderKind = ({ kind }: (typeof NOTIFICATION_KINDS)[number]) => {
+    const label = t(KIND_KEY[kind]);
+    return (
+      <SettingsRow
+        key={kind}
+        icon="notifications-outline"
+        title={label}
+        subtitle={prefs[kind] ? t('common.on') : t('common.off')}
+        extra={
+          <AppSwitch checked={prefs[kind]} onChange={(on) => setEnabled(kind, on)} label={label} />
+        }
+      />
+    );
+  };
 
   return (
-    <SettingsScreen title="Notifications">
+    <SettingsScreen title={t('notifications.title')}>
       <ThemedText type="small" themeColor="textSecondary">
-        These choices apply once notifications are enabled on this phone.
+        {t('notifications.intro')}
       </ThemedText>
 
       <SettingsSection>
         <SettingsRow
           icon="phone-portrait-outline"
-          title="Allow notifications"
-          subtitle={notificationPermissionLabel(allowed)}
+          title={t('notifications.allow')}
+          subtitle={notificationPermissionLabel(allowed, t)}
         />
         <SettingsRow
           icon="settings-outline"
-          title="Open phone settings"
-          subtitle="Change this in your phone's app settings"
+          title={t('notifications.openSettings')}
+          subtitle={t('notifications.openSettingsHint')}
           onPress={() =>
             void getPlatform()
               .readiness.openAppSettings()
@@ -52,10 +78,13 @@ export default function NotificationsScreen() {
         />
       </SettingsSection>
 
-      <SettingsSection title="Activity and people">
+      <SettingsSection title={t('notifications.sectionActivity')}>
         {ACTIVITY_KINDS.map(renderKind)}
       </SettingsSection>
-      <SettingsSection title="On this phone" footer="These never leave your phone.">
+      <SettingsSection
+        title={t('notifications.sectionDevice')}
+        footer={t('notifications.deviceFooter')}
+      >
         {DEVICE_KINDS.map(renderKind)}
       </SettingsSection>
     </SettingsScreen>
