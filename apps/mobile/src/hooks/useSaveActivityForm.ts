@@ -7,6 +7,8 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { useManualEntry } from '@/hooks/useManualEntry';
 import { usePostRun } from '@/hooks/usePostRun';
 import { type SaveActivityRecording, useSaveActivityParams } from '@/hooks/useSaveActivityParams';
+import { useViemWallet } from '@/hooks/useViemWallet';
+import { attachSessionToActivity, runPostActivityPipeline } from '@/services/activityPipeline';
 import { EmptyRecordingError, type PostRunInput, type SavePhase } from '@/services/postRun';
 import { useGearStore } from '@/stores/gearStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -44,7 +46,7 @@ type SaveResult = Awaited<ReturnType<ReturnType<typeof usePostRun>['save']>>;
 function announceOutcome(result: SaveResult, openVerify: () => void) {
   if (result.onchainFailed) {
     Alert.alert(COPY.saveFailedTitle, COPY.saveFailedBody);
-  } else if (result.needsVerification) {
+  } else if (result.needsVerification && !result.rewardHold) {
     Alert.alert(
       'Verify to claim territory',
       'Verify with World ID Selfie Check to claim territory and help keep the map fair for everyone.',
@@ -115,6 +117,7 @@ export function useSaveActivityForm() {
   const unitSystem = useUnitSystem();
   const recording = useSaveActivityParams();
   const { isFromTracking, runId } = recording;
+  const { address } = useViemWallet();
   const { save } = usePostRun();
   const hideRouteEnds = useSettingsStore((s) => s.hideRouteEnds);
   const privacyZones = useSettingsStore((s) => s.privacyZones);
@@ -193,8 +196,21 @@ export function useSaveActivityForm() {
       );
       const result = await save(input, undefined, setPhase);
       announceOutcome(result, () => router.push('/verify'));
+      if (isFromTracking && attachSessionToActivity(result.activity.id) && address) {
+        void runPostActivityPipeline({
+          activityId: result.activity.id,
+          onchainActivityId: result.activity.onchainActivityId,
+          name: title,
+          distance,
+          athlete: address,
+        });
+      }
       if (runId) dropRecordedRun(runId);
       router.replace({ pathname: '/post-upload', params: { id: result.activity.id } });
+      // The finish line is the moment to sign the run, while the athlete is still holding the phone.
+      if (result.rewardHold && !result.onchainFailed) {
+        router.push({ pathname: '/finish-line', params: { id: result.activity.id } });
+      }
     } catch (err) {
       announceFailure(err);
     } finally {

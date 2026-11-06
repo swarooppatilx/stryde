@@ -7,6 +7,7 @@ import { AnalysisCard } from '@/components/activity-detail/analysis-card';
 import { ActivityHeartRateSection } from '@/components/activity-heart-rate-section';
 import { ActivityPhotos } from '@/components/activity-photos';
 import { ActivityPrivateDetails } from '@/components/activity-private-details';
+import { ActivityProofCard } from '@/components/activity-proof-card';
 import { ActivityReceiptLink } from '@/components/activity-receipt-link';
 import { ActivityRecordChips } from '@/components/activity-record-chips';
 import { ActivitySocialRow } from '@/components/activity-social-row';
@@ -14,6 +15,7 @@ import { BestEfforts } from '@/components/best-efforts';
 import { AppButton } from '@/components/button';
 import { GearPicker } from '@/components/gear-picker';
 import { LapsList } from '@/components/laps-list';
+import { RewardHoldBanner } from '@/components/reward-hold-banner';
 import { SplitsList } from '@/components/splits-list';
 import { StatRow } from '@/components/stat-row';
 import { ThemedText } from '@/components/themed-text';
@@ -194,6 +196,8 @@ export function ActivitySheetBody({
         onSave={detail.handleSaveDescription}
       />
 
+      {isOwner && <RewardHoldBanner activity={activity} />}
+      {isOwner && <ActivityProofCard activity={activity} />}
       {isOwner && <ActivityPrivateDetails activity={activity} />}
 
       <ThemedView style={styles.actions}>
