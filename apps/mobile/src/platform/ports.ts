@@ -214,6 +214,57 @@ export interface HealthSource {
 }
 
 /**
+ * Whether a watch can join a recording. `not-installed`: paired, but the Stryde watch app isn't on it;
+ * `needs-permission`: health access hasn't been granted (or was refused).
+ */
+export type WatchStatus =
+  | 'unsupported'
+  | 'not-paired'
+  | 'not-installed'
+  | 'needs-permission'
+  | 'ready';
+
+/** Where the watch's workout is; `disconnected` means its readings stopped arriving mid-run. */
+export type WatchState = 'running' | 'paused' | 'ended' | 'disconnected';
+
+/** One live reading from the watch's workout. Totals are since the workout began; absent fields weren't measured. */
+export interface WatchSample {
+  /** When the watch took it, ms since 1970. */
+  t: number;
+  /** Beats per minute. */
+  heartRate?: number;
+  /** Metres covered so far. */
+  distance?: number;
+  /** Active kilocalories burned so far. */
+  calories?: number;
+  /** Steps per minute. */
+  cadence?: number;
+  /** Running or cycling power, watts. */
+  power?: number;
+  /** Current speed, metres per second. */
+  speed?: number;
+}
+
+/** A sport the watch can run a workout for. */
+export type WatchSport = 'run' | 'walk' | 'hike' | 'ride';
+
+/** The Stryde app on a paired watch: runs the workout there and streams its readings to the phone. */
+export interface WatchLink {
+  status(): Promise<WatchStatus>;
+  /** Shows the health permission screen; the status afterwards. */
+  requestAccess(): Promise<WatchStatus>;
+  /** Opens the watch app and starts its workout; false when the watch couldn't be reached. */
+  start(sport: WatchSport): Promise<boolean>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  /** Ends the watch's workout (it saves it to the phone's health data). */
+  end(): Promise<void>;
+  onSample(listener: (sample: WatchSample) => void): Subscription;
+  /** Changes made on either device: a pause pressed on the watch arrives here. */
+  onState(listener: (state: WatchState) => void): Subscription;
+}
+
+/**
  * What the phone reports before a run about things that quietly end a recording. `null` means
  * it cannot be read here. Battery optimisation is deliberately absent: no installed package reads it.
  */
@@ -266,6 +317,7 @@ export interface Platform {
   photos: PhotoLibrary;
   files: Files;
   health: HealthSource;
+  watch: WatchLink;
   readiness: DeviceReadiness;
   push: PushNotifications;
 }

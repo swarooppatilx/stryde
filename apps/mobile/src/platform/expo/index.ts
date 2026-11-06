@@ -18,6 +18,7 @@ import { expoPrompter } from './prompter';
 import { expoPushNotifications } from './pushNotifications';
 import { expoDeviceReadiness } from './readiness';
 import { expoSpeaker } from './speaker';
+import { expoWatchLink } from './watch';
 
 /** The real device. The only place Expo modules are wired in. */
 export function createExpoPlatform(): Platform {
@@ -38,6 +39,7 @@ export function createExpoPlatform(): Platform {
     photos: expoPhotoLibrary,
     files: expoFiles,
     health: expoHealthSource,
+    watch: expoWatchLink,
     readiness: expoDeviceReadiness,
     push: expoPushNotifications,
   };

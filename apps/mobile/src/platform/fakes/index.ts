@@ -17,10 +17,12 @@ import {
   SequentialIds,
 } from './device';
 import { FakeBackgroundLocation, FakeGeocoder, FakeLocationSource } from './location';
+import { FakeWatchLink } from './watch';
 
 export * from './device';
 export * from './location';
 export * from './tracks';
+export * from './watch';
 
 /** A Platform whose members keep their concrete fake types, so tests can script and inspect them. */
 export interface FakePlatform extends Platform {
@@ -40,6 +42,7 @@ export interface FakePlatform extends Platform {
   photos: ScriptedPhotoLibrary;
   files: MemoryFiles;
   health: FakeHealthSource;
+  watch: FakeWatchLink;
   readiness: FakeDeviceReadiness;
   push: FakePushNotifications;
 }
@@ -62,6 +65,7 @@ export function createFakePlatform(overrides: Partial<FakePlatform> = {}): FakeP
     photos: new ScriptedPhotoLibrary(),
     files: new MemoryFiles(),
     health: new FakeHealthSource(),
+    watch: new FakeWatchLink(),
     readiness: new FakeDeviceReadiness(),
     push: new FakePushNotifications(),
     ...overrides,
