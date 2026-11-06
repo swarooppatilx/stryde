@@ -115,8 +115,12 @@ export function createEntityStore(
     return query;
   };
 
-  /** Pages through the matches (sorted by key so offsets line up) until `limit` are read, plus one to tell if more remain. */
-  async function read(filters: Filter[], limit: number, withPayload: boolean) {
+  /**
+   * Pages through the matches until `limit` are read, plus one to tell if more remain. Sorted by key by
+   * default so offsets line up; a caller can sort by one of its own columns instead (a total order, such
+   * as the mirror's `evt`, keeps offsets just as stable).
+   */
+  async function read(filters: Filter[], limit: number, withPayload: boolean, order = '$key') {
     const selection = selectionFor(schema, withPayload);
     const found: Row[] = [];
     let offset = 0;
@@ -125,7 +129,7 @@ export function createEntityStore(
     while (found.length < limit + 1) {
       const want = sawSkips ? NODE_PAGE_LIMIT : Math.min(NODE_PAGE_LIMIT, limit + 1 - found.length);
       const page = await builder(selection, filters)
-        .orderBy(asc('$key'))
+        .orderBy(asc(order))
         .limit(want)
         .offset(offset)
         .fetch();
@@ -146,10 +150,12 @@ export function createEntityStore(
     creator,
 
     /** Entities matching `filters`: key and columns only. */
-    query: (filters: Filter[], limit = PAGE_LIMIT) => read(filters, limit, false),
+    query: (filters: Filter[], limit = PAGE_LIMIT, order?: string) =>
+      read(filters, limit, false, order),
 
     /** Like `query`, with each entity's body so `toJson()` works. */
-    queryWithPayload: (filters: Filter[], limit = PAGE_LIMIT) => read(filters, limit, true),
+    queryWithPayload: (filters: Filter[], limit = PAGE_LIMIT, order?: string) =>
+      read(filters, limit, true, order),
 
     /** How many entities match, up to `limit`. */
     async count(filters: Filter[], limit = PAGE_LIMIT) {
