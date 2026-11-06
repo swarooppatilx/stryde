@@ -9,8 +9,16 @@ export interface ZeroGReceipt {
   costUsdMicro: number | null;
 }
 
+export type CoachPlanType = 'rest' | 'recovery' | 'easy' | 'tempo' | 'intervals' | 'long' | 'cross';
+export type CoachPlanEffort = 'rest' | 'easy' | 'moderate' | 'hard';
+
 export interface CoachPlan {
   title: string;
+  /** Absent on plans saved before plans were structured. */
+  type?: CoachPlanType;
+  distanceKm?: number | null;
+  durationMin?: number | null;
+  effort?: CoachPlanEffort;
   summary: string;
   steps: { label: string; detail: string }[];
   why: string;

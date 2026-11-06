@@ -30,25 +30,75 @@ describe('extractJson', () => {
   });
 });
 
+const PLAN = {
+  title: 'Easy recovery jog',
+  type: 'easy',
+  distanceKm: 3,
+  durationMin: 25,
+  effort: 'easy',
+  summary: 'Shake out the legs.',
+  steps: [
+    { label: 'Warm up', detail: '5 min walk' },
+    { label: 'Jog', detail: '3 km at 6:30/km' },
+  ],
+  why: 'Yesterday was your longest run this week.',
+};
+const plan = (over: Record<string, unknown> = {}) =>
+  parsePlan(JSON.stringify({ ...PLAN, ...over }));
+
 describe('parsePlan', () => {
-  it('keeps a well-formed plan', () => {
-    const plan = parsePlan(
-      JSON.stringify({
-        title: 'Easy recovery jog',
-        summary: 'Shake out the legs.',
-        steps: [
-          { label: 'Warm up', detail: '5 min walk' },
-          { label: 'Jog', detail: '3 km at 6:30/km' },
-        ],
-        why: 'Yesterday was your longest run this week.',
-      })
-    );
-    expect(plan?.title).toBe('Easy recovery jog');
-    expect(plan?.steps).toHaveLength(2);
+  it('keeps a well-formed structured plan', () => {
+    expect(plan()).toMatchObject({
+      title: 'Easy recovery jog',
+      type: 'easy',
+      distanceKm: 3,
+      durationMin: 25,
+      effort: 'easy',
+    });
+    expect(plan()?.steps).toHaveLength(2);
   });
 
-  it('rejects a plan without steps', () => {
-    expect(parsePlan('{"title": "Rest", "steps": []}')).toBeNull();
+  it('rejects a plan without steps or a title', () => {
+    expect(
+      parsePlan('{"title": "Rest", "type": "rest", "effort": "rest", "steps": []}')
+    ).toBeNull();
+    expect(plan({ title: '  ' })).toBeNull();
+  });
+
+  it('rejects a type or effort outside the enums, or missing', () => {
+    expect(plan({ type: 'marathon' })).toBeNull();
+    expect(plan({ effort: 'brutal' })).toBeNull();
+    expect(plan({ type: undefined })).toBeNull();
+    expect(plan({ effort: undefined })).toBeNull();
+  });
+
+  it('rejects out-of-range or non-numeric distance and duration', () => {
+    expect(plan({ distanceKm: 0 })).toBeNull();
+    expect(plan({ distanceKm: -3 })).toBeNull();
+    expect(plan({ distanceKm: 61 })).toBeNull();
+    expect(plan({ distanceKm: '5' })).toBeNull();
+    expect(plan({ durationMin: 301 })).toBeNull();
+  });
+
+  it('accepts null or missing figures and rounds the rest', () => {
+    expect(plan({ distanceKm: null, durationMin: null })).toMatchObject({
+      distanceKm: null,
+      durationMin: null,
+    });
+    expect(plan({ distanceKm: undefined })?.distanceKm).toBeNull();
+    expect(plan({ distanceKm: 5.46, durationMin: 30.6 })).toMatchObject({
+      distanceKm: 5.5,
+      durationMin: 31,
+    });
+  });
+
+  it('turns a rest day into no distance, no duration and rest effort', () => {
+    expect(plan({ type: 'rest', distanceKm: 5, durationMin: 30, effort: 'hard' })).toMatchObject({
+      type: 'rest',
+      distanceKm: null,
+      durationMin: null,
+      effort: 'rest',
+    });
   });
 });
 

@@ -57,7 +57,7 @@ describe('coach routes', () => {
           {
             message: {
               content:
-                '{"title":"Easy jog","summary":"Recover.","steps":[{"label":"Jog","detail":"3 km easy"}],"why":"Long run yesterday."}',
+                '{"title":"Easy jog","type":"easy","distanceKm":3,"durationMin":25,"effort":"easy","summary":"Recover.","steps":[{"label":"Jog","detail":"3 km easy"}],"why":"Long run yesterday."}',
             },
           },
         ],
@@ -68,12 +68,13 @@ describe('coach routes', () => {
 
     const res = await post('/plan', { wallet: WALLET, history: [RUN], today: '2026-11-06' });
     const body = (await res.json()) as {
-      plan: { title: string };
+      plan: { title: string; type: string; distanceKm: number };
       zeroG: { requestId: string; costUsdMicro: number }[];
     };
 
     expect(res.status).toBe(200);
     expect(body.plan.title).toBe('Easy jog');
+    expect(body.plan).toMatchObject({ type: 'easy', distanceKm: 3 });
     expect(body.zeroG[0]).toMatchObject({
       requestId: 'req_test',
       model: '0gm-1.0-35b-a3b',
@@ -91,7 +92,10 @@ describe('coach routes', () => {
         routerReply({
           choices: [
             {
-              message: { content: '{"title":"Rest","steps":[{"label":"Rest","detail":"Off"}]}' },
+              message: {
+                content:
+                  '{"title":"Rest","type":"rest","effort":"rest","steps":[{"label":"Rest","detail":"Off"}]}',
+              },
             },
           ],
         })
@@ -122,7 +126,10 @@ describe('coach routes', () => {
         routerReply({
           choices: [
             {
-              message: { content: '{"title":"Rest","steps":[{"label":"Rest","detail":"Off"}]}' },
+              message: {
+                content:
+                  '{"title":"Rest","type":"rest","effort":"rest","steps":[{"label":"Rest","detail":"Off"}]}',
+              },
             },
           ],
         })

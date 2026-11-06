@@ -21,8 +21,28 @@ export interface WorkoutStep {
   detail: string;
 }
 
+export const PLAN_TYPES = [
+  'rest',
+  'recovery',
+  'easy',
+  'tempo',
+  'intervals',
+  'long',
+  'cross',
+] as const;
+export const PLAN_EFFORTS = ['rest', 'easy', 'moderate', 'hard'] as const;
+
+export type PlanType = (typeof PLAN_TYPES)[number];
+export type PlanEffort = (typeof PLAN_EFFORTS)[number];
+
 export interface DailyPlan {
   title: string;
+  /** What kind of session it is; checked against the athlete's load before it is shown. */
+  type: PlanType;
+  /** Target distance, or null for rest and time-based sessions. */
+  distanceKm: number | null;
+  durationMin: number | null;
+  effort: PlanEffort;
   summary: string;
   steps: WorkoutStep[];
   why: string;
@@ -94,7 +114,11 @@ export function planMessages(history: RunSummary[], today: string, goal?: string
       content:
         "You are Stryde Coach, a running and walking coach. Plan exactly one session for today from the athlete's recent log. " +
         'Respect recovery: after a hard or long day suggest easy or rest. Keep it achievable for the volume you see. ' +
-        'Reply with JSON only: {"title": string (max 6 words), "summary": string (one sentence), ' +
+        'Reply with JSON only: {"title": string (max 6 words), ' +
+        `"type": one of ${PLAN_TYPES.join('|')}, ` +
+        '"distanceKm": number or null, "durationMin": number or null, ' +
+        `"effort": one of ${PLAN_EFFORTS.join('|')}, ` +
+        '"summary": string (one sentence), ' +
         '"steps": [{"label": string, "detail": string}] (2-5 steps with distances or minutes and target pace or effort), ' +
         '"why": string (one sentence that cites their recent log)}.',
     },
@@ -103,6 +127,16 @@ export function planMessages(history: RunSummary[], today: string, goal?: string
       content: `Today is ${today}.${goal ? ` Goal: ${goal}.` : ''}\nRecent log (newest first):\n${log}`,
     },
   ];
+}
+
+/** A plan figure: absent or null is fine, a number must be positive and believable. `false` means reject. */
+function planAmount(value: unknown, max: number, decimals: number): number | null | false {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > max) {
+    return false;
+  }
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) / scale;
 }
 
 export function parsePlan(text: string): DailyPlan | null {
@@ -118,8 +152,23 @@ export function parsePlan(text: string): DailyPlan | null {
         .slice(0, 6)
     : [];
   const title = str(json.title, 60);
-  if (!title || steps.length === 0) return null;
-  return { title, summary: str(json.summary, 240), steps, why: str(json.why, 240) };
+  const type = PLAN_TYPES.find((t) => t === json.type);
+  const effort = PLAN_EFFORTS.find((e) => e === json.effort);
+  const distanceKm = planAmount(json.distanceKm, 60, 1);
+  const durationMin = planAmount(json.durationMin, 300, 0);
+  if (!title || steps.length === 0 || !type || !effort) return null;
+  if (distanceKm === false || durationMin === false) return null;
+  const resting = type === 'rest';
+  return {
+    title,
+    type,
+    distanceKm: resting ? null : distanceKm,
+    durationMin: resting ? null : durationMin,
+    effort: resting ? 'rest' : effort,
+    summary: str(json.summary, 240),
+    steps,
+    why: str(json.why, 240),
+  };
 }
 
 export function debriefMessages(transcript: string, run: RunSummary) {
