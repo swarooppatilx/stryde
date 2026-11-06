@@ -14,15 +14,18 @@
   "dependencies": {
     "lucide-react": "^1.42.0",
     "maplibre-gl": "6.16.0",
+    "motion": "^14.9.1",
     "next": "16.4.1",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
+    "@tailwindcss/postcss": "^4.3.4",
     "@types/node": "catalog:",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "tailwindcss": "^4.3.4",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
