@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@arkiv-network/sdk": "1.0.1",
-    "@hono/node-server": "^1.14.1",
+    "@hono/node-server": "^2.1.6",
     "@types/node": "catalog:",
     "@worldcoin/idkit-core": "4.6.0",
     "@worldcoin/idkit-server": "^1.1.1",

@@ -2203,16 +2203,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hono/node-server@npm:^1.14.1":
-  version: 1.19.17
-  resolution: "@hono/node-server@npm:1.19.17"
-  peerDependencies:
-    hono: ^4
-  checksum: 10c0/e77907e3b5db8ab68ed4f297ad84807bfdd698636408de86ab8d36dab4658504ac4c0ed9d9436bc272a0172b9b7a5a4b578532e0b5baf97674c7b420cb5cff4b
-  languageName: node
-  linkType: hard
-
-"@hono/node-server@npm:^1.19.9 || ^2.0.5":
+"@hono/node-server@npm:^1.19.9 || ^2.0.5, @hono/node-server@npm:^2.1.6":
   version: 2.1.6
   resolution: "@hono/node-server@npm:2.1.6"
   peerDependencies:
@@ -4240,7 +4231,7 @@ __metadata:
   resolution: "@repo/api@workspace:packages/api"
   dependencies:
     "@arkiv-network/sdk": "npm:1.0.1"
-    "@hono/node-server": "npm:^1.14.1"
+    "@hono/node-server": "npm:^2.1.6"
     "@repo/typescript-config": "npm:*"
     "@types/node": "catalog:"
     "@worldcoin/idkit-core": "npm:4.6.0"
