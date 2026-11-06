@@ -21,7 +21,6 @@ import { maintenance } from './routes/maintenance.js';
 import { push } from './routes/push.js';
 import { relay } from './routes/relay.js';
 import { social } from './routes/social.js';
-import { uniswap } from './routes/uniswap.js';
 import { world } from './routes/world.js';
 
 // @worldcoin/idkit-core loads its wasm via fetch(file://...) which Node's
@@ -81,7 +80,6 @@ const ROUTE_GROUPS = [
   // A verification polls every 2s for up to 3 minutes, so it needs well over 30 a minute.
   { path: '/world', limit: 120, gated: true },
   { path: '/arkiv', limit: 60, gated: true },
-  { path: '/uniswap', limit: 30, gated: true },
   // Each call spends 0G credit, so the budget is tighter than the other gated groups.
   { path: '/coach', limit: 20, gated: true },
   { path: '/relay', limit: 30, gated: false },
@@ -116,7 +114,6 @@ app.route('/maintenance', maintenance);
 app.route('/human', humanPass);
 app.route('/agent', agent);
 app.route('/arkiv', arkiv);
-app.route('/uniswap', uniswap);
 app.route('/live', live);
 app.route('/coach', coach);
 
