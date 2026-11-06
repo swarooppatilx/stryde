@@ -138,7 +138,9 @@ describe('HumanPresenceStore', () => {
     const { ticket, pass } = store.recordPresence({ ...proof, sessionId: SESSION });
     expect(ticket.activityHash).toBe(RUN);
     expect(pass.presenceCount).toBe(1);
-    expect(store.getTicket(RUN.toUpperCase().replace('0X', '0x'))).toBeDefined();
+    expect(store.getTicket(WALLET, RUN.toUpperCase().replace('0X', '0x'))).toBeDefined();
+    // The ticket is this wallet's: nobody else's gate is released by it.
+    expect(store.getTicket('0x00000000000000000000000000000000000000bb', RUN)).toBeUndefined();
     expect(() => store.recordPresence({ ...proof, sessionId: SESSION })).toThrow(/already used/);
   });
 

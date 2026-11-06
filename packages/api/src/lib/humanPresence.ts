@@ -169,8 +169,9 @@ export class HumanPresenceStore {
     return address ? this.passes.get(address) : undefined;
   }
 
-  getTicket(activityHash: string): PresenceTicket | undefined {
-    return this.tickets.get(activityHash.toLowerCase());
+  /** A ticket vouches for one wallet's run: another wallet's ticket for the same hash is not this one's. */
+  getTicket(wallet: string, activityHash: string): PresenceTicket | undefined {
+    return this.tickets.get(ticketKey(wallet, activityHash));
   }
 
   /**
@@ -253,7 +254,7 @@ export class HumanPresenceStore {
       verifiedAt: input.now,
       sybilScore: input.sybilScore,
     };
-    this.tickets.set(ticket.activityHash, ticket);
+    this.tickets.set(ticketKey(ticket.wallet, ticket.activityHash), ticket);
     this.save();
     return { pass, ticket };
   }
@@ -286,7 +287,9 @@ export class HumanPresenceStore {
       this.passes.set(pass.wallet, pass);
       this.walletByNullifier.set(pass.nullifier, pass.wallet);
     }
-    for (const ticket of snapshot.tickets ?? []) this.tickets.set(ticket.activityHash, ticket);
+    for (const ticket of snapshot.tickets ?? []) {
+      this.tickets.set(ticketKey(ticket.wallet, ticket.activityHash), ticket);
+    }
     for (const n of snapshot.sessionNullifiers ?? []) this.sessionNullifiers.add(n);
     for (const n of snapshot.stepUpNullifiers ?? []) this.stepUpNullifiers.add(n);
   }
@@ -306,6 +309,10 @@ export class HumanPresenceStore {
       console.error('[world] Could not persist Athlete Passes:', error);
     }
   }
+}
+
+function ticketKey(wallet: string, activityHash: string): string {
+  return `${wallet.toLowerCase()}:${activityHash.toLowerCase()}`;
 }
 
 /** Nullifiers arrive as decimal or 0x hex strings; one canonical form keeps casing and padding from splitting them. */
@@ -336,5 +343,5 @@ export function isPresenceGateEnabled(): boolean {
 export function checkRewardGate(wallet: string, activityHash: string, meters: number): RewardGate {
   if (!isPresenceGateEnabled()) return { ok: true, reason: 'gate disabled' };
   const presence = getHumanPresenceStore();
-  return rewardGate(presence.getPass(wallet), presence.getTicket(activityHash), meters);
+  return rewardGate(presence.getPass(wallet), presence.getTicket(wallet, activityHash), meters);
 }

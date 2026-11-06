@@ -654,7 +654,7 @@ world.get('/pass/:wallet', (c) => {
   const pass = store.getPass(wallet);
   const activityHash = c.req.query('activityHash');
   const meters = Number(c.req.query('meters') ?? 0);
-  const ticket = activityHash ? store.getTicket(activityHash) : undefined;
+  const ticket = activityHash ? store.getTicket(wallet, activityHash) : undefined;
   return c.json({
     pass: pass ? toPublicPass(pass) : null,
     ticket: ticket ?? null,
