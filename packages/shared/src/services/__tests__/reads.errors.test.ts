@@ -62,7 +62,10 @@ describe('log scans', () => {
 
     const { deployBlock } = getActiveConfig();
     expect(getLogs).toHaveBeenCalled();
-    for (const [filter] of getLogs.mock.calls) expect(filter.fromBlock).toBe(deployBlock);
+    expect(getLogs.mock.calls[0]?.[0].fromBlock).toBe(deployBlock);
+    for (const [filter] of getLogs.mock.calls) {
+      expect(filter.fromBlock).toBeGreaterThanOrEqual(deployBlock);
+    }
   });
 
   it('knows where Sepolia was deployed', () => {

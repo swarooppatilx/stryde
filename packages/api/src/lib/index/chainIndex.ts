@@ -7,8 +7,8 @@ import type {
   IndexedChallenge,
 } from './types.js';
 
-/** Public Sepolia RPCs reject eth_getLogs spans wider than 50,000 blocks. */
-export const LOG_WINDOW_BLOCKS = 50_000n;
+/** Infura rejects eth_getLogs spans wider than 10,000 blocks. */
+export const LOG_WINDOW_BLOCKS = 10_000n;
 /** Blocks this far below the head are treated as final (about two Ethereum epochs). */
 export const REORG_DEPTH = 64n;
 /** getLogs windows read at once; more would trip public RPC rate limits. */

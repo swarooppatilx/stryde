@@ -32,6 +32,10 @@
 - [Commands](#commands)
 - [Deployed Contracts (Sepolia)](#deployed-contracts-sepolia)
 - [ETHOnline 2026](#ethonline-2026)
+- [ETHGlobal Mumbai (Continuity): Arkiv + Swarm](#ethglobal-mumbai-continuity-arkiv--swarm)
+- [ETHGlobal Mumbai: Stryde Coach on 0G](#ethglobal-mumbai-stryde-coach-on-0g-private-computer)
+- [ETHGlobal Mumbai (Continuity): World ID IDKit](#ethglobal-mumbai-continuity-world-id-idkit)
+- [How we used AI](#how-we-used-ai)
 - [License](#license)
 
 ---
@@ -41,7 +45,7 @@
 - **Record**: GPS-tracked activities with onchain proof (hash commitment + IPFS metadata)
 - **Claim**: territory capture from route coordinates
 - **Compete**: Leaderboards ranked by distance, territory, and achievements
-- **Verify**: World ID Selfie Check for one-person-one-account leaderboards
+- **Verify**: World ID (Selfie Check, or Orb Proof of Human) for one-person-one-earning-account rewards
 - **Own**: Soulbound achievement badges, ENS names, portable reputation
 
 ---
@@ -57,7 +61,7 @@
 | Indexing | The Graph (7 data sources on Sepolia) |
 | Storage | IPFS via Pinata (activity metadata, avatars) |
 | Identity | ENSv2 (human-readable names on Sepolia) |
-| Sybil Resistance | World ID Selfie Check |
+| Sybil Resistance | World ID (IDKit 4: Selfie Check, Proof of Human) |
 | Monorepo | Turborepo, Yarn Berry |
 
 ---
@@ -181,6 +185,83 @@ Indexed contracts (9), all onchain data served through one composed query layer:
 | [World ID](https://world.org/) | [Selfie Check](https://ethglobal.com/events/ethonline2026/prizes/world) | Verified athletes, sybil-resistant leaderboards |
 | [ENS](https://ens.domains/) | [Best Integration + ENSv2](https://ethglobal.com/events/ethonline2026/prizes/ens) | Human-readable names via Universal Resolver |
 | [Privy](https://privy.io/) | [Best Financial Flow](https://ethglobal.com/events/ethonline2026/prizes/privy) | Email OTP auth, embedded wallet, smart accounts |
+
+---
+
+## ETHGlobal Mumbai (Continuity): Arkiv + Swarm
+
+Stryde is a Continuity Track project: it was built at ETHOnline 2026, and we kept building it before Mumbai. Judge only what is listed under "Added at Mumbai".
+
+**Before Mumbai** (ETHOnline and September 2026):
+- The app, contracts, World ID, ENS, Privy and The Graph.
+- Arkiv was used only for **server-written social records**: `post`, `follow`, `comment_like`, `profile_about`, `report`, `push_token`, `notify_checkpoint` and the `season_contribution` ledger, with a renewal job. Commits `3d69628`, `ee48247` and `93e7629`.
+- No segments, efforts, beacons, route archives, chain index on Arkiv, or Swarm.
+
+**Added at Mumbai** (6 November 2026 onward):
+
+| What | Arkiv entities | Commits |
+|---|---|---|
+| Chain index mirror: the feed, athlete pages, season leaderboard, territories and club members read Sepolia events from Arkiv instead of a subgraph | `idx_event`, `idx_checkpoint` | `c75469d`, `45b603b` |
+| Clubs: feed, settings, roles and join requests | `club_record` | `9bf6fd2` |
+| Segments, segment efforts and leaderboards, Proof of Sweat scoring | `stryde_segment`, `stryde_effort` | `e4551d7`, `c90689f`, `73d5065` |
+| Live Beacon: share a run live, and it expires 10 minutes after the last update | `stryde_beacon` | `c90689f`, `73d5065` |
+| Every run's GPX on **Swarm**, with a per-run Arkiv entity; private routes encrypted, with sealed references | `stryde_route_archive` | `b8ead39` ([#33](https://github.com/swarooppatilx/stryde/pull/33)), `9e374ea` ([#37](https://github.com/swarooppatilx/stryde/pull/37)) |
+| Fixes from reviewing our own Arkiv use: readonly attested entities, renewal skips transferred entities, beacon run ids tied to their athlete, the access key kept out of URLs, a creator check on segment lookups | | see [`arkiv/friction.md`](arkiv/friction.md) |
+
+**Network:** Arkiv **Rabdi** testnet (chain `7794095`), through `@arkiv-network/sdk`.
+
+**Wallet that writes our entities:** [`0x47d877a30be79E3b1b0926943d675CD22f4B914a`](https://rabdi.explorer.arkiv.network/address/0x47d877a30be79E3b1b0926943d675CD22f4B914a). Segments, efforts and route archives are then transferred to the athlete's wallet.
+
+**One query you can run** (no wallet or key needed):
+
+```bash
+yarn install
+node arkiv/query.mjs            # Stryde segments near Mumbai + one athlete's Swarm route archives
+```
+
+This is the core of it, from [`arkiv/query.mjs`](arkiv/query.mjs):
+
+```js
+client.select().from(Segments).where(startsWith('geohash', 'te7u')).createdBy('0x47d877a30be79E3b1b0926943d675CD22f4B914a').limit(20).fetch()
+```
+
+**Docs:**
+- [`arkiv/schema.md`](arkiv/schema.md)
+- [`arkiv/how-you-use-arkiv.md`](arkiv/how-you-use-arkiv.md)
+- [`arkiv/why-arkiv.md`](arkiv/why-arkiv.md)
+- [`arkiv/reach.md`](arkiv/reach.md)
+- [`arkiv/friction.md`](arkiv/friction.md)
+- [`arkiv/swarm.md`](arkiv/swarm.md)
+
+---
+
+## ETHGlobal Mumbai: Stryde Coach on 0G Private Computer
+
+Stryde Coach is a daily plan, a post-run review, a voice debrief and a run poster. Every answer is inference on 0G Private Computer (0gm-1.0, whisper-large-v3 and Seedream), and each one shows its 0G request id in the app. If 0G is removed, the coach and everything it writes disappears.
+
+Setup, live request ids and how to try it: [`ZEROG.md`](ZEROG.md).
+
+---
+
+## ETHGlobal Mumbai (Continuity): World ID IDKit
+
+Recording runs is free for everyone. Minting STRD for a run needs an Athlete Pass: one World ID check, verified on our server with World's `/api/v4/verify` before any reward is paid. Without it, the run stays saved and the reward waits.
+
+Selfie Check is the credential that fits Stryde best. World returns `feature_unavailable` for it on our app, so the demo uses Orb Proof of Human; switching back is one setting (`WORLD_PASS_CREDENTIALS`).
+
+The trust event, why Selfie Check is the minimum sufficient credential, the demo paths and our integration debrief: [`FEEDBACK-WORLD.md`](FEEDBACK-WORLD.md).
+
+---
+
+## How we used AI
+
+We used AI coding assistants (Cursor's agent) throughout. They were used for:
+- writing and refactoring code and tests;
+- reading the Arkiv and Swarm SDKs and docs;
+- running end-to-end checks against Rabdi and our Bee node;
+- drafting these docs.
+
+The team chose the features, the data model and the trade-offs, reviewed every change, and tested it on devices. The Arkiv bugs listed in [`arkiv/friction.md`](arkiv/friction.md) were found while reviewing and testing that work.
 
 ---
 

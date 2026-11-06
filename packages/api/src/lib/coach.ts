@@ -641,28 +641,44 @@ export function toRunSummary(value: unknown): RunSummary | null {
 export type CoachFeature = 'plan' | 'poster' | 'debrief' | 'review';
 
 const DEFAULT_DAILY: Record<CoachFeature, number> = { plan: 5, poster: 3, debrief: 6, review: 8 };
+const DEFAULT_DAILY_TOTAL = 400;
 
-/** Per-wallet daily allowance, so one athlete can't spend the whole credit balance. */
+/**
+ * Per-wallet daily allowance, so one athlete can't spend the whole credit balance, under a
+ * server-wide daily ceiling: the wallet is not authenticated, so fresh addresses alone must
+ * not be able to drain the credits.
+ */
 export class CoachBudget {
   private used = new Map<string, number>();
+  private total = new Map<string, number>();
 
-  constructor(private readonly limits: Record<CoachFeature, number> = DEFAULT_DAILY) {}
+  constructor(
+    private readonly limits: Record<CoachFeature, number> = DEFAULT_DAILY,
+    private readonly dailyTotal = DEFAULT_DAILY_TOTAL
+  ) {}
 
   static fromEnv(): CoachBudget {
     const read = (key: string, fallback: number) => {
       const n = Number(process.env[key]);
       return Number.isInteger(n) && n >= 0 ? n : fallback;
     };
-    return new CoachBudget({
-      plan: read('ZEROG_DAILY_PLANS', DEFAULT_DAILY.plan),
-      poster: read('ZEROG_DAILY_POSTERS', DEFAULT_DAILY.poster),
-      debrief: read('ZEROG_DAILY_DEBRIEFS', DEFAULT_DAILY.debrief),
-      review: read('ZEROG_DAILY_REVIEWS', DEFAULT_DAILY.review),
-    });
+    return new CoachBudget(
+      {
+        plan: read('ZEROG_DAILY_PLANS', DEFAULT_DAILY.plan),
+        poster: read('ZEROG_DAILY_POSTERS', DEFAULT_DAILY.poster),
+        debrief: read('ZEROG_DAILY_DEBRIEFS', DEFAULT_DAILY.debrief),
+        review: read('ZEROG_DAILY_REVIEWS', DEFAULT_DAILY.review),
+      },
+      read('ZEROG_DAILY_TOTAL', DEFAULT_DAILY_TOTAL)
+    );
+  }
+
+  private day(now: Date) {
+    return now.toISOString().slice(0, 10);
   }
 
   private key(wallet: string, feature: CoachFeature, now: Date) {
-    return `${now.toISOString().slice(0, 10)}:${feature}:${wallet.toLowerCase()}`;
+    return `${this.day(now)}:${feature}:${wallet.toLowerCase()}`;
   }
 
   /** Takes one use; false once today's allowance is gone. */
@@ -670,8 +686,13 @@ export class CoachBudget {
     const key = this.key(wallet, feature, now);
     const count = this.used.get(key) ?? 0;
     if (count >= this.limits[feature]) return false;
+    const day = this.day(now);
+    const spent = this.total.get(day) ?? 0;
+    if (spent >= this.dailyTotal) return false;
     if (this.used.size > 20_000) this.used.clear();
+    if (!this.total.has(day)) this.total.clear();
     this.used.set(key, count + 1);
+    this.total.set(day, spent + 1);
     return true;
   }
 
@@ -680,6 +701,9 @@ export class CoachBudget {
     const key = this.key(wallet, feature, now);
     const count = this.used.get(key) ?? 0;
     if (count > 0) this.used.set(key, count - 1);
+    const day = this.day(now);
+    const spent = this.total.get(day) ?? 0;
+    if (spent > 0) this.total.set(day, spent - 1);
   }
 
   remaining(wallet: string, feature: CoachFeature, now = new Date()): number {

@@ -200,6 +200,18 @@ describe('CoachBudget', () => {
     budget.refund(wallet, 'poster', day);
     expect(budget.remaining(wallet, 'poster', day)).toBe(1);
   });
+
+  it('caps the whole server per day, so fresh wallet addresses cannot drain the credits', () => {
+    const budget = new CoachBudget({ plan: 5, poster: 5, debrief: 5, review: 5 }, 2);
+    const other = '0x00000000000000000000000000000000000000bb';
+    const third = '0x00000000000000000000000000000000000000cc';
+    expect(budget.take(wallet, 'plan', day)).toBe(true);
+    expect(budget.take(other, 'plan', day)).toBe(true);
+    expect(budget.take(third, 'plan', day)).toBe(false);
+    budget.refund(other, 'plan', day);
+    expect(budget.take(third, 'plan', day)).toBe(true);
+    expect(budget.take(third, 'review', new Date('2026-11-07T00:00:01Z'))).toBe(true);
+  });
 });
 
 describe('toVitals', () => {

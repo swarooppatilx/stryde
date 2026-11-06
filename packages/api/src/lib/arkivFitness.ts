@@ -1,25 +1,9 @@
-import {
-  createPublicClient,
-  createWalletClient,
-  ExpirationTime,
-  NoEntityFoundError,
-} from '@arkiv-network/sdk';
-import { rabdi } from '@arkiv-network/sdk/chains';
+import { ExpirationTime, NoEntityFoundError } from '@arkiv-network/sdk';
 import { and, asc, eq, startsWith } from '@arkiv-network/sdk/query';
-import {
-  addr,
-  bool,
-  bytes,
-  dec,
-  defineSchema,
-  i32,
-  key,
-  str,
-  u64,
-} from '@arkiv-network/sdk/schema';
-import { hexToString, http, stringToHex } from 'viem';
+import { addr, bool, bytes, dec, defineSchema, i32, str, u64 } from '@arkiv-network/sdk/schema';
+import { hexToString, stringToHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { arkivConfigFromEnv } from './arkiv.js';
+import { arkivConfigFromEnv, createArkivPublicClient, createArkivWalletClient } from './arkiv.js';
 
 /**
  * Stryde's social/ephemeral layer on Arkiv. The Stryde writer wallet creates
@@ -92,23 +76,37 @@ export const EFFORT_TTL_DAYS = 120;
 export const SEGMENT_TTL_DAYS = 180;
 export const ARCHIVE_TTL_DAYS = 180;
 
-type ArkivPublic = ReturnType<typeof createPublicClient>;
-type ArkivWallet = ReturnType<typeof createWalletClient>;
+/**
+ * Entities handed to an athlete are readonly: the owner of a mutable entity can rewrite its values
+ * while `$creator` still says Stryde, which would let an athlete lower their own effort time.
+ * Readonly entities can still be transferred, extended and deleted.
+ */
+const ATTESTED = { readonly: true } as const;
+
+/** Phones report GPS timestamps with fractional milliseconds, and BigInt rejects anything but whole numbers. */
+const wholeU64 = (n: number) => u64(BigInt(Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0));
+const wholeI32 = (n: number) => i32(Number.isFinite(n) ? Math.round(n) : 0);
+
+/** Arkiv reverts a transfer to the current owner (TransferToSelf). */
+async function handTo(wallet: ArkivWallet, entityKey: `0x${string}`, owner: `0x${string}`) {
+  if (owner.toLowerCase() === getArkivWriter().toLowerCase()) return;
+  await wallet.changeOwnership({ entityKey, newOwner: owner });
+}
+
+type ArkivPublic = ReturnType<typeof createArkivPublicClient>;
+type ArkivWallet = ReturnType<typeof createArkivWalletClient>;
 
 let publicClient: ArkivPublic | null = null;
 let walletClient: ArkivWallet | null = null;
 let writerAddress: `0x${string}` | null = null;
-
-function chain() {
-  return rabdi({ accessKey: arkivConfigFromEnv().accessKey ?? '' });
-}
 
 export function isArkivConfigured(): boolean {
   return Boolean(process.env.ARKIV_PRIVATE_KEY);
 }
 
 export function getArkivPublic(): ArkivPublic {
-  publicClient ??= createPublicClient({ chain: chain(), transport: http() });
+  // The access key travels in a header, never in the RPC URL (see ./arkiv.ts).
+  publicClient ??= createArkivPublicClient(arkivConfigFromEnv());
   return publicClient;
 }
 
@@ -118,7 +116,7 @@ export function getArkivWallet(): ArkivWallet {
   if (!key) throw new Error('[arkiv] Missing env var: ARKIV_PRIVATE_KEY');
   const account = privateKeyToAccount(key as `0x${string}`);
   writerAddress = account.address;
-  walletClient = createWalletClient({ chain: chain(), transport: http(), account });
+  walletClient = createArkivWalletClient(account, arkivConfigFromEnv());
   return walletClient;
 }
 
@@ -190,12 +188,12 @@ export async function createSegment(input: {
       startLng: fixed(input.start.longitude),
       endLat: fixed(input.end.latitude),
       endLng: fixed(input.end.longitude),
-      distanceM: u64(BigInt(Math.round(input.distanceM))),
+      distanceM: wholeU64(input.distanceM),
       creator: addr(input.creator),
     },
-    { expiration: ExpirationTime.fromDays(SEGMENT_TTL_DAYS) }
+    { expiration: ExpirationTime.fromDays(SEGMENT_TTL_DAYS), flags: ATTESTED }
   );
-  await wallet.changeOwnership({ entityKey, newOwner: input.creator });
+  await handTo(wallet, entityKey, input.creator);
   return { key: entityKey, txHash };
 }
 
@@ -229,14 +227,8 @@ export async function findSegmentsNear(
 }
 
 export async function getSegment(segmentKey: `0x${string}`): Promise<SegmentRecord | null> {
-  const result = await getArkivPublic()
-    .select()
-    .from(Segments)
-    .where(eq('$key', key(segmentKey)))
-    .limit(1)
-    .fetch();
-  const row = result.entities[0];
-  return row ? segmentFromRow(row as unknown as Record<string, unknown>) : null;
+  const row = await getStrydeEntity(segmentKey, Segments);
+  return row ? segmentFromRow(row) : null;
 }
 
 export async function createEffort(input: {
@@ -258,19 +250,19 @@ export async function createEffort(input: {
     {
       segmentKey: input.segmentKey,
       athlete: addr(input.athlete),
-      elapsedSec: u64(BigInt(input.elapsedSec)),
-      seasonId: u64(BigInt(input.seasonId)),
+      elapsedSec: wholeU64(input.elapsedSec),
+      seasonId: wholeU64(input.seasonId),
       verifiedHuman: input.verifiedHuman,
       sweatVerified: input.sweatVerified,
-      sweatScore: i32(input.sweatScore),
-      avgBpm: input.avgBpm === null ? undefined : i32(input.avgBpm),
-      activityId: u64(BigInt(input.activityId)),
-      recordedAt: u64(BigInt(input.recordedAt)),
+      sweatScore: wholeI32(input.sweatScore),
+      avgBpm: input.avgBpm === null ? undefined : wholeI32(input.avgBpm),
+      activityId: wholeU64(input.activityId),
+      recordedAt: wholeU64(input.recordedAt),
       swarmRef: input.swarmRef ?? undefined,
     },
-    { expiration: ExpirationTime.fromDays(EFFORT_TTL_DAYS) }
+    { expiration: ExpirationTime.fromDays(EFFORT_TTL_DAYS), flags: ATTESTED }
   );
-  await wallet.changeOwnership({ entityKey, newOwner: input.athlete });
+  await handTo(wallet, entityKey, input.athlete);
   return { key: entityKey, txHash };
 }
 
@@ -366,21 +358,18 @@ export async function createRouteArchive(input: {
     RouteArchives,
     {
       athlete: addr(input.athlete),
-      activityId: u64(BigInt(input.activityId)),
-      recordedAt: u64(BigInt(input.recordedAt)),
+      activityId: wholeU64(input.activityId),
+      recordedAt: wholeU64(input.recordedAt),
       swarmRef: input.encrypted ? undefined : input.swarmRef,
       sealedRef: input.encrypted ? bytes(stringToHex(input.swarmRef)) : undefined,
       encrypted: input.encrypted,
-      distanceM: u64(BigInt(Math.max(0, Math.round(input.distanceM)))),
-      pointCount: u64(BigInt(input.pointCount)),
+      distanceM: wholeU64(input.distanceM),
+      pointCount: wholeU64(input.pointCount),
       contentType: input.contentType,
     },
-    { expiration: ExpirationTime.fromDays(ARCHIVE_TTL_DAYS) }
+    { expiration: ExpirationTime.fromDays(ARCHIVE_TTL_DAYS), flags: ATTESTED }
   );
-  // Arkiv reverts a transfer to the current owner (TransferToSelf).
-  if (input.athlete.toLowerCase() !== getArkivWriter().toLowerCase()) {
-    await wallet.changeOwnership({ entityKey, newOwner: input.athlete });
-  }
+  await handTo(wallet, entityKey, input.athlete);
   return { key: entityKey, txHash };
 }
 
@@ -408,7 +397,7 @@ function archiveFromRow(row: Record<string, unknown>): RouteArchiveRecord {
  */
 async function getStrydeEntity(
   entityKey: `0x${string}`,
-  schema: typeof RouteArchives | typeof Efforts
+  schema: typeof RouteArchives | typeof Efforts | typeof Segments
 ): Promise<Record<string, unknown> | null> {
   let row: Record<string, unknown>;
   try {
@@ -480,7 +469,7 @@ export async function upsertBeacon(input: {
   longitude: number;
   paceSecPerKm: number;
   batteryPct: number | null;
-}): Promise<{ key: `0x${string}`; created: boolean }> {
+}): Promise<{ key: `0x${string}`; created: boolean } | null> {
   const wallet = getArkivWallet();
   const values = {
     geohash: input.geohash,
@@ -493,6 +482,8 @@ export async function upsertBeacon(input: {
 
   const existing = await findBeaconRow(input.runId);
   if (existing) {
+    // Another athlete's run id must not move their beacon.
+    if (beaconFromRow(existing).athlete.toLowerCase() !== input.athlete.toLowerCase()) return null;
     const key = existing.$key as `0x${string}`;
     await wallet.executeBatch({
       patches: [{ schema: Beacons, entityKey: key, set: values }],

@@ -42,13 +42,14 @@ async function checkForProfile(
     ...result,
     pass: {
       wallet,
+      credential: 'proof_of_human',
       band: 'low',
-      sybilScore: 0,
+      sybilScore: null,
       enrolledAt: now,
       steppedUp: kind === 'step_up',
       lastPresenceAt: kind === 'presence' ? now : null,
       presenceCount: kind === 'presence' ? 1 : 0,
-      finishLineMeters: 3000,
+      finishLineMeters: 0,
     },
     ticket: activityHash ? { activityHash, wallet, verifiedAt: now, sybilScore: 0 } : undefined,
   };

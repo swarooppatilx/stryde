@@ -91,8 +91,8 @@ export default function SettingsListScreen() {
           title={isVerified ? 'World ID Athlete Pass' : 'Verify with World ID'}
           subtitle={
             isVerified
-              ? 'Verified via World ID Selfie Check'
-              : 'Get your Athlete Pass with a World ID Selfie Check'
+              ? 'Verified with World ID'
+              : 'Get your Athlete Pass with World ID'
           }
           onPress={() => router.push('/verify')}
         />

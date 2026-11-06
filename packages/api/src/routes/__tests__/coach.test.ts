@@ -709,6 +709,55 @@ describe('coach routes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('retries when the connection to 0G drops', async () => {
+    vi.useFakeTimers();
+    const reply = {
+      headline: 'Solid',
+      summary: 'Good run.',
+      improve: [{ focus: 'Cadence', tip: 'Shorter steps.' }],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        routerReply({ choices: [{ message: { content: JSON.stringify(reply) } }] }, 'req_ok')
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = post('/review', { activity: RUN });
+    await vi.advanceTimersByTimeAsync(2_000);
+    const res = await pending;
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the router's own request id when the header also carries an edge id", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        routerReply(
+          {
+            choices: [
+              {
+                message: {
+                  content:
+                    '{"title":"Easy","type":"easy","distanceKm":3,"durationMin":25,"effort":"easy","summary":"s","steps":[{"label":"a","detail":"b"}],"why":"w"}',
+                },
+              },
+            ],
+          },
+          'c1f99231ef278858, a5e7ea93-6503-4267-84fc-52cef9fcbdc3'
+        )
+      )
+    );
+    const body = (await (await post('/plan', { history: [RUN] })).json()) as {
+      zeroG: { requestId: string }[];
+    };
+    expect(body.zeroG[0]?.requestId).toBe('a5e7ea93-6503-4267-84fc-52cef9fcbdc3');
+  });
+
   it('transcribes a voice debrief, then turns it into a note: two request ids', async () => {
     const fetchMock = vi
       .fn()
