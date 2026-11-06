@@ -3,9 +3,11 @@
 //   STRYDE_IOS_TEAM_ID=ABCDE12345  sets the team and gives the app its own bundle id (com.stryde.app.devabcde12345):
 //                                  free teams can't reuse an id another team registered.
 // Free teams can't sign push notifications or Sign in with Apple, so those entitlements are dropped too.
+// These builds also allow plain HTTP to any host, so a phone can reach the dev machine's API, chain and Metro
+// over Tailscale (100.x addresses are not "local network" to iOS).
 const fs = require('node:fs');
 const path = require('node:path');
-const { withFinalizedMod } = require('expo/config-plugins');
+const { withFinalizedMod, withInfoPlist } = require('expo/config-plugins');
 const plist = require('@expo/plist').default;
 
 const FREE_TEAM_UNSUPPORTED = ['aps-environment', 'com.apple.developer.applesignin'];
@@ -18,7 +20,7 @@ function applyLocalSigning(config) {
   return {
     ...config,
     ios: { ...config.ios, appleTeamId: team, bundleIdentifier: `${base}.dev${team.toLowerCase()}` },
-    plugins: [...(config.plugins ?? []), withFreeTeamEntitlements],
+    plugins: [...(config.plugins ?? []), withFreeTeamEntitlements, withDevMachineHttp],
   };
 }
 
@@ -38,6 +40,15 @@ function withFreeTeamEntitlements(config) {
       return config;
     },
   ]);
+}
+
+/** Plain HTTP to the dev machine wherever it is (Tailscale, another subnet), not only on the local network. */
+function withDevMachineHttp(config) {
+  return withInfoPlist(config, (config) => {
+    // iOS ignores NSAllowsArbitraryLoads while NSAllowsLocalNetworking is present, so only the first is kept.
+    config.modResults.NSAppTransportSecurity = { NSAllowsArbitraryLoads: true };
+    return config;
+  });
 }
 
 module.exports = { applyLocalSigning };
