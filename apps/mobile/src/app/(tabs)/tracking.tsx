@@ -51,6 +51,7 @@ import { setFinishedSession } from '@/services/activityPipeline';
 import { confirmStart } from '@/services/startChecks';
 import { territoryService } from '@/services/territoryService';
 import { trackingService } from '@/services/trackingService';
+import { useActivityStore } from '@/stores/activityStore';
 import { useFollowRouteStore } from '@/stores/followRouteStore';
 import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRecordUiStore } from '@/stores/recordUiStore';
@@ -74,6 +75,7 @@ import { recordedRunParams } from '@/utils/recordedRunParams';
 import { flyoutRows } from '@/utils/recordIsland';
 import { recoverAction } from '@/utils/recoverAction';
 import { splitMarkers as splitPins } from '@/utils/splitMarkers';
+import { startingCenter } from '@/utils/startingCenter';
 import { Toast } from '@/utils/toast';
 
 const ZOOM_RANGE = { min: MIN_ZOOM, max: MAX_ZOOM };
@@ -380,8 +382,9 @@ export default function TrackingScreen() {
   }, isSessionActive);
 
   // The camera follows from here on; this is only where the map is first drawn.
+  const savedActivities = useActivityStore((s) => s.activities);
   const [initialCenter] = useState<[number, number]>(() =>
-    fix ? [fix.longitude, fix.latitude] : DEFAULT_CENTER
+    startingCenter(fix, savedActivities, DEFAULT_CENTER)
   );
   const territoryArea = trackedPolygon ? territoryService.getPolygonArea(trackedPolygon) : null;
   const { recent, lapCount, splits, elevationGain, laps, lapStart, watch, sensors } = snapshot;

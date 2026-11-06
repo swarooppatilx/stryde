@@ -31,6 +31,7 @@ import { useMapSegments } from '@/hooks/useMapSegments';
 import { useOnline } from '@/hooks/useOnline';
 import { useRoutePreview } from '@/hooks/useRoutePreview';
 import type { PlaceResult } from '@/services/placeSearch';
+import { useActivityStore } from '@/stores/activityStore';
 import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { MEDIUM_MAX, SHORT_MAX } from '@/utils/distanceFilter';
 import { formatDistance, parsePolyline } from '@/utils/format';
@@ -38,6 +39,7 @@ import { haptics } from '@/utils/haptics';
 import type { MapPoi } from '@/utils/poi';
 import { routeChips } from '@/utils/routeChips';
 import { SHEET_HEIGHTS } from '@/utils/sheetSnap';
+import { startingCenter } from '@/utils/startingCenter';
 
 const TIME_FILTERS: Array<{ value: TimeFilter; label: string }> = [
   { value: 'all', label: 'Anytime' },
@@ -98,6 +100,7 @@ function placeAndRouteMarkers(
 }
 
 export default function MapScreen() {
+  const activities = useActivityStore((s) => s.activities);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const online = useOnline();
@@ -304,7 +307,7 @@ export default function MapScreen() {
           haptics.impactMedium();
           void dropPin(lat, lng);
         }}
-        initialCenter={location ? [location.longitude, location.latitude] : DEFAULT_CENTER}
+        initialCenter={startingCenter(location, activities, DEFAULT_CENTER)}
         initialZoom={15}
         dark={resolveMapStyle(stylePref, theme.isDark) === 'dark'}
         mapType={mapType}
