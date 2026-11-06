@@ -1,18 +1,6 @@
 import { haversineDistance } from '@/utils/geo';
 import type { RoutePoint } from '@/utils/route';
 
-export const addWaypoint = (points: readonly RoutePoint[], point: RoutePoint): RoutePoint[] => [
-  ...points,
-  point,
-];
-
-export const undoWaypoint = (points: readonly RoutePoint[]): RoutePoint[] => points.slice(0, -1);
-
-export const clearWaypoints = (): RoutePoint[] => [];
-
-export const reverseWaypoints = (points: readonly RoutePoint[]): RoutePoint[] =>
-  [...points].reverse();
-
 /** Length in metres of straight lines joining the points in order. */
 export function waypointsDistance(points: readonly RoutePoint[]): number {
   let total = 0;

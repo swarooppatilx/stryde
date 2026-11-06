@@ -27,20 +27,6 @@ interface Feature {
   properties: Record<string, unknown>;
 }
 
-/** Downsamples a dense GPS trace to at most `maxPoints` evenly spaced points: keeps the route shape at map zoom while staying light enough to render many routes. */
-export function sampleRoute(coordinates: LngLatPair[], maxPoints = 400): LngLatPair[] {
-  if (coordinates.length <= maxPoints) return coordinates;
-  const step = coordinates.length / maxPoints;
-  const sampled: LngLatPair[] = [];
-  for (let i = 0; i < coordinates.length; i += step) {
-    const point = coordinates[Math.min(Math.floor(i), coordinates.length - 1)];
-    if (point) sampled.push(point);
-  }
-  const last = coordinates.at(-1);
-  if (last && sampled.at(-1) !== last) sampled.push(last);
-  return sampled;
-}
-
 /** Aggregate route points into a light `[lng, lat]` point cloud for the
  * heatmap layer: evenly downsample each route, quantize to a fixed grid so
  * overlapping tracks collapse to a single hotter point, and cap the total. */
@@ -121,17 +107,4 @@ export function territoryBoundsRing(b: {
     [lng1, lat2],
     [lng1, lat1],
   ];
-}
-
-export function pointFeature(lngLat: LngLatPair): FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: lngLat },
-        properties: {},
-      },
-    ],
-  };
 }

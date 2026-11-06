@@ -69,7 +69,7 @@ export function showToast(
   };
   let items = [...stack.items, added];
   // Over the limit: the oldest ones start leaving.
-  const overflow = items.filter((item) => !item.exiting).length - MAX_TOASTS;
+  const overflow = liveToasts({ ...stack, items }).length - MAX_TOASTS;
   if (overflow > 0) {
     let toDrop = overflow;
     items = items.map((item) => {

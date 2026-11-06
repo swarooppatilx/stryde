@@ -204,16 +204,6 @@ function parseError(error: unknown): string {
   return GENERIC_MESSAGE;
 }
 
-export function isUserRejection(error: unknown): boolean {
-  if (error instanceof UserRejectedRequestError) return true;
-  if (error instanceof BaseError) {
-    const match = error.walk((e) => e instanceof UserRejectedRequestError);
-    if (match) return true;
-  }
-  if (error instanceof Error && /user rejected/i.test(error.message)) return true;
-  return false;
-}
-
 export function isNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();

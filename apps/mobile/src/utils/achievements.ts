@@ -73,10 +73,6 @@ export function computeAchievements(activities: Activity[], totalArea: number): 
   });
 }
 
-export function getUnlockedCount(achievements: Achievement[]): number {
-  return achievements.filter((a) => a.unlocked).length;
-}
-
 /**
  * Which achievements each activity earned: the ones unlocked once it is counted (in date order)
  * that were not unlocked before it. Keyed by activity id; activities that earned nothing are left out.

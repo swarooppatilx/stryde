@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Activity } from '@/types';
-import { achievementsEarnedBy, computeAchievements, getUnlockedCount } from '@/utils/achievements';
+import { achievementsEarnedBy, computeAchievements } from '@/utils/achievements';
 
 vi.mock('@/constants/theme', () => ({
   AchievementColors: {
@@ -108,21 +108,6 @@ describe('computeAchievements', () => {
     });
     const achievements = computeAchievements(acts, 0);
     expect(achievements.find((a) => a.id === 'week_streak')?.unlocked).toBe(true);
-  });
-});
-
-describe('getUnlockedCount', () => {
-  it('returns 0 for empty array', () => {
-    expect(getUnlockedCount([])).toBe(0);
-  });
-
-  it('counts only unlocked achievements', () => {
-    const achievements = [
-      { id: '1', title: 'a', description: '', icon: '', color: '', unlocked: true },
-      { id: '2', title: 'b', description: '', icon: '', color: '', unlocked: false },
-      { id: '3', title: 'c', description: '', icon: '', color: '', unlocked: true },
-    ];
-    expect(getUnlockedCount(achievements)).toBe(2);
   });
 });
 

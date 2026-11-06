@@ -10,7 +10,7 @@ import {
 } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { BANNED_USER_WORDS } from '@/constants/copy';
-import { FRIENDLY_MESSAGES, getParsedError, isNetworkError, isUserRejection } from '@/utils/errors';
+import { FRIENDLY_MESSAGES, getParsedError, isNetworkError } from '@/utils/errors';
 
 describe('getParsedError', () => {
   it('returns friendly message for UserRejectedRequestError', () => {
@@ -47,24 +47,6 @@ describe('getParsedError', () => {
   it('returns gasless message for paymaster error in message text', () => {
     const err = new Error('paymaster rejected');
     expect(getParsedError(err)).toBe("Saving isn't set up for this app yet. Contact support.");
-  });
-});
-
-describe('isUserRejection', () => {
-  it('returns true for UserRejectedRequestError', () => {
-    const err = new UserRejectedRequestError(new Error('user rejected'));
-    expect(isUserRejection(err)).toBe(true);
-  });
-
-  it('returns true for Error with "user rejected" in message', () => {
-    const err = new Error('user rejected the request');
-    expect(isUserRejection(err)).toBe(true);
-  });
-
-  it('returns false for other errors', () => {
-    expect(isUserRejection(new Error('network error'))).toBe(false);
-    expect(isUserRejection('not an error')).toBe(false);
-    expect(isUserRejection(null)).toBe(false);
   });
 });
 

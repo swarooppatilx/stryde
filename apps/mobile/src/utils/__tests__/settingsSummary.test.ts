@@ -6,7 +6,6 @@ import {
   privacySummary,
   privateZonesSummary,
   recordingSummary,
-  weeklyGoalsSummary,
 } from '@/utils/settingsSummary';
 
 describe('settings summaries', () => {
@@ -37,17 +36,6 @@ describe('settings summaries', () => {
     expect(privateZonesSummary(3)).toBe('3 places');
     expect(privacySummary('followers', 2)).toBe('Followers · 2 places');
     expect(privacySummary('only_me', 0)).toBe('Only Me · no private places');
-  });
-
-  it('summarises weekly goals', () => {
-    expect(
-      weeklyGoalsSummary({
-        weeklyGoalDistance: 20000,
-        weeklyGoalActivities: 3,
-        weeklyGoalTime: 3600000,
-        units: 'metric',
-      })
-    ).toMatch(/20.*km.*3 activities/);
   });
 
   it('summarises recording', () => {

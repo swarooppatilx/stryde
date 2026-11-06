@@ -1,5 +1,4 @@
 import type { ActivityPrivacy } from '@/types';
-import { formatDistance, formatDuration } from '@/utils/format';
 import { WEEK_START_OPTIONS, type WeekStartDay } from '@/utils/trainingLog';
 
 type UnitSystem = 'metric' | 'imperial';
@@ -34,20 +33,6 @@ export function preferencesSummary(p: {
   return [THEME_PREF_LABEL[p.theme], UNIT_LABEL[p.units], weekStartLabel(p.weekStartsOn)].join(
     ' · '
   );
-}
-
-export function weeklyGoalsSummary(g: {
-  weeklyGoalDistance: number;
-  weeklyGoalActivities: number;
-  weeklyGoalTime: number;
-  units: UnitSystem;
-}): string {
-  const activities = `${g.weeklyGoalActivities} ${g.weeklyGoalActivities === 1 ? 'activity' : 'activities'}`;
-  return [
-    formatDistance(g.weeklyGoalDistance, g.units),
-    activities,
-    formatDuration(g.weeklyGoalTime),
-  ].join(' · ');
 }
 
 export function privateZonesSummary(count: number): string {

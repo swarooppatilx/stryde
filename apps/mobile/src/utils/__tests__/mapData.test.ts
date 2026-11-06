@@ -2,32 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   heatmapPoints,
   type LngLatPair,
-  pointFeature,
   routeFeatureCollection,
-  sampleRoute,
   territoryBoundsRing,
   territoryFeatureCollection,
 } from '@/utils/mapData';
 
 const line = (n: number): LngLatPair[] =>
   Array.from({ length: n }, (_, i) => [73 + i * 1e-4, 18 + i * 1e-4]);
-
-describe('sampleRoute', () => {
-  it('leaves a short route untouched', () => {
-    const route = line(50);
-    expect(sampleRoute(route, 400)).toBe(route);
-  });
-
-  it('thins a dense route but keeps both ends so the shape still starts and finishes right', () => {
-    const route = line(5000);
-    const sampled = sampleRoute(route, 400);
-
-    expect(sampled.length).toBeLessThanOrEqual(401);
-    expect(sampled.length).toBeGreaterThan(300);
-    expect(sampled[0]).toEqual(route[0]);
-    expect(sampled.at(-1)).toEqual(route.at(-1));
-  });
-});
 
 describe('heatmapPoints', () => {
   it('collapses overlapping tracks into one point per grid cell', () => {
@@ -65,13 +46,6 @@ describe('feature collections', () => {
 
     expect(fc.features[0]?.properties).toEqual({ territoryId: '0xabc' });
     expect(fc.features[0]?.geometry).toEqual({ type: 'Polygon', coordinates: [ring] });
-  });
-
-  it('wraps a single point', () => {
-    expect(pointFeature([1, 2]).features[0]?.geometry).toEqual({
-      type: 'Point',
-      coordinates: [1, 2],
-    });
   });
 });
 
