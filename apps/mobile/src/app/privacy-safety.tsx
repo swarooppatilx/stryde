@@ -91,6 +91,7 @@ export default function PrivacySafetyScreen() {
         title="New activities"
         footer="These are the starting choices in the save form for activities you record or add by hand. Your own view always shows everything, and each activity can be changed when you save it."
       >
+        {/* biome-ignore lint/complexity/noUselessFragments: antd's List takes elements, not a nested array */}
         <>
           {HIDDEN_STAT_CHOICES.map(({ stat, label }) => (
             <SettingsRow

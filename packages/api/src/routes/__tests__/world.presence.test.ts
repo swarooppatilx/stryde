@@ -64,6 +64,14 @@ function signalHash(signal: string): string {
   return `0x${h.toString(16)}`;
 }
 
+// An Orb Proof of Human carries no sybil score, so the score is optional on a response.
+type EnrollmentResponse = {
+  identifier: string;
+  nullifier: string;
+  signal_hash: string;
+  sybil_score?: number;
+};
+
 const enrollment = (sybil_score: number) => ({
   protocol_version: '4.0',
   action: 'stryde-athlete-pass',
@@ -71,7 +79,7 @@ const enrollment = (sybil_score: number) => ({
   environment: 'sandbox',
   responses: [
     { identifier: 'selfie', nullifier: '42', signal_hash: signalHash(WALLET), sybil_score },
-  ],
+  ] as EnrollmentResponse[],
 });
 
 const finishLine = (run: string, sessionNullifier = '9001', session_id = 'session_runner') => ({

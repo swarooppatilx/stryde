@@ -179,7 +179,12 @@ describe('arkiv live beacons', () => {
     arkiv.request('/beacons', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ runId: 'run-123456', athlete: OTHER, latitude: 19.07, longitude: 72.87 }),
+      body: JSON.stringify({
+        runId: 'run-123456',
+        athlete: OTHER,
+        latitude: 19.07,
+        longitude: 72.87,
+      }),
     });
 
   it('refuses to move a beacon whose run id belongs to another athlete', async () => {

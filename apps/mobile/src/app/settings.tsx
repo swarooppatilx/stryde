@@ -89,11 +89,7 @@ export default function SettingsListScreen() {
         <SettingsRow
           icon="shield-checkmark-outline"
           title={isVerified ? 'World ID Athlete Pass' : 'Verify with World ID'}
-          subtitle={
-            isVerified
-              ? 'Verified with World ID'
-              : 'Get your Athlete Pass with World ID'
-          }
+          subtitle={isVerified ? 'Verified with World ID' : 'Get your Athlete Pass with World ID'}
           onPress={() => router.push('/verify')}
         />
         <SettingsRow
