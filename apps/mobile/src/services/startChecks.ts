@@ -21,6 +21,41 @@ function askToContinue(title: string, message: string, cont: string, cancel: str
   });
 }
 
+let batterySaverAccepted = false;
+
+export function resetBatterySaverChoice(): void {
+  batterySaverAccepted = false;
+}
+
+/** Asks once per app session when battery saver is on; Continue is remembered, so a retry does not nag. */
+async function confirmBatterySaver(): Promise<boolean> {
+  const { battery, readiness } = getPlatform();
+  const state = await readOrNull(() => battery.getState());
+  if (!state?.lowPowerMode) {
+    batterySaverAccepted = false;
+    return true;
+  }
+  if (batterySaverAccepted) return true;
+  const action = await new Promise<'continue' | 'settings' | 'dismissed'>((resolve) => {
+    Alert.alert(
+      C.batterySaverTitle,
+      C.batterySaverBody,
+      [
+        { text: C.batterySaverSettings, onPress: () => resolve('settings') },
+        { text: C.batterySaverContinue, onPress: () => resolve('continue') },
+      ],
+      { onDismiss: () => resolve('dismissed') }
+    );
+  });
+  if (action === 'settings') {
+    // No battery settings page is reachable from here, so this opens the app's own settings page.
+    await readOrNull(() => readiness.openAppSettings());
+    return false;
+  }
+  batterySaverAccepted = action === 'continue';
+  return batterySaverAccepted;
+}
+
 /** Whether recording may begin: explains whatever stands in the way and returns false, or asks about a missing GPS fix and lets the athlete start anyway. */
 export async function confirmStart(session: {
   status: string;
@@ -35,7 +70,7 @@ export async function confirmStart(session: {
 
   switch (dialog) {
     case null:
-      return true;
+      return confirmBatterySaver();
     case 'inProgress':
       Alert.alert(C.inProgressTitle, C.inProgressBody, [{ text: C.close }]);
       return false;
@@ -51,6 +86,13 @@ export async function confirmStart(session: {
       // That flow explains itself, asks when the phone still lets it, and offers the settings page.
       return ensureForegroundLocation();
     case 'noSignal':
-      return askToContinue(C.noSignalTitle, C.noSignalBody, C.noSignalContinue, C.noSignalWait);
+      return (
+        (await askToContinue(
+          C.noSignalTitle,
+          C.noSignalBody,
+          C.noSignalContinue,
+          C.noSignalWait
+        )) && confirmBatterySaver()
+      );
   }
 }

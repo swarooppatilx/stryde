@@ -12,6 +12,8 @@ import {
   showsSpeed,
   type UnitSystem,
 } from '@/utils/format';
+import { type ZoneFloors, zoneOf } from '@/utils/heartRateZones';
+import type { LiveSensors } from '@/utils/sensorLive';
 
 /** Sports read in pace share one layout, sports read in speed (rides, skates) another. */
 export type LiveStatFamily = 'pace' | 'speed';
@@ -44,6 +46,16 @@ export interface LiveStatData {
   currentLap: { distance: number; duration: number };
   /** The Apple Watch's latest readings; absent when no watch is recording. */
   watch?: LiveWatch | null;
+  /** Bluetooth sensors' latest readings; they win over the watch. Absent when none are connected. */
+  sensors?: LiveSensors | null;
+  /** What the athlete's heart rate zones are measured against; null while no maximum is known. */
+  hrProfile?: HeartRateProfile | null;
+}
+
+export interface HeartRateProfile {
+  maxHr: number;
+  restingHr?: number;
+  floors?: ZoneFloors;
 }
 
 /** A GPS speed older than this no longer says how fast the athlete is moving. */
@@ -71,6 +83,7 @@ export type LiveStatId =
   | 'lapSpeed'
   | 'laps'
   | 'heartRate'
+  | 'heartRateZone'
   | 'cadence'
   | 'power'
   | 'calories';
@@ -121,6 +134,13 @@ const lastSplit = (data: LiveStatData) => data.splits.at(-1);
 const watchFigure = (value: number | undefined, unit: string) =>
   finite(value) ? `${Math.round(value)} ${unit}` : DASH;
 
+/** Heart rate, power and cadence come from a Bluetooth sensor first, then the watch. */
+const heartRateOf = (d: LiveStatData) => d.sensors?.heartRate ?? d.watch?.heartRate;
+const powerOf = (d: LiveStatData) => d.sensors?.power ?? d.watch?.power;
+const cadenceOf = (d: LiveStatData) => d.sensors?.cadence ?? d.watch?.cadence;
+const hasSensor = (d: LiveStatData, kind: 'heartRate' | 'power' | 'speedCadence') =>
+  d.sensors?.connected.includes(kind) === true;
+
 export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
   time: {
     id: 'time',
@@ -168,10 +188,13 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     label: () => 'Right now',
     icon: 'speedometer',
     families: SPEED,
-    value: (d, u) =>
-      finite(d.recent.distance) && finite(d.recent.durationMs) && speedStale(d)
+    value: (d, u) => {
+      const sensorSpeed = d.sensors?.speed;
+      if (finite(sensorSpeed)) return speed(sensorSpeed, 1000, u);
+      return finite(d.recent.distance) && finite(d.recent.durationMs) && speedStale(d)
         ? `0 ${speedUnit(u)}`
-        : speed(d.recent.distance, d.recent.durationMs, u),
+        : speed(d.recent.distance, d.recent.durationMs, u);
+    },
   },
   lastSplitPace: {
     id: 'lastSplitPace',
@@ -286,17 +309,31 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     label: () => 'Heart rate',
     icon: 'heart',
     families: BOTH,
-    value: (d) => watchFigure(d.watch?.heartRate, 'bpm'),
-    available: (d) => d.watch?.heartRate !== undefined,
+    value: (d) => watchFigure(heartRateOf(d), 'bpm'),
+    available: (d) => heartRateOf(d) !== undefined || hasSensor(d, 'heartRate'),
+  },
+  heartRateZone: {
+    id: 'heartRateZone',
+    name: 'Heart rate zone',
+    label: () => 'HR zone',
+    icon: 'pulse-outline',
+    families: BOTH,
+    value: (d) => {
+      const bpm = heartRateOf(d);
+      if (!finite(bpm) || !d.hrProfile) return DASH;
+      const { maxHr, restingHr, floors } = d.hrProfile;
+      return `Zone ${zoneOf(bpm, maxHr, restingHr, floors)}`;
+    },
+    available: (d) => heartRateOf(d) !== undefined && Boolean(d.hrProfile),
   },
   cadence: {
     id: 'cadence',
     name: 'Cadence',
     label: () => 'Cadence',
     icon: 'footsteps-outline',
-    families: PACE,
-    value: (d) => watchFigure(d.watch?.cadence, 'spm'),
-    available: (d) => d.watch?.cadence !== undefined,
+    families: BOTH,
+    value: (d) => watchFigure(cadenceOf(d), d.sensors?.cadence === undefined ? 'spm' : 'rpm'),
+    available: (d) => cadenceOf(d) !== undefined || hasSensor(d, 'speedCadence'),
   },
   power: {
     id: 'power',
@@ -304,8 +341,8 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     label: () => 'Power',
     icon: 'flash-outline',
     families: BOTH,
-    value: (d) => watchFigure(d.watch?.power, 'W'),
-    available: (d) => d.watch?.power !== undefined,
+    value: (d) => watchFigure(powerOf(d), 'W'),
+    available: (d) => powerOf(d) !== undefined || hasSensor(d, 'power'),
   },
   calories: {
     id: 'calories',

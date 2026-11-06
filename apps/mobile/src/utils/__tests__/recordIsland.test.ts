@@ -40,11 +40,14 @@ describe('flyoutRows', () => {
     );
   });
 
-  it('lists options that are not built yet as plain coming-later rows', () => {
-    const later = flyoutRows({ trackLaps: true, mapStyle: 'auto', liveShare: false }).filter(
-      (r) => !r.available
-    );
-    expect(later.map((r) => [r.id, r.subtitle])).toEqual([['sensor', 'Coming later']]);
+  it('opens sensors as a real row that says what is connected', () => {
+    const base = { trackLaps: true, mapStyle: 'auto', liveShare: false } as const;
+    const row = (sensors: { connected: number; paired: number }) =>
+      flyoutRows({ ...base, sensors }).find((r) => r.id === 'sensor');
+    expect(row({ connected: 0, paired: 0 })).toMatchObject({ subtitle: 'None', available: true });
+    expect(row({ connected: 1, paired: 2 })?.subtitle).toBe('1 connected');
+    expect(row({ connected: 0, paired: 2 })?.subtitle).toBe('2 paired');
+    expect(flyoutRows(base).find((r) => r.id === 'sensor')?.subtitle).toBe('None');
   });
 
   it('shows live location as a switch with its current value', () => {

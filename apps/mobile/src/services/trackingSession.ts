@@ -11,6 +11,7 @@ import {
   type Subscription,
 } from '@/platform';
 import type { WatchLink } from '@/platform/ports';
+import type { PairedSensor } from '@/stores/sensorStore';
 import type { AccuracyMode } from '@/stores/settingsStore';
 import type { ActivityStream, ActivityType, BestEffort, Lap, Location, Ring, Split } from '@/types';
 import type { FixRejections, ITerritoryService, ITrackingService } from '@/types/services';
@@ -35,6 +36,7 @@ import { logger } from '@/utils/logger';
 import { isTooShort, MIN_GPS_DISTANCE_M } from '@/utils/minimumRun';
 import { LIVE_SPEED_STALE_MS, recentMovement } from '@/utils/recentMovement';
 import { downsampleRoute, type RoutePoint } from '@/utils/route';
+import type { LiveSensors } from '@/utils/sensorLive';
 import { computeSplits } from '@/utils/splits';
 import { round, type TrackingTrace } from '@/utils/trackingTrace';
 import { isTrackTraceOn, trackTrace } from '@/utils/trackTrace';
@@ -49,6 +51,7 @@ import {
   watchDistanceScale,
 } from '@/utils/watchSamples';
 import { ensureForegroundLocation } from './locationPermission';
+import { type SensorHub, sensorHub } from './sensorHub';
 import { territoryService } from './territoryService';
 import { getTimeToIndexed } from './timeToIndexed';
 import { trackingService } from './trackingService';
@@ -84,6 +87,8 @@ export interface SessionOptions {
   unitSystem?: UnitSystem;
   /** Start the paired Apple Watch's workout and use its heart rate, distance, cadence, power and calories. */
   useWatch?: boolean;
+  /** Paired Bluetooth sensors to connect when the recording starts. */
+  sensors?: readonly PairedSensor[];
 }
 
 /** Everything the tracking screen shows; a new object whenever any of it changes. */
@@ -117,6 +122,8 @@ export interface SessionSnapshot {
   elevationGain: number | null;
   /** The watch's live numbers; null when no watch is part of this recording. */
   watch: LiveWatch | null;
+  /** The Bluetooth sensors' live numbers; null when none was part of this recording. */
+  sensors: LiveSensors | null;
 }
 
 export interface SessionSummary {
@@ -192,6 +199,8 @@ export interface TrackingSessionDeps {
   liveBackground?: boolean;
   /** The paired watch, when the platform has one. */
   watch?: WatchLink;
+  /** Bluetooth heart rate, power, speed and cadence sensors. */
+  sensors?: SensorHub;
 }
 
 /** Seconds per kilometre, or null before there is distance to divide by. */
@@ -223,6 +232,7 @@ const IDLE_SNAPSHOT: SessionSnapshot = {
   splits: [],
   elevationGain: null,
   watch: null,
+  sensors: null,
 };
 
 const GPS_OFF_MESSAGE = 'Turn on device location (GPS) to track this activity.';
@@ -230,6 +240,7 @@ const GPS_FAILED_MESSAGE = 'Unable to access your location.';
 const GPS_TIMEOUT_MESSAGE = "Couldn't get a GPS signal. Make sure location is on, then try again.";
 /** How long Start waits for the GPS to answer before telling the athlete. */
 const WATCH_START_TIMEOUT_MS = 15_000;
+const SENSOR_EMIT_MS = 1000;
 
 class GpsTimeoutError extends Error {}
 
@@ -322,6 +333,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
   let pulling = false;
   /** Pause or resume pressed on the watch; the session's own methods, set once they exist. */
   let followWatch: (state: 'paused' | 'running') => void = () => {};
+  const sensors = deps.sensors;
   const watch = deps.watch
     ? createWatchRecording(deps.watch, {
         onChange: () => {
@@ -332,6 +344,31 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         onRemote: (state) => followWatch(state),
       })
     : null;
+
+  /** Null until a sensor is connected, so a run without sensors carries no sensor state at all. */
+  function sensorsLive(): LiveSensors | null {
+    if (!sensors) return null;
+    const live = sensors.live(deps.clock.now());
+    const any = live.connected.length > 0 || live.lost.length > 0;
+    return any ? live : null;
+  }
+
+  // A sensor notifies about once a second; the screen needs no more than that, and a sensor never costs a GPS tick.
+  let lastSensorEmit = 0;
+  let sensorSignature = '';
+  sensors?.subscribe(() => {
+    if (status === 'idle') return;
+    const live = sensors.live(deps.clock.now());
+    const shown = [live.heartRate, live.power, live.cadence, live.speed].map(
+      (v) => v !== undefined
+    );
+    const signature = `${live.connected.join()}|${live.lost.join()}|${shown.join()}`;
+    const now = deps.clock.now();
+    if (signature === sensorSignature && now - lastSensorEmit < SENSOR_EMIT_MS) return;
+    sensorSignature = signature;
+    lastSensorEmit = now;
+    emit();
+  });
 
   let snapshot = IDLE_SNAPSHOT;
   let liveSplits: { finished: number; list: Split[] } = { finished: 0, list: [] };
@@ -397,6 +434,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       splits: status === 'idle' ? IDLE_SNAPSHOT.splits : finishedSplits(),
       elevationGain: status === 'idle' ? null : climbSoFar(),
       watch: status === 'idle' ? null : (watch?.live() ?? null),
+      sensors: status === 'idle' ? null : sensorsLive(),
     };
     // A paused run stays awake too: it is about to be resumed or reviewed. Only a change is passed on,
     // not every position update.
@@ -473,6 +511,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     pending = [];
     released = 0;
     watch?.reset();
+    sensors?.clearSamples();
   }
 
   /** GPS distance stretched to the watch's, while the watch streams steadily and agrees (see watchDistanceScale). */
@@ -726,19 +765,30 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     if (sport) watch.connect(sport);
   }
 
-  /** The watch's heart rate, cadence, power and calories for the summary; the phone's cadence when it had none. */
+  /** Connects the paired Bluetooth sensors; one that cannot be reached is retried while recording and never stops it. */
+  function connectSensors(from: SessionOptions): void {
+    if (!sensors) return;
+    sensors.beginRecording();
+    if (from.sensors && from.sensors.length > 0) void sensors.connectPaired(from.sensors);
+  }
+
+  /**
+   * Heart rate, cadence and power for the summary, from a Bluetooth sensor when one sent readings, else the
+   * watch; calories and the watch flag only from the watch. The phone's cadence fills in when neither had any.
+   */
   function watchSummary(
     stream: ActivityStream | undefined,
     startedAt: number | undefined,
     scale: number
   ) {
-    const samples = watch?.samples() ?? [];
-    if (samples.length === 0 || startedAt === undefined) {
+    const watchSamples = watch?.samples() ?? [];
+    const sensorSamples = sensors?.samples() ?? [];
+    if ((watchSamples.length === 0 && sensorSamples.length === 0) || startedAt === undefined) {
       return { stream: withCadence(stream, stepSamples) };
     }
-    const hr = heartRateOf(samples, startedAt);
-    const cadence = cadenceOf(samples, startedAt);
-    const power = powerOf(samples, startedAt);
+    const hr = heartRateOf(sensorSamples, startedAt) ?? heartRateOf(watchSamples, startedAt);
+    const cadence = cadenceOf(sensorSamples, startedAt) ?? cadenceOf(watchSamples, startedAt);
+    const power = powerOf(sensorSamples, startedAt) ?? powerOf(watchSamples, startedAt);
     const scaled = stream && {
       ...stream,
       ...(stream.d && scale !== 1 ? { d: stream.d.map((m) => m * scale) } : {}),
@@ -753,8 +803,9 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         cadence && withWatch ? { ...withWatch, cadence } : withCadence(withWatch, stepSamples),
       ...(hr ? { heartRate: hr.summary } : {}),
       ...(power ? { avgPower: power.avg } : {}),
-      caloriesBurned: caloriesOf(samples),
-      recordedWithWatch: true,
+      ...(watchSamples.length > 0
+        ? { caloriesBurned: caloriesOf(watchSamples), recordedWithWatch: true }
+        : {}),
     };
   }
 
@@ -810,6 +861,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       if (status === 'tracking') startBackground();
       // The watch workout keeps going while the app is closed: listen to it again.
       if (options.useWatch && watch && watchSportOf(activityType)) watch.reattach();
+      connectSensors(options);
 
       measure();
       applyMotion();
@@ -850,6 +902,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
 
         startBackground();
         connectWatch();
+        connectSensors(startOptions);
         applyMotion();
         measure();
         emit();
@@ -897,6 +950,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       status = 'paused';
       autoPaused = false;
       watch?.pause();
+      sensors?.setCollecting(false);
       applyMotion();
       measure();
       emit();
@@ -924,6 +978,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       }
       startBackground();
       watch?.resume();
+      sensors?.setCollecting(true);
       applyMotion();
       measure();
       emit();
@@ -936,6 +991,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
 
       stopWatching();
       await watch?.end();
+      await sensors?.endRecording();
       await background.stop();
       await drainBackground();
       deps.recordRejections?.(tracking.getRejections());
@@ -1131,5 +1187,6 @@ export const trackingSession: TrackingSession = lazyService((platform) =>
     recordRejections: (counts) => getTimeToIndexed().log.record('record.rejections', { counts }),
     trace: trackingTrace,
     watch: platform.watch,
+    sensors: sensorHub,
   })
 );

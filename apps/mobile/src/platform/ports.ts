@@ -278,6 +278,19 @@ export interface DeviceReadiness {
   openAppSettings(): Promise<void>;
 }
 
+/** `level` is 0 to 1, or -1 when unknown. On Android `lowPowerMode` is the system Battery Saver. */
+export interface BatteryState {
+  level: number;
+  lowPowerMode: boolean;
+  charging: boolean;
+}
+
+export interface Battery {
+  getState(): Promise<BatteryState>;
+  /** Fires with the fresh state when battery saver or the charge level changes. */
+  subscribe(listener: (state: BatteryState) => void): Subscription;
+}
+
 export type PushPermission = 'granted' | 'denied' | 'undetermined';
 
 /** Remote notifications: the permission, this phone's push token, and what happens when one arrives or is tapped. */
@@ -300,6 +313,52 @@ export interface PushNotifications {
   takeLaunchTap(): Promise<unknown | null>;
 }
 
+/** The three kinds of Bluetooth LE sensor Stryde reads: Heart Rate, Cycling Power, Cycling Speed and Cadence. */
+export type SensorKind = 'heartRate' | 'power' | 'speedCadence';
+
+/** `unsupported`: no Bluetooth LE here; `off`: switched off; `unauthorized`: the app may not use it yet. */
+export type BleAdapterState = 'unsupported' | 'off' | 'unauthorized' | 'ready';
+
+/** A sensor seen while scanning. `rssi` is the signal strength in dBm, null when not reported. */
+export interface BleDevice {
+  id: string;
+  name: string | null;
+  kinds: SensorKind[];
+  rssi: number | null;
+}
+
+/** One raw notification from a sensor's measurement characteristic; the app decodes the bytes. */
+export interface BleNotification {
+  kind: SensorKind;
+  value: Uint8Array;
+}
+
+export interface BleConnectionHandlers {
+  onNotification(notification: BleNotification): void;
+  /** The link dropped (out of range, battery, switched off). Not called after the app's own `disconnect`. */
+  onDisconnect(): void;
+}
+
+export interface BleConnection {
+  disconnect(): Promise<void>;
+}
+
+/** Bluetooth LE fitness sensors: scan, connect and stream measurements. Foreground only. */
+export interface BleSensors {
+  adapterState(): Promise<BleAdapterState>;
+  onAdapterState(listener: (state: BleAdapterState) => void): Subscription;
+  /** Shows the system permission prompt where there is one; the state afterwards. */
+  requestPermission(): Promise<BleAdapterState>;
+  /** Reports each sensor that advertises one of the supported services; `remove` stops the scan. */
+  scan(onDevice: (device: BleDevice) => void, onError: (error: Error) => void): Subscription;
+  /** Connects and subscribes to the measurements for `kinds`; rejects when the sensor cannot be reached. */
+  connect(
+    id: string,
+    kinds: readonly SensorKind[],
+    handlers: BleConnectionHandlers
+  ): Promise<BleConnection>;
+}
+
 export interface Platform {
   clock: Clock;
   ids: IdGenerator;
@@ -320,4 +379,6 @@ export interface Platform {
   watch: WatchLink;
   readiness: DeviceReadiness;
   push: PushNotifications;
+  battery: Battery;
+  ble: BleSensors;
 }

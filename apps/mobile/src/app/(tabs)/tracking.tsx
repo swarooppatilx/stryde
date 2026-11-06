@@ -17,6 +17,7 @@ import { RecordMapControls } from '@/components/record-map-controls';
 import { RecordPreRun } from '@/components/record-prerun';
 import { RecordSheet, SheetHandle } from '@/components/record-sheet';
 import { RecordStatsView } from '@/components/record-stats-view';
+import { SensorStrip } from '@/components/sensor-strip';
 import { StartCountdownOverlay } from '@/components/start-countdown-overlay';
 import { ThemedText } from '@/components/themed-text';
 import { WatchStrip } from '@/components/watch-strip';
@@ -40,6 +41,7 @@ import { useLiveSegments } from '@/hooks/useLiveSegments';
 import { useLocationServices } from '@/hooks/useLocationServices';
 import { useNow } from '@/hooks/useNow';
 import { usePreRunReadiness } from '@/hooks/usePreRunReadiness';
+import { useRecordSensors } from '@/hooks/useRecordSensors';
 import type { RecoveryChoice } from '@/hooks/useRecoveredRun';
 import { useStartCountdown } from '@/hooks/useStartCountdown';
 import { useTrackingSession } from '@/hooks/useTrackingSession';
@@ -138,6 +140,7 @@ export default function TrackingScreen() {
   const [layersOpen, setLayersOpen] = useState(false);
   const trackLaps = useRecordUiStore((s) => s.trackLaps);
   const setTrackLaps = useRecordUiStore((s) => s.setTrackLaps);
+  const { counts: sensorCounts, hrProfile } = useRecordSensors();
   const mapStyle = useMapPrefsStore((s) => s.style);
   const showPoi = useMapPrefsStore((s) => s.showPoi);
   const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
@@ -381,7 +384,7 @@ export default function TrackingScreen() {
     fix ? [fix.longitude, fix.latitude] : DEFAULT_CENTER
   );
   const territoryArea = trackedPolygon ? territoryService.getPolygonArea(trackedPolygon) : null;
-  const { recent, lapCount, splits, elevationGain, laps, lapStart, watch } = snapshot;
+  const { recent, lapCount, splits, elevationGain, laps, lapStart, watch, sensors } = snapshot;
   const fixAgeMs = location ? Math.max(0, now - location.timestamp) : null;
   const altitude = location?.altitude ?? null;
   const liveData = useMemo<LiveStatData>(
@@ -402,6 +405,8 @@ export default function TrackingScreen() {
         duration: Math.max(0, duration - lapStart.duration),
       },
       watch,
+      sensors,
+      hrProfile,
     }),
     [
       distance,
@@ -417,6 +422,8 @@ export default function TrackingScreen() {
       altitude,
       lapStart,
       watch,
+      sensors,
+      hrProfile,
     ]
   );
 
@@ -598,6 +605,7 @@ export default function TrackingScreen() {
                 </Pressable>
               )}
               <WatchStrip watch={watch} />
+              <SensorStrip sensors={sensors} />
               {isPaused && <PausedBar autoPaused={autoPaused} />}
               {lapCard && (
                 <LapCompleteCard
@@ -646,6 +654,7 @@ export default function TrackingScreen() {
                     trackLaps,
                     mapStyle,
                     liveShare: beacon.available ? beacon.enabled : null,
+                    sensors: sensorCounts,
                   })}
                   trackLaps={trackLaps}
                   onToggleLaps={setTrackLaps}
@@ -654,6 +663,7 @@ export default function TrackingScreen() {
                   onOpen={(id) => {
                     setFlyoutOpen(false);
                     if (id === 'settings') router.push('/recording-settings');
+                    else if (id === 'sensor') router.push('/sensors');
                     else setLayersOpen(true);
                   }}
                 />

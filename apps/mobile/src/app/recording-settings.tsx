@@ -10,6 +10,7 @@ import { ListIcon } from '@/components/list-icon';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LOW_POWER_COPY } from '@/constants/copy';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
@@ -35,6 +36,7 @@ export default function RecordingSettingsScreen() {
       keepScreenOn: state.keepScreenOn,
       countdownSeconds: state.countdownSeconds,
       accuracyMode: state.accuracyMode,
+      adjustGpsInBatterySaver: state.adjustGpsInBatterySaver,
       useGyroscopeAssist: state.useGyroscopeAssist,
       setAutoPause: state.setAutoPause,
       setAutoPauseOnFoot: state.setAutoPauseOnFoot,
@@ -43,6 +45,7 @@ export default function RecordingSettingsScreen() {
       setKeepScreenOn: state.setKeepScreenOn,
       setCountdownSeconds: state.setCountdownSeconds,
       setAccuracyMode: state.setAccuracyMode,
+      setAdjustGpsInBatterySaver: state.setAdjustGpsInBatterySaver,
       setGyroscopeAssist: state.setGyroscopeAssist,
     }))
   );
@@ -178,6 +181,19 @@ export default function RecordingSettingsScreen() {
             {ACCURACY_MODE_CONFIG[s.accuracyMode].caption}
           </ThemedText>
           <List>
+            <List.Item
+              thumb={<ListIcon name="battery-half-outline" />}
+              extra={
+                <AppSwitch
+                  checked={s.adjustGpsInBatterySaver}
+                  onChange={s.setAdjustGpsInBatterySaver}
+                  label={LOW_POWER_COPY.settingLabel}
+                />
+              }
+            >
+              {LOW_POWER_COPY.settingLabel}
+              <List.Item.Brief>{LOW_POWER_COPY.settingBrief}</List.Item.Brief>
+            </List.Item>
             <List.Item
               thumb={<ListIcon name="hardware-chip-outline" />}
               extra={

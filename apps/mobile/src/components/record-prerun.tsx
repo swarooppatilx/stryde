@@ -6,6 +6,7 @@ import type { ActivityType } from '@/types';
 import type { GpsSignal } from '@/utils/gpsSignal';
 import type { ReadinessActionKind, ReadinessCheck } from '@/utils/readiness';
 import { GpsSignalBar } from './gps-signal-bar';
+import { LowPowerStatus } from './low-power-status';
 import { ReadinessCard } from './readiness-card';
 import { RecordSheet, SheetHandle } from './record-sheet';
 import { SportCards } from './sport-cards';
@@ -53,6 +54,7 @@ export function RecordPreRun({
           </Tappable>
         </View>
       </View>
+      <LowPowerStatus />
       {onReadinessAction && <ReadinessCard rows={readiness} onAction={onReadinessAction} />}
       <SportCards disabled={starting} onStart={onStart} />
     </RecordSheet>

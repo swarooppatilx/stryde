@@ -334,3 +334,64 @@ describe('watch figures', () => {
     expect(LIVE_STAT_FIELDS.heartRate.value(dropped, 'metric')).toBe('—');
   });
 });
+
+describe('sensor figures', () => {
+  const sensors = (patch: Partial<NonNullable<LiveStatData['sensors']>>) => ({
+    connected: [],
+    lost: [],
+    ...patch,
+  });
+  const watch: LiveStatData['watch'] = {
+    state: 'running',
+    heartRate: 120,
+    cadence: 160,
+    power: 100,
+  };
+
+  it('prefers a sensor over the watch', () => {
+    const data: LiveStatData = {
+      ...moving,
+      watch,
+      sensors: sensors({ heartRate: 143, power: 230, cadence: 88 }),
+    };
+    expect(LIVE_STAT_FIELDS.heartRate.value(data, 'metric')).toBe('143 bpm');
+    expect(LIVE_STAT_FIELDS.power.value(data, 'metric')).toBe('230 W');
+    expect(LIVE_STAT_FIELDS.cadence.value(data, 'metric')).toBe('88 rpm');
+  });
+
+  it('falls back to the watch when the sensor has nothing fresh', () => {
+    const data: LiveStatData = { ...moving, watch, sensors: sensors({ lost: ['heartRate'] }) };
+    expect(LIVE_STAT_FIELDS.heartRate.value(data, 'metric')).toBe('120 bpm');
+    expect(LIVE_STAT_FIELDS.cadence.value(data, 'metric')).toBe('160 spm');
+  });
+
+  it('dashes a figure once its sensor dropped out and nothing else has it', () => {
+    const data: LiveStatData = { ...moving, sensors: sensors({ connected: ['heartRate'] }) };
+    expect(LIVE_STAT_FIELDS.heartRate.value(data, 'metric')).toBe('—');
+    expect(LIVE_STAT_FIELDS.heartRate.available?.(data)).toBe(true);
+    expect(LIVE_STAT_FIELDS.power.available?.(data)).toBe(false);
+  });
+
+  it('offers cadence for speed sports too', () => {
+    expect(liveStatChoices('speed').map((f) => f.id)).toContain('cadence');
+  });
+
+  it('shows the sensor speed as the current speed when it is fresh', () => {
+    const data: LiveStatData = { ...moving, sensors: sensors({ speed: 10 }) };
+    expect(LIVE_STAT_FIELDS.currentSpeed.value(data, 'metric')).toBe('36 km/h');
+    expect(LIVE_STAT_FIELDS.currentSpeed.value(moving, 'metric')).not.toBe('36 km/h');
+  });
+
+  it('shows the heart rate zone from the athlete profile', () => {
+    const data: LiveStatData = {
+      ...moving,
+      sensors: sensors({ heartRate: 175 }),
+      hrProfile: { maxHr: 190 },
+    };
+    expect(LIVE_STAT_FIELDS.heartRateZone.value(data, 'metric')).toBe('Zone 5');
+    expect(LIVE_STAT_FIELDS.heartRateZone.available?.(data)).toBe(true);
+    const noProfile: LiveStatData = { ...data, hrProfile: null };
+    expect(LIVE_STAT_FIELDS.heartRateZone.value(noProfile, 'metric')).toBe('—');
+    expect(LIVE_STAT_FIELDS.heartRateZone.available?.(noProfile)).toBe(false);
+  });
+});

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installFakePlatform } from '@/platform/fakes';
-import { confirmStart } from '@/services/startChecks';
+import { confirmStart, resetBatterySaverChoice } from '@/services/startChecks';
 import { useAlertStore } from '@/stores/alertStore';
 
 let platform: ReturnType<typeof installFakePlatform>;
@@ -8,6 +8,7 @@ let platform: ReturnType<typeof installFakePlatform>;
 beforeEach(() => {
   platform = installFakePlatform();
   useAlertStore.getState().hide();
+  resetBatterySaverChoice();
 });
 
 const idle = { status: 'idle', signalLevel: 'good' } as const;
@@ -118,5 +119,54 @@ describe('confirmStart', () => {
 
       expect(await confirmStart(idle)).toBe(false);
     });
+  });
+});
+
+describe('confirmStart in battery saver', () => {
+  it('asks plainly and starts on Continue', async () => {
+    platform.battery.set({ lowPowerMode: true });
+    const result = confirmStart(idle);
+    await settle();
+
+    expect(dialog().message).toBe(
+      'Battery saver is on. It can make your route less exact. Continue anyway?'
+    );
+    press('Continue');
+    expect(await result).toBe(true);
+  });
+
+  it('does not ask a second time once the athlete continued', async () => {
+    platform.battery.set({ lowPowerMode: true });
+    const first = confirmStart(idle);
+    await settle();
+    press('Continue');
+    await first;
+
+    expect(await confirmStart(idle)).toBe(true);
+    expect(dialog().visible).toBe(false);
+  });
+
+  it('opens the phone settings and does not start', async () => {
+    platform.battery.set({ lowPowerMode: true });
+    const result = confirmStart(idle);
+    await settle();
+    press('Open phone settings');
+
+    expect(await result).toBe(false);
+    expect(platform.readiness.appSettingsOpened).toBe(1);
+  });
+
+  it('does not start when dismissed', async () => {
+    platform.battery.set({ lowPowerMode: true });
+    const result = confirmStart(idle);
+    await settle();
+    dismiss();
+
+    expect(await result).toBe(false);
+  });
+
+  it('stays quiet when battery saver is off', async () => {
+    expect(await confirmStart(idle)).toBe(true);
+    expect(dialog().visible).toBe(false);
   });
 });

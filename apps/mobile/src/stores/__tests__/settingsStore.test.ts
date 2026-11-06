@@ -287,8 +287,8 @@ describe('preferred sports', () => {
     expect(migrate({ autoPause: true }, 9)).toMatchObject({ preferredSports: [] });
   });
 
-  it('are on version 13', () => {
-    expect(useSettingsStore.persist.getOptions().version).toBe(13);
+  it('are on version 14', () => {
+    expect(useSettingsStore.persist.getOptions().version).toBe(14);
   });
 });
 
@@ -330,6 +330,7 @@ describe('migrating to the save-form defaults', () => {
       defaultHideRoute: false,
       defaultHiddenStats: [],
       defaultMutedFromFeeds: false,
+      adjustGpsInBatterySaver: true,
     });
   });
 
@@ -338,6 +339,22 @@ describe('migrating to the save-form defaults', () => {
       defaultHideRoute: false,
       defaultHiddenStats: [],
       defaultMutedFromFeeds: false,
+    });
+  });
+});
+
+describe('adjusting GPS in battery saver', () => {
+  it('is on by default and switches off', () => {
+    expect(useSettingsStore.getState().adjustGpsInBatterySaver).toBe(true);
+    useSettingsStore.getState().setAdjustGpsInBatterySaver(false);
+    expect(useSettingsStore.getState().adjustGpsInBatterySaver).toBe(false);
+    useSettingsStore.getState().reset();
+  });
+
+  it('is added on when an older install is upgraded', () => {
+    expect(migrate({ accuracyMode: 'power' }, 13)).toEqual({
+      accuracyMode: 'power',
+      adjustGpsInBatterySaver: true,
     });
   });
 });

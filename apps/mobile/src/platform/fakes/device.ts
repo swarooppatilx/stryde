@@ -1,4 +1,6 @@
 import type {
+  Battery,
+  BatteryState,
   Clipboard,
   Clock,
   ConfirmOptions,
@@ -373,5 +375,23 @@ export class FakePushNotifications implements PushNotifications {
   /** Test helper: the athlete taps a notification. */
   tap(data: unknown) {
     for (const listener of this.listeners) listener(data);
+  }
+}
+
+/** A scripted battery: `set` changes it and tells every listener. */
+export class FakeBattery implements Battery {
+  state: BatteryState = { level: 0.8, lowPowerMode: false, charging: false };
+  private listeners = new Set<(state: BatteryState) => void>();
+
+  async getState() {
+    return this.state;
+  }
+  subscribe(listener: (state: BatteryState) => void): Subscription {
+    this.listeners.add(listener);
+    return { remove: () => this.listeners.delete(listener) };
+  }
+  set(change: Partial<BatteryState>) {
+    this.state = { ...this.state, ...change };
+    for (const listener of this.listeners) listener(this.state);
   }
 }
