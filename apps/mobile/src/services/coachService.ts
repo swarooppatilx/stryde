@@ -1,5 +1,5 @@
 import { getPlatform } from '@/platform';
-import { apiFetch } from '@/services/strydeApi';
+import { type HumanAuth, humanFetch } from '@/services/humanPassService';
 import type { CoachFacts } from '@/utils/coachFacts';
 import type { CoachRun, CoachVitals } from '@/utils/coachRun';
 
@@ -43,31 +43,35 @@ export interface CoachReview {
 
 /** The coach reads one activity's numbers against the recent log and says what to work on. */
 export async function requestReview(
-  wallet: string,
+  auth: HumanAuth,
   activity: CoachRun,
   vitals: CoachVitals,
   history: CoachRun[]
 ): Promise<{ review: CoachReview; receipts: ZeroGReceipt[] }> {
-  const body = await apiFetch<{ review: CoachReview; zeroG: ZeroGReceipt[] }>('/coach/review', {
-    method: 'POST',
-    body: JSON.stringify({ wallet, activity, vitals, history }),
-  });
+  const body = await humanFetch<{ review: CoachReview; zeroG: ZeroGReceipt[] }>(
+    auth,
+    '/coach/review',
+    {
+      method: 'POST',
+      body: JSON.stringify({ activity, vitals, history }),
+    }
+  );
   return { review: body.review, receipts: body.zeroG };
 }
 
 export async function requestPlan(
-  wallet: string,
+  auth: HumanAuth,
   history: CoachRun[],
   today: string,
   facts?: CoachFacts
 ): Promise<{ plan: CoachPlan; adjusted?: string[]; receipts: ZeroGReceipt[] }> {
-  const body = await apiFetch<{
+  const body = await humanFetch<{
     plan: CoachPlan;
     adjusted?: string[];
     zeroG: ZeroGReceipt[];
-  }>('/coach/plan', {
+  }>(auth, '/coach/plan', {
     method: 'POST',
-    body: JSON.stringify({ wallet, history, today, ...(facts ? { facts } : {}) }),
+    body: JSON.stringify({ history, today, ...(facts ? { facts } : {}) }),
   });
   return {
     plan: body.plan,
@@ -98,20 +102,20 @@ export type PosterStyleId = (typeof POSTER_STYLES)[number]['id'];
 
 /** An art director on 0G writes the scene, then Seedream on 0G paints it; the image stays on this device. */
 export async function requestPoster(
-  wallet: string,
+  auth: HumanAuth,
   activityId: string,
   activity: CoachRun,
   style?: PosterStyleId
 ): Promise<{ uri: string; title: string | null; style: string; receipts: ZeroGReceipt[] }> {
-  const body = await apiFetch<{
+  const body = await humanFetch<{
     imageBase64: string;
     mimeType: string;
     title: string | null;
     style: string;
     zeroG: ZeroGReceipt[];
-  }>('/coach/poster', {
+  }>(auth, '/coach/poster', {
     method: 'POST',
-    body: JSON.stringify({ wallet, activity, ...(style ? { style } : {}) }),
+    body: JSON.stringify({ activity, ...(style ? { style } : {}) }),
   });
   const ext = IMAGE_EXT[body.mimeType] ?? 'png';
   const safeId = activityId.replace(/[^A-Za-z0-9_-]/g, '');
@@ -124,18 +128,19 @@ export async function requestPoster(
 }
 
 export async function requestDebrief(
-  wallet: string,
+  auth: HumanAuth,
   activity: CoachRun,
   audioUri: string
 ): Promise<{ transcript: string; debrief: CoachDebrief; receipts: ZeroGReceipt[] }> {
   const audioBase64 = await getPlatform().files.readBase64(audioUri);
-  const body = await apiFetch<{ transcript: string; debrief: CoachDebrief; zeroG: ZeroGReceipt[] }>(
-    '/coach/debrief',
-    {
-      method: 'POST',
-      body: JSON.stringify({ wallet, activity, audioBase64, mimeType: 'audio/m4a' }),
-    }
-  );
+  const body = await humanFetch<{
+    transcript: string;
+    debrief: CoachDebrief;
+    zeroG: ZeroGReceipt[];
+  }>(auth, '/coach/debrief', {
+    method: 'POST',
+    body: JSON.stringify({ activity, audioBase64, mimeType: 'audio/m4a' }),
+  });
   return { transcript: body.transcript, debrief: body.debrief, receipts: body.zeroG };
 }
 

@@ -16,8 +16,8 @@ import { ThemedView } from '@/components/themed-view';
 import { ZeroGReceipts } from '@/components/zero-g-receipts';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useCoachAuth } from '@/hooks/useCoachAuth';
 import { useMaxHeartRate } from '@/hooks/useMaxHeartRate';
-import { useViemWallet } from '@/hooks/useViemWallet';
 import {
   POSTER_STYLES,
   type PosterStyleId,
@@ -25,6 +25,7 @@ import {
   requestPoster,
   requestReview,
 } from '@/services/coachService';
+import type { HumanAuth } from '@/services/humanPassService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useCoachStore } from '@/stores/coachStore';
 import { useProfileStore } from '@/stores/profileStore';
@@ -39,13 +40,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Try again.';
 }
 
-function ReviewSection({
-  activity,
-  wallet,
-}: {
-  activity: Activity;
-  wallet: string | null | undefined;
-}) {
+function ReviewSection({ activity, auth }: { activity: Activity; auth: HumanAuth | null }) {
   const theme = useTheme();
   const saved = useCoachStore((s) => s.reviews[activity.id]);
   const debrief = useCoachStore((s) => s.debriefs[activity.id]);
@@ -55,7 +50,7 @@ function ReviewSection({
   const [busy, setBusy] = useState(false);
 
   const review = async () => {
-    if (!wallet) return;
+    if (!auth) return;
     setBusy(true);
     try {
       const { activities } = useActivityStore.getState();
@@ -68,7 +63,7 @@ function ReviewSection({
         { maxHr, restingHr, zoneFloors }
       );
       const result = await requestReview(
-        wallet,
+        auth,
         toCoachRun(activity, debrief),
         toCoachVitals(activity, { maxHr, restingHr, zoneFloors }),
         history
@@ -93,7 +88,7 @@ function ReviewSection({
         <AppButton
           onPress={review}
           loading={busy}
-          disabled={busy || !wallet}
+          disabled={busy || !auth}
           icon={<Ionicons name="clipboard-outline" size={18} color={theme.brand.white} />}
         >
           {busy ? 'Your coach is reviewing…' : 'Get my coach review'}
@@ -172,7 +167,7 @@ function ReviewSection({
         fullWidth={false}
         onPress={review}
         loading={busy}
-        disabled={busy || !wallet}
+        disabled={busy || !auth}
       >
         {debrief ? 'Review again with my debrief' : 'Review again'}
       </AppButton>
@@ -180,13 +175,7 @@ function ReviewSection({
   );
 }
 
-function DebriefSection({
-  activity,
-  wallet,
-}: {
-  activity: Activity;
-  wallet: string | null | undefined;
-}) {
+function DebriefSection({ activity, auth }: { activity: Activity; auth: HumanAuth | null }) {
   const theme = useTheme();
   const saved = useCoachStore((s) => s.debriefs[activity.id]);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -213,10 +202,10 @@ function DebriefSection({
     await recorder.stop();
     await setAudioModeAsync({ allowsRecording: false });
     const uri = recorder.uri;
-    if (!uri || !wallet) return;
+    if (!uri || !auth) return;
     setBusy(true);
     try {
-      const result = await requestDebrief(wallet, toCoachRun(activity), uri);
+      const result = await requestDebrief(auth, toCoachRun(activity), uri);
       useCoachStore.getState().saveDebrief(activity.id, {
         ...result.debrief,
         transcript: result.transcript,
@@ -281,7 +270,7 @@ function DebriefSection({
           variant="secondary"
           onPress={start}
           loading={busy}
-          disabled={busy || !wallet}
+          disabled={busy || !auth}
           icon={<Ionicons name="mic" size={18} color={theme.brand.primary} />}
         >
           {busy ? 'Your coach is listening…' : 'Record debrief'}
@@ -293,11 +282,11 @@ function DebriefSection({
 
 function PosterSection({
   activity,
-  wallet,
+  auth,
   onShare,
 }: {
   activity: Activity;
-  wallet: string | null | undefined;
+  auth: HumanAuth | null;
   onShare: () => void;
 }) {
   const saved = useCoachStore((s) => s.posters[activity.id]);
@@ -309,11 +298,11 @@ function PosterSection({
   const savedStyle = POSTER_STYLES.find((s) => s.id === saved?.style)?.label;
 
   const make = async () => {
-    if (!wallet) return;
+    if (!auth) return;
     setBusy(true);
     try {
       const run = toCoachRun(activity, debrief);
-      const result = await requestPoster(wallet, activity.id, run, style ?? undefined);
+      const result = await requestPoster(auth, activity.id, run, style ?? undefined);
       useCoachStore.getState().savePoster(activity.id, { ...result, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
@@ -370,7 +359,7 @@ function PosterSection({
             variant="secondary"
             onPress={make}
             loading={busy}
-            disabled={busy || !wallet}
+            disabled={busy || !auth}
             icon={<Ionicons name="color-palette-outline" size={16} color={theme.brand.primary} />}
           >
             {busy ? 'Painting a new one…' : 'Remake poster'}
@@ -387,7 +376,7 @@ function PosterSection({
             variant="secondary"
             onPress={make}
             loading={busy}
-            disabled={busy || !wallet}
+            disabled={busy || !auth}
             icon={<Ionicons name="color-palette-outline" size={18} color={theme.brand.primary} />}
           >
             {busy ? 'Painting your run… (about 20 s)' : 'Make my run poster'}
@@ -444,7 +433,7 @@ function Chip({ label }: { label: string }) {
 /** Just the review, for the screen shown right after a save. */
 export function CoachReviewCard({ activity }: { activity: Activity }) {
   const theme = useTheme();
-  const { address } = useViemWallet();
+  const auth = useCoachAuth();
   return (
     <ThemedView style={[styles.card, { borderColor: theme.border }]}>
       <ThemedView style={styles.row}>
@@ -453,7 +442,7 @@ export function CoachReviewCard({ activity }: { activity: Activity }) {
           Stryde Coach · runs on 0G
         </ThemedText>
       </ThemedView>
-      <ReviewSection activity={activity} wallet={address} />
+      <ReviewSection activity={activity} auth={auth} />
     </ThemedView>
   );
 }
@@ -467,7 +456,7 @@ export function CoachRunCard({
   onSharePoster: () => void;
 }) {
   const theme = useTheme();
-  const { address } = useViemWallet();
+  const auth = useCoachAuth();
   return (
     <ThemedView style={[styles.card, { borderColor: theme.border }]}>
       <ThemedView style={styles.row}>
@@ -476,9 +465,9 @@ export function CoachRunCard({
           Stryde Coach · runs on 0G
         </ThemedText>
       </ThemedView>
-      <ReviewSection activity={activity} wallet={address} />
-      <DebriefSection activity={activity} wallet={address} />
-      <PosterSection activity={activity} wallet={address} onShare={onSharePoster} />
+      <ReviewSection activity={activity} auth={auth} />
+      <DebriefSection activity={activity} auth={auth} />
+      <PosterSection activity={activity} auth={auth} onShare={onSharePoster} />
     </ThemedView>
   );
 }

@@ -1,7 +1,23 @@
+import { verifyMessage } from 'viem';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CoachBudget } from '../../lib/coach.js';
-import { coach, resetCoachBudget } from '../coach.js';
 
+vi.hoisted(() => {
+  process.env.STORE_FILE = `${process.env.TEMP ?? '/tmp'}/stryde-coach-routes-${process.pid}.json`;
+});
+vi.mock('../../lib/relayer.js', () => ({
+  getRelayerPublicClient: () => ({ verifyMessage }),
+  getRelayerWallet: vi.fn(),
+}));
+
+import { CoachBudget } from '../../lib/coach.js';
+import { banHuman, humanSessionMessage } from '../../lib/humanPass.js';
+import { store } from '../../lib/store.js';
+import { coach, resetCoachBudget } from '../coach.js';
+import { humanPass } from '../humanPass.js';
+
+const athlete = privateKeyToAccount(generatePrivateKey());
+const other = privateKeyToAccount(generatePrivateKey());
 const WALLET = '0x00000000000000000000000000000000000000aa';
 const RUN = {
   activityType: 'run',
@@ -10,6 +26,21 @@ const RUN = {
   startedAt: '2026-11-05T06:30:00Z',
 };
 
+/** A real signed session, the way the app opens one. */
+async function sessionHeaders(account = athlete): Promise<Record<string, string>> {
+  const issuedAt = Date.now();
+  const signature = await account.signMessage({
+    message: humanSessionMessage(account.address, issuedAt),
+  });
+  const res = await humanPass.request('/session', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ wallet: account.address, issuedAt, signature }),
+  });
+  const { token } = (await res.json()) as { token: string };
+  return { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+}
+
 function routerReply(body: unknown, requestId = 'req_test', status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -17,18 +48,18 @@ function routerReply(body: unknown, requestId = 'req_test', status = 200) {
   });
 }
 
-function post(path: string, body: unknown) {
-  return coach.request(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+let headers: Record<string, string>;
+
+function post(path: string, body: unknown, as: Record<string, string> = headers) {
+  return coach.request(path, { method: 'POST', headers: as, body: JSON.stringify(body) });
 }
 
 describe('coach routes', () => {
   const originalEnv = { ...process.env };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    store.reset();
+    headers = await sessionHeaders();
     process.env.ZEROG_API_KEY = 'sk-test';
     process.env.ZEROG_CHAT_MODEL = '0gm-1.0-35b-a3b';
     process.env.ZEROG_IMAGE_MODEL = 'seedream-test';
@@ -44,9 +75,83 @@ describe('coach routes', () => {
     vi.unstubAllGlobals();
   });
 
+  describe('wallet session', () => {
+    it('refuses every route without a session, before touching 0G', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const bare = { 'content-type': 'application/json' };
+      for (const path of ['/plan', '/review', '/poster', '/debrief']) {
+        const res = await post(path, { activity: RUN, history: [] }, bare);
+        expect(res.status).toBe(401);
+        expect(await res.json()).toMatchObject({ code: 'session_required' });
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown or malformed token', async () => {
+      const forged = {
+        'content-type': 'application/json',
+        authorization: 'Bearer stryde_human_nope',
+      };
+      expect((await post('/plan', { history: [] }, forged)).status).toBe(401);
+      const wrongKind = { 'content-type': 'application/json', authorization: 'Bearer abc' };
+      expect((await post('/plan', { history: [] }, wrongKind)).status).toBe(401);
+    });
+
+    it('refuses an expired session', async () => {
+      store.reset(); // the server no longer knows the token
+      const res = await post('/plan', { history: [] });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: 'session_required' });
+    });
+
+    it('refuses a suspended athlete', async () => {
+      store.upsertLink({
+        iss: 'https://id.worldcoin.org',
+        sub: 'sub-1',
+        wallet: athlete.address,
+        linkedAt: Date.now(),
+        previousWallets: [],
+      });
+      banHuman({ wallet: athlete.address, reason: 'test' });
+      expect((await post('/plan', { history: [] })).status).toBe(403);
+    });
+
+    it('charges the session wallet whatever wallet the body names', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () =>
+          routerReply({
+            choices: [
+              {
+                message: {
+                  content:
+                    '{"title":"Rest","type":"rest","effort":"rest","steps":[{"label":"Rest","detail":"Off"}]}',
+                },
+              },
+            ],
+          })
+        )
+      );
+      // The body names someone else's wallet: it must neither be used nor spend their allowance.
+      expect((await post('/plan', { wallet: other.address, history: [] })).status).toBe(200);
+      expect((await post('/plan', { wallet: other.address, history: [] })).status).toBe(429);
+      // The named wallet's own allowance is untouched.
+      const otherHeaders = await sessionHeaders(other);
+      expect(
+        (await post('/plan', { wallet: athlete.address, history: [] }, otherHeaders)).status
+      ).toBe(200);
+    });
+
+    it('accepts a request that carries no wallet field at all', async () => {
+      vi.stubGlobal('fetch', vi.fn());
+      expect((await post('/review', { history: [] })).status).toBe(400); // activity missing, not 401
+    });
+  });
+
   it('is unavailable without a 0G key', async () => {
     delete process.env.ZEROG_API_KEY;
-    const res = await post('/plan', { wallet: WALLET, history: [RUN] });
+    const res = await post('/plan', { history: [RUN] });
     expect(res.status).toBe(503);
   });
 
@@ -66,7 +171,7 @@ describe('coach routes', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const res = await post('/plan', { wallet: WALLET, history: [RUN], today: '2026-11-06' });
+    const res = await post('/plan', { history: [RUN], today: '2026-11-06' });
     const body = (await res.json()) as {
       plan: { title: string; type: string; distanceKm: number };
       zeroG: { requestId: string; costUsdMicro: number }[];
@@ -103,7 +208,7 @@ describe('coach routes', () => {
       week: { km: 12.4, minutes: 80, runs: 3 },
       lastWeek: { km: 20, minutes: 130, runs: 4 },
     };
-    await post('/plan', { wallet: WALLET, history: [RUN], facts });
+    await post('/plan', { history: [RUN], facts });
     const sent = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
     const text = sent.messages.map((m: { content: string }) => m.content).join(' ');
     expect(text).toContain('This week so far: 12.4 km');
@@ -177,7 +282,7 @@ describe('coach routes', () => {
         .mockResolvedValueOnce(planReply(3, 'req_two'));
       vi.stubGlobal('fetch', fetchMock);
 
-      const res = await post('/plan', { wallet: WALLET, history: [], facts: HEAVY });
+      const res = await post('/plan', { history: [], facts: HEAVY });
       const body = (await res.json()) as PlanBody;
 
       expect(res.status).toBe(200);
@@ -202,7 +307,7 @@ describe('coach routes', () => {
         .mockResolvedValueOnce(planReply(9, 'req_two'));
       vi.stubGlobal('fetch', fetchMock);
 
-      const res = await post('/plan', { wallet: WALLET, history: [], facts: HEAVY });
+      const res = await post('/plan', { history: [], facts: HEAVY });
       const body = (await res.json()) as PlanBody;
 
       expect(res.status).toBe(200);
@@ -212,7 +317,7 @@ describe('coach routes', () => {
       expect(body.zeroG.map((r) => r.requestId)).toEqual(['req_one', 'req_two']);
       // One allowance was charged for both calls: the budget of 1 is spent, the next is refused.
       expect(body.remaining).toBe(0);
-      expect((await post('/plan', { wallet: WALLET, history: [], facts: HEAVY })).status).toBe(429);
+      expect((await post('/plan', { history: [], facts: HEAVY })).status).toBe(429);
     });
 
     it('clamps the first plan when the retry reply is unreadable', async () => {
@@ -224,9 +329,7 @@ describe('coach routes', () => {
         );
       vi.stubGlobal('fetch', fetchMock);
 
-      const body = (await (
-        await post('/plan', { wallet: WALLET, history: [], facts: HEAVY })
-      ).json()) as PlanBody;
+      const body = (await (await post('/plan', { history: [], facts: HEAVY })).json()) as PlanBody;
       expect(body.plan.distanceKm).toBe(3);
       expect(body.adjusted?.length).toBeGreaterThan(0);
       expect(body.zeroG).toHaveLength(2);
@@ -239,7 +342,7 @@ describe('coach routes', () => {
         .mockResolvedValueOnce(routerReply({ error: { message: 'no balance' } }, 'req_two', 402));
       vi.stubGlobal('fetch', fetchMock);
 
-      const res = await post('/plan', { wallet: WALLET, history: [], facts: HEAVY });
+      const res = await post('/plan', { history: [], facts: HEAVY });
       const body = (await res.json()) as PlanBody;
       expect(res.status).toBe(200);
       expect(body.plan.distanceKm).toBe(3);
@@ -249,9 +352,7 @@ describe('coach routes', () => {
     it('makes one call when the plan is already inside the rules', async () => {
       const fetchMock = vi.fn().mockResolvedValueOnce(planReply(3, 'req_one'));
       vi.stubGlobal('fetch', fetchMock);
-      const body = (await (
-        await post('/plan', { wallet: WALLET, history: [], facts: HEAVY })
-      ).json()) as PlanBody;
+      const body = (await (await post('/plan', { history: [], facts: HEAVY })).json()) as PlanBody;
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(body.adjusted).toBeUndefined();
       expect(body.zeroG).toHaveLength(1);
@@ -260,9 +361,7 @@ describe('coach routes', () => {
     it('does not check anything without facts', async () => {
       const fetchMock = vi.fn().mockResolvedValueOnce(planReply(30, 'req_one'));
       vi.stubGlobal('fetch', fetchMock);
-      const body = (await (
-        await post('/plan', { wallet: WALLET, history: [] })
-      ).json()) as PlanBody;
+      const body = (await (await post('/plan', { history: [] })).json()) as PlanBody;
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(body.plan.distanceKm).toBe(30);
     });
@@ -301,8 +400,8 @@ describe('coach routes', () => {
         })
       )
     );
-    expect((await post('/plan', { wallet: WALLET, history: [] })).status).toBe(200);
-    const second = await post('/plan', { wallet: WALLET, history: [] });
+    expect((await post('/plan', { history: [] })).status).toBe(200);
+    const second = await post('/plan', { history: [] });
     expect(second.status).toBe(429);
   });
 
@@ -315,7 +414,7 @@ describe('coach routes', () => {
           routerReply({ error: { message: 'no balance', code: 'pay_no_balance' } }, 'req_fail', 402)
         )
     );
-    const res = await post('/plan', { wallet: WALLET, history: [] });
+    const res = await post('/plan', { history: [] });
     const body = (await res.json()) as { requestId: string };
     expect(res.status).toBe(402);
     expect(body.requestId).toBe('req_fail');
@@ -335,7 +434,7 @@ describe('coach routes', () => {
         })
       )
     );
-    expect((await post('/plan', { wallet: WALLET, history: [] })).status).toBe(200);
+    expect((await post('/plan', { history: [] })).status).toBe(200);
   });
 
   it('reviews a run with its vitals on 0G', async () => {
@@ -434,7 +533,7 @@ describe('coach routes', () => {
       .mockResolvedValueOnce(routerReply({ data: [{ b64_json: 'aGVsbG8=' }] }, 'req_img'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const res = await post('/poster', { wallet: WALLET, activity: RUN, style: 'comic' });
+    const res = await post('/poster', { activity: RUN, style: 'comic' });
     const body = (await res.json()) as { title: string | null };
     expect(res.status).toBe(200);
     expect(body.title).toBeNull();
@@ -451,7 +550,7 @@ describe('coach routes', () => {
       .mockResolvedValueOnce(routerReply({ data: [{ b64_json: 'aGVsbG8=' }] }, 'req_img'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const res = await post('/poster', { wallet: WALLET, activity: RUN });
+    const res = await post('/poster', { activity: RUN });
     expect(res.status).toBe(200);
     const retry = JSON.parse((fetchMock.mock.calls[2] as [string, RequestInit])[1].body as string);
     expect(retry.size).toBeUndefined();
@@ -474,7 +573,7 @@ describe('coach routes', () => {
       );
     vi.stubGlobal('fetch', fetchMock);
 
-    const pending = post('/review', { wallet: WALLET, activity: RUN });
+    const pending = post('/review', { activity: RUN });
     await vi.advanceTimersByTimeAsync(2_000);
     const res = await pending;
     vi.useRealTimers();

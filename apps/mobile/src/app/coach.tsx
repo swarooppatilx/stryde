@@ -193,7 +193,7 @@ export default function CoachScreen() {
             </Card>
           )}
 
-          {!status?.banned && <CoachPlanCard wallet={address} />}
+          {!status?.banned && <CoachPlanCard auth={auth} />}
 
           {loadError && (
             <Card style={styles.card}>

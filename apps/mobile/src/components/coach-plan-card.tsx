@@ -10,6 +10,7 @@ import { Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useMaxHeartRate } from '@/hooks/useMaxHeartRate';
 import { requestPlan } from '@/services/coachService';
+import type { HumanAuth } from '@/services/humanPassService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useCoachStore } from '@/stores/coachStore';
 import { useGoalsStore } from '@/stores/goalsStore';
@@ -22,7 +23,7 @@ import { haptics } from '@/utils/haptics';
 import { factsLine, PRIVACY_LINE, planHeadline } from '@/utils/planCardText';
 
 /** Today's session, written on 0G from the last two weeks of runs and what the athlete said about them. */
-export function CoachPlanCard({ wallet }: { wallet: string | null | undefined }) {
+export function CoachPlanCard({ auth }: { auth: HumanAuth | null }) {
   const theme = useTheme();
   const today = localDay(new Date());
   const saved = useCoachStore((s) => s.plans[today]);
@@ -32,7 +33,7 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
   const zoneFloors = useProfileStore((s) => s.settings.hrZoneFloors);
 
   const generate = async () => {
-    if (!wallet) return;
+    if (!auth) return;
     setBusy(true);
     try {
       const { activities } = useActivityStore.getState();
@@ -50,7 +51,7 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
         },
         new Date()
       );
-      const result = await requestPlan(wallet, history, today, facts);
+      const result = await requestPlan(auth, history, today, facts);
       useCoachStore.getState().savePlan({ day: today, ...result, facts, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
@@ -123,7 +124,7 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
             variant="ghost"
             onPress={generate}
             loading={busy}
-            disabled={busy || !wallet}
+            disabled={busy || !auth}
           >
             Rethink today
           </AppButton>
@@ -140,7 +141,7 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
           <AppButton
             onPress={generate}
             loading={busy}
-            disabled={busy || !wallet}
+            disabled={busy || !auth}
             icon={<Ionicons name="calendar-outline" size={18} color={Brand.white} />}
           >
             {busy ? 'Planning your day…' : "Plan today's session"}

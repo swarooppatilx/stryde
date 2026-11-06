@@ -1,6 +1,5 @@
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { isAddress } from '../lib/address.js';
 import {
   CoachBudget,
   type CoachFeature,
@@ -20,6 +19,7 @@ import {
 } from '../lib/coach.js';
 import { parseFacts } from '../lib/coachFacts.js';
 import { checkPlan } from '../lib/coachRules.js';
+import { isWalletBanned, resolveHumanSession } from '../lib/humanPass.js';
 import { logError } from '../lib/logError.js';
 import {
   chat,
@@ -59,13 +59,28 @@ type Guarded =
   | { ok: false; response: Response };
 
 async function guard(c: Context, feature: CoachFeature): Promise<Guarded> {
+  // The wallet is proven by the signed session, never taken from the body: otherwise anyone
+  // holding the API key could spend another athlete's daily allowance.
+  const wallet = resolveHumanSession(c.req.header('authorization'));
+  if (!wallet) {
+    c.header('WWW-Authenticate', 'Bearer error="invalid_token"');
+    return {
+      ok: false,
+      response: c.json({ error: 'Sign in with your wallet first', code: 'session_required' }, 401),
+    };
+  }
+  if (isWalletBanned(wallet)) {
+    return {
+      ok: false,
+      response: c.json({ error: 'This athlete is suspended from Stryde.' }, 403),
+    };
+  }
   if (!zeroGConfigured()) {
     return { ok: false, response: c.json({ error: 'The AI coach is not configured' }, 503) };
   }
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-  const wallet = typeof body?.wallet === 'string' ? body.wallet : '';
-  if (!body || !isAddress(wallet)) {
-    return { ok: false, response: c.json({ error: 'A wallet address is required' }, 400) };
+  if (!body || typeof body !== 'object') {
+    return { ok: false, response: c.json({ error: 'A JSON body is required' }, 400) };
   }
   if (!budget.take(wallet, feature)) {
     return {
