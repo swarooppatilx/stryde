@@ -12,6 +12,10 @@ import {
   renewExpiring,
 } from '../lib/arkivRenewal.js';
 import { isProduction } from '../lib/env.js';
+import { type NotifyReport, notifyNewEvents } from '../lib/eventNotifier.js';
+import { buildNotifyDeps } from '../lib/eventNotifierRuntime.js';
+import { getMirrorRuntime } from '../lib/index/arkivRuntime.js';
+import type { MirrorResult } from '../lib/index/mirror.js';
 import { ConfigError } from '../lib/relayErrors.js';
 
 function bearerMatches(header: string | undefined, secret: string): boolean {
@@ -33,7 +37,11 @@ function buildRenewalClient(): RenewalClient {
  * Scheduled upkeep. Vercel Cron calls this with `Authorization: Bearer $CRON_SECRET`; the route is
  * closed when the secret is unset, so it can never be hit anonymously.
  */
-export function createMaintenanceRoutes(getClient: () => RenewalClient = buildRenewalClient) {
+export function createMaintenanceRoutes(
+  getClient: () => RenewalClient = buildRenewalClient,
+  runIndex: () => Promise<MirrorResult> = () => getMirrorRuntime().sync(),
+  runNotify: () => Promise<NotifyReport> = () => notifyNewEvents(buildNotifyDeps())
+) {
   const maintenance = new Hono();
 
   maintenance.get('/renew-arkiv', async (c) => {
@@ -47,6 +55,42 @@ export function createMaintenanceRoutes(getClient: () => RenewalClient = buildRe
     }
     try {
       return c.json(await renewExpiring(getClient()));
+    } catch (error) {
+      if (error instanceof ConfigError) return c.json({ error: 'Service misconfigured' }, 503);
+      throw error;
+    }
+  });
+
+  // Brings the Arkiv mirror up to the chain head now, instead of waiting for the next read to do it.
+  maintenance.post('/index', async (c) => {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || !bearerMatches(c.req.header('Authorization'), secret)) {
+      if (!secret && isProduction()) return c.json({ error: 'Service misconfigured' }, 503);
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    try {
+      const result = await runIndex();
+      return c.json({
+        from: result.from.toString(),
+        to: result.to.toString(),
+        written: result.written,
+        reorged: result.reorged,
+      });
+    } catch (error) {
+      if (error instanceof ConfigError) return c.json({ error: 'Service misconfigured' }, 503);
+      throw error;
+    }
+  });
+
+  // Pushes kudos, comment and challenge-invite news from the chain since the last run. Vercel Cron only issues GET, so both verbs work.
+  maintenance.on(['GET', 'POST'], '/notify-events', async (c) => {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || !bearerMatches(c.req.header('Authorization'), secret)) {
+      if (!secret && isProduction()) return c.json({ error: 'Service misconfigured' }, 503);
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    try {
+      return c.json(await runNotify());
     } catch (error) {
       if (error instanceof ConfigError) return c.json({ error: 'Service misconfigured' }, 503);
       throw error;

@@ -10,6 +10,12 @@ vi.mock('../../routes/health.js', async () => {
   health.get('/boom', () => {
     throw new Error('secret detail');
   });
+  health.get('/slow', () => {
+    // What fetch and viem raise when a dependency does not answer in time.
+    const error = new Error('The request took too long to respond. secret url');
+    error.name = 'TimeoutError';
+    throw error;
+  });
   return { health };
 });
 
@@ -32,5 +38,14 @@ describe('global error boundary', () => {
 
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain('secret detail');
+  });
+
+  it('answers 503, retryable, when a dependency timed out, still without leaking details', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await app.request('/api/health/slow');
+
+    expect(res.status).toBe(503);
+    expect(JSON.stringify(await res.json())).not.toContain('secret url');
   });
 });

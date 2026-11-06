@@ -8,10 +8,12 @@ import { apiKeyGate } from './middleware/apiKey.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { activities } from './routes/activities.js';
 import { health } from './routes/health.js';
+import { indexRoutes } from './routes/indexRoutes.js';
 import { ipfs } from './routes/ipfs.js';
 import { maintenance } from './routes/maintenance.js';
 import { push } from './routes/push.js';
 import { relay } from './routes/relay.js';
+import { routing } from './routes/routing.js';
 import { social } from './routes/social.js';
 import { world } from './routes/world.js';
 
@@ -26,6 +28,11 @@ const app = new Hono().basePath('/api');
 app.onError((err, c) => {
   logError('[error]', err);
   if (err instanceof ConfigError) return c.json({ error: 'Service misconfigured' }, 503);
+  // A dependency (Arkiv, Pinata, an RPC) that did not answer in time is not a bug in this request:
+  // 503 tells the client it can retry, where a 500 looked like a permanent failure.
+  if (err instanceof Error && err.name === 'TimeoutError') {
+    return c.json({ error: 'Upstream service timed out' }, 503);
+  }
   return c.json({ error: 'Internal server error' }, 500);
 });
 
@@ -45,33 +52,37 @@ app.use(
   })
 );
 
-// One budget per route group: a shared one would let a burst of IPFS uploads and mints
-// starve World ID polling (and the reverse).
-const limit = (max: number) => createRateLimiter({ windowMs: 60_000, max, maxKeys: 5_000 });
+// Each group has its own request budget per minute: a shared one would let a burst of IPFS uploads
+// and mints starve World ID polling (and the reverse). `gated` groups also need the app's API key;
+// the two that are not guard themselves (relay with its own gate, maintenance with a cron bearer).
+const ROUTE_GROUPS = [
+  { path: '/ipfs', limit: 30, gated: true },
+  { path: '/activities', limit: 30, gated: true },
+  { path: '/social', limit: 30, gated: true },
+  { path: '/index', limit: 60, gated: true },
+  { path: '/push', limit: 30, gated: true },
+  // A route being drawn sends one request per tapped point.
+  { path: '/routing', limit: 60, gated: true },
+  // A verification polls every 2s for up to 3 minutes, so it needs well over 30 a minute.
+  { path: '/world', limit: 120, gated: true },
+  { path: '/relay', limit: 30, gated: false },
+  { path: '/maintenance', limit: 5, gated: false },
+] as const;
 
-app.use('/ipfs/*', limit(30));
-app.use('/activities/*', limit(30));
-app.use('/relay/*', limit(30));
-app.use('/social/*', limit(30));
-app.use('/push/*', limit(30));
-app.use('/maintenance/*', limit(5));
-// A verification polls every 2s for up to 3 minutes, so it needs well over 30 a minute.
-app.use('/world/*', limit(120));
-
-app.use('/ipfs/*', apiKeyGate);
-app.use('/activities/*', apiKeyGate);
-app.use('/social/*', apiKeyGate);
-app.use('/push/*', apiKeyGate);
-
-app.use('/world/*', apiKeyGate);
+for (const { path, limit, gated } of ROUTE_GROUPS) {
+  app.use(`${path}/*`, createRateLimiter({ windowMs: 60_000, max: limit, maxKeys: 5_000 }));
+  if (gated) app.use(`${path}/*`, apiKeyGate);
+}
 
 app.route('/health', health);
 app.route('/activities', activities);
 app.route('/ipfs', ipfs);
 app.route('/social', social);
+app.route('/index', indexRoutes);
 app.route('/push', push);
 app.route('/world', world);
 app.route('/relay', relay);
+app.route('/routing', routing);
 app.route('/maintenance', maintenance);
 
 export default app;
