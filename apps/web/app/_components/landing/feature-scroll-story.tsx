@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
 
 type StoryStep = {
   tag: string;
@@ -13,55 +13,50 @@ type StoryStep = {
 
 const STEPS: StoryStep[] = [
   {
-    tag: "Progress",
-    title: "All metrics in a unified feed",
-    body: "Track elevation, pace, and split times on clean verifiable dashboards designed for everyday physical performance.",
-    screenshot: "/home/4.png",
-    alt: "Profile showing weekly distance, time, and territory stats",
+    tag: 'Progress',
+    title: 'All metrics in a unified feed',
+    body: 'Track elevation, pace, and split times on clean verifiable dashboards designed for everyday physical performance.',
+    screenshot: '/home/4.png',
+    alt: 'Profile showing weekly distance, time, and territory stats',
   },
   {
-    tag: "Ownership",
-    title: "Claim sectors on the map",
-    body: "Every run encloses real geographic space. Turn your route into an onchain zone with clear polygon boundaries.",
-    screenshot: "/home/5.png",
-    alt: "Captured territory shared from a run on the map",
+    tag: 'Ownership',
+    title: 'Claim sectors on the map',
+    body: 'Every run encloses real geographic space. Turn your route into an onchain zone with clear polygon boundaries.',
+    screenshot: '/home/5.png',
+    alt: 'Captured territory shared from a run on the map',
   },
   {
-    tag: "Social",
-    title: "Compete with fellow runners",
-    body: "Share runs, send kudos, and exchange comments with neighborhood athletes across local and global routes.",
-    screenshot: "/home/3.png",
-    alt: "Activity feed showing shared runs and streak",
+    tag: 'Social',
+    title: 'Compete with fellow runners',
+    body: 'Share runs, send kudos, and exchange comments with neighborhood athletes across local and global routes.',
+    screenshot: '/home/3.png',
+    alt: 'Activity feed showing shared runs and streak',
   },
   {
-    tag: "Ecosystem",
-    title: "Join community challenges",
-    body: "Participate in sponsored sector races and unlock commemorative gear rewards and leaderboard placements.",
-    screenshot: "/home/2.png",
-    alt: "Browsing community events and challenges with stakes",
+    tag: 'Ecosystem',
+    title: 'Join community challenges',
+    body: 'Participate in sponsored sector races and unlock commemorative gear rewards and leaderboard placements.',
+    screenshot: '/home/2.png',
+    alt: 'Browsing community events and challenges with stakes',
   },
   {
-    tag: "Identity",
-    title: "Keep your records portable",
-    body: "Your streak and territorial dominance remain bound to your decentralized address, safe from platform lock-in.",
-    screenshot: "/home/6.png",
-    alt: "Detailed run view with telemetry and map route",
+    tag: 'Identity',
+    title: 'Keep your records portable',
+    body: 'Your streak and territorial dominance remain bound to your decentralized address, safe from platform lock-in.',
+    screenshot: '/home/6.png',
+    alt: 'Detailed run view with telemetry and map route',
   },
   {
-    tag: "Sybil Resistance",
-    title: "World ID verified runners",
-    body: "Zero bot entries. Ensure every competitor on the leaderboard and map is an authentic, verified human athlete.",
-    screenshot: "/home/1.png",
-    alt: "Profile with verified badge, wallet, and athlete pass",
+    tag: 'Sybil Resistance',
+    title: 'World ID verified runners',
+    body: 'Zero bot entries. Ensure every competitor on the leaderboard and map is an authentic, verified human athlete.',
+    screenshot: '/home/1.png',
+    alt: 'Profile with verified badge, wallet, and athlete pass',
   },
 ];
 
-function Phone({
-  activeIndex,
-}: {
-  activeIndex: number | null;
-  className?: string;
-}) {
+function Phone({ activeIndex }: { activeIndex: number | null; className?: string }) {
   return (
     <div className="relative isolate aspect-[279/549] w-[240px] sm:w-[270px] lg:w-[300px]">
       <div className="absolute left-[8.6%] top-[4.2%] z-10 h-[91.6%] w-[83%] overflow-hidden rounded-[22px] bg-[#0b0e14]">
@@ -74,7 +69,7 @@ function Phone({
             sizes="300px"
             priority={i < 2}
             className={`object-cover object-top transition-[opacity,transform] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-              i === activeIndex ? "opacity-100" : "opacity-0"
+              i === activeIndex ? 'opacity-100' : 'opacity-0'
             }`}
           />
         ))}
@@ -99,19 +94,17 @@ export function FeatureScrollStory() {
   useEffect(() => {
     const root = document.documentElement;
     const previousScrollSnapType = root.style.scrollSnapType;
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
 
     const updateScrollSnap = () => {
-      root.style.scrollSnapType = mediaQuery.matches
-        ? "y proximity"
-        : previousScrollSnapType;
+      root.style.scrollSnapType = mediaQuery.matches ? 'y proximity' : previousScrollSnapType;
     };
 
     updateScrollSnap();
-    mediaQuery.addEventListener("change", updateScrollSnap);
+    mediaQuery.addEventListener('change', updateScrollSnap);
 
     return () => {
-      mediaQuery.removeEventListener("change", updateScrollSnap);
+      mediaQuery.removeEventListener('change', updateScrollSnap);
       root.style.scrollSnapType = previousScrollSnapType;
     };
   }, []);
@@ -121,26 +114,28 @@ export function FeatureScrollStory() {
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            const i = Number(entry.target.getAttribute("data-step-index"));
+            const i = Number(entry.target.getAttribute('data-step-index'));
             if (!Number.isNaN(i)) setActiveIndex(i);
           }
         });
       },
       {
-        rootMargin: "-45% 0px -45% 0px",
+        rootMargin: '-45% 0px -45% 0px',
         threshold: 0,
       }
     );
 
-    stepRefs.current.forEach((el) => el && observer.observe(el));
+    stepRefs.current.forEach((el) => {
+      if (el) observer.observe(el);
+    });
 
     return () => observer.disconnect();
   }, []);
 
   const scrollToStep = (i: number) =>
     stepRefs.current[i]?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
+      behavior: 'smooth',
+      block: 'center',
     });
 
   return (
@@ -154,8 +149,8 @@ export function FeatureScrollStory() {
             Engineered for physical performance.
           </h2>
           <p className="mx-auto mt-4 max-w-md text-[16px] leading-relaxed text-[#7a828a]">
-            A high-fidelity athletic protocol connecting real movement with
-            verifiable onchain boundaries.
+            A high-fidelity athletic protocol connecting real movement with verifiable onchain
+            boundaries.
           </p>
         </div>
 
@@ -175,28 +170,22 @@ export function FeatureScrollStory() {
                 >
                   <div
                     className={`max-w-md transition-all duration-500 ease-out motion-reduce:transition-none ${
-                      isActive
-                        ? "translate-y-0 opacity-100"
-                        : "translate-y-2 opacity-25"
+                      isActive ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-25'
                     }`}
                   >
                     <div className="flex items-center gap-3 text-[13px] font-medium text-[#7a828a]">
                       <span className="tabular-nums text-[#0b0e14]">
-                        {String(i + 1).padStart(2, "0")}
+                        {String(i + 1).padStart(2, '0')}
                       </span>
                       <span className="h-px w-8 bg-[#d9dce0]" />
-                      <span className="uppercase tracking-[0.14em]">
-                        {step.tag}
-                      </span>
+                      <span className="uppercase tracking-[0.14em]">{step.tag}</span>
                     </div>
 
                     <h3 className="mt-5 text-[44px] font-normal leading-[1.15] tracking-tight text-[#0b0e14]">
                       {step.title}
                     </h3>
 
-                    <p className="mt-4 text-[21px] leading-relaxed text-[#7a828a]">
-                      {step.body}
-                    </p>
+                    <p className="mt-4 text-[21px] leading-relaxed text-[#7a828a]">{step.body}</p>
                   </div>
                 </article>
               );
@@ -224,8 +213,8 @@ export function FeatureScrollStory() {
                     <span
                       className={`block rounded-full bg-[#0b0e14] transition-all duration-300 ${
                         i === activeIndex
-                          ? "h-5 w-[3px] opacity-100"
-                          : "h-[5px] w-[5px] opacity-20 group-hover:opacity-50"
+                          ? 'h-5 w-[3px] opacity-100'
+                          : 'h-[5px] w-[5px] opacity-20 group-hover:opacity-50'
                       }`}
                     />
                   </button>
@@ -237,12 +226,9 @@ export function FeatureScrollStory() {
 
         <div className="flex flex-col gap-20 lg:hidden">
           {STEPS.map((step, i) => (
-            <div
-              key={step.title}
-              className="flex flex-col items-center text-center"
-            >
+            <div key={step.title} className="flex flex-col items-center text-center">
               <span className="text-[12px] font-medium uppercase tracking-[0.16em] text-[#7a828a]">
-                {String(i + 1).padStart(2, "0")} · {step.tag}
+                {String(i + 1).padStart(2, '0')} · {step.tag}
               </span>
 
               <h3 className="mt-3 max-w-sm text-[26px] font-normal leading-[1.15] tracking-tight text-[#0b0e14]">

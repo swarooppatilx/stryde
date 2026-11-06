@@ -1,44 +1,27 @@
-import {
-  ActivityCard,
-  type ActivityPost,
-} from "../_components/activities/activity-card";
-import { SiteFooter } from "../_components/layout/site-footer";
-import { SiteHeader } from "../_components/layout/site-header";
+import { ActivityCard } from '../_components/activities/activity-card';
+import { SiteFooter } from '../_components/layout/site-footer';
+import { SiteHeader } from '../_components/layout/site-header';
+import { fetchRecentPosts } from '../_lib/feed';
 
-const SEEDED_FEED: ActivityPost[] = [
-  {
-    id: "post-1",
-    athleteName: "Sarah Chen",
-    athleteInitials: "SC",
-    timeAgo: "2h ago",
-    title: "Morning Tempo Run",
-    note: "Paced at 4:39/km. Enclosed the canal park loop and claimed sector 14.",
-    distance: "8.20 km",
-    duration: "38m 12s",
-    pace: "4:39 /km",
-    elevation: "+124m",
-    territoryClaimed: "+34,800 m²",
-    kudosCount: 14,
-    commentsCount: 3,
-  },
-  {
-    id: "post-2",
-    athleteName: "Fernando Rayra",
-    athleteInitials: "FR",
-    timeAgo: "5h ago",
-    title: "Campanha Ridge Climb",
-    note: "Long perimeter ride out to the ridge. Sector boundary expanded across the valley.",
-    distance: "24.60 km",
-    duration: "1h 04m",
-    pace: "23.1 km/h",
-    elevation: "+480m",
-    territoryClaimed: "+61,200 m²",
-    kudosCount: 22,
-    commentsCount: 6,
-  },
-];
+const NOTE = 'rounded-[24px] border border-[#ebecee] bg-white p-6 text-[14px] text-[#7a828a]';
 
-export default function ActivitiesPage() {
+function Feed({ posts }: { posts: Awaited<ReturnType<typeof fetchRecentPosts>> }) {
+  if (posts === null) {
+    return <p className={NOTE}>The live feed is unavailable right now. Try again shortly.</p>;
+  }
+  if (posts.length === 0) return <p className={NOTE}>No activities recorded yet.</p>;
+  return (
+    <div className="flex flex-col gap-6">
+      {posts.map((post) => (
+        <ActivityCard key={post.id} post={post} />
+      ))}
+    </div>
+  );
+}
+
+export default async function ActivitiesPage() {
+  const posts = await fetchRecentPosts();
+
   return (
     <div className="min-h-screen bg-[#faf9f8] mt-5">
       <SiteHeader />
@@ -51,12 +34,7 @@ export default function ActivitiesPage() {
             Community activities
           </h1>
         </div>
-
-        <div className="flex flex-col gap-6">
-          {SEEDED_FEED.map((post) => (
-            <ActivityCard key={post.id} post={post} />
-          ))}
-        </div>
+        <Feed posts={posts} />
       </main>
       <SiteFooter />
     </div>
