@@ -109,6 +109,7 @@ export const expoFiles: Files = {
   },
   readBase64: (uri) => readAsStringAsync(uri, { encoding: 'base64' }),
   readText: (uri) => new File(uri).text(),
+  readBytes: (uri) => new File(uri).bytes(),
   writeCache(name, content, encoding = 'utf8') {
     const file = new File(Paths.cache, name);
     file.write(content, encoding === 'base64' ? { encoding } : undefined);

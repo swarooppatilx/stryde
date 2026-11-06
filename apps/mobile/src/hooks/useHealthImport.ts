@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getPlatform } from '@/platform';
 import type { HealthStatus } from '@/platform/ports';
-import {
-  activityInputFromWorkout,
-  type HealthImportResult,
-  importWorkouts,
-} from '@/services/healthImport';
-import { useActivityStore } from '@/stores/activityStore';
+import type { HealthImportResult } from '@/services/healthImport';
+import { runHealthImport } from '@/services/healthImportRun';
 import { useHealthStore } from '@/stores/healthStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { logger } from '@/utils/logger';
 import { usePostRun } from './usePostRun';
 
@@ -20,6 +15,8 @@ export function useHealthImport() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<HealthImportResult | null>(null);
   const lastImportAt = useHealthStore((s) => s.lastImportAt);
+  const autoSync = useHealthStore((s) => s.autoSync);
+  const lastAutoSync = useHealthStore((s) => s.lastAutoSync);
 
   const refresh = useCallback(async () => {
     const { health } = getPlatform();
@@ -38,35 +35,24 @@ export function useHealthImport() {
     return granted;
   }, []);
 
+  // Turning it on needs the same access as an import, and only stays on if it was granted.
+  const setAutoSync = useCallback(
+    async (on: boolean) => {
+      if (!on) {
+        useHealthStore.getState().setAutoSync(false);
+        return;
+      }
+      const granted = hasAccess || (await connect());
+      useHealthStore.getState().setAutoSync(granted);
+    },
+    [hasAccess, connect]
+  );
+
   const importNow = useCallback(async () => {
     if (importing) return;
     setImporting(true);
     try {
-      const { health, clock } = getPlatform();
-      const outcome = await importWorkouts({
-        health,
-        now: () => clock.now(),
-        state: {
-          read: () => {
-            const { watermark, imported } = useHealthStore.getState();
-            return { watermark, imported };
-          },
-          write: (next) => useHealthStore.getState().write(next),
-        },
-        // A run recorded here that a watch recorded too is not imported again.
-        existing: () => useActivityStore.getState().activities,
-        // Saved like any other activity: on this device first, then on-chain through the usual queue.
-        save: async (workout) => {
-          const { defaultPrivacy, hideRouteEnds, privacyZones } = useSettingsStore.getState();
-          await save({
-            ...activityInputFromWorkout(workout),
-            privacy: defaultPrivacy,
-            hideRouteEnds,
-            privacyZones,
-          });
-        },
-      });
-      if (outcome.status === 'done') useHealthStore.getState().markImported(clock.now());
+      const outcome = await runHealthImport(save);
       logger.info(`[Health] Import finished: ${outcome.status}`);
       setResult(outcome);
     } catch (error) {
@@ -77,5 +63,17 @@ export function useHealthImport() {
     }
   }, [importing, save]);
 
-  return { status, hasAccess, importing, result, lastImportAt, connect, importNow, refresh };
+  return {
+    status,
+    hasAccess,
+    importing,
+    result,
+    lastImportAt,
+    autoSync,
+    lastAutoSync,
+    setAutoSync,
+    connect,
+    importNow,
+    refresh,
+  };
 }

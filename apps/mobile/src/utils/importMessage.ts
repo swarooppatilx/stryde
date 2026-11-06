@@ -3,7 +3,7 @@ export const IMPORT_COPY = {
   title: 'Import activities',
   intro:
     'Bring in activities you recorded with a watch or another app. Choose one or more files; you can review them before anything is added.',
-  formats: 'GPX and TCX files',
+  formats: 'GPX, TCX and FIT files',
   choose: 'Choose files',
   chooseMore: 'Choose other files',
   importing: 'Importing',

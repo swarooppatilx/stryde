@@ -3,6 +3,7 @@ import type { PostRunInput } from '@/services/postRun';
 import { computeStream } from '@/utils/activityStream';
 import { toPolyline } from '@/utils/format';
 import { climbOfRoute } from '@/utils/healthMapping';
+import { logger } from '@/utils/logger';
 
 /** How far back the very first import looks. */
 export const FIRST_IMPORT_DAYS = 30;
@@ -95,7 +96,8 @@ export async function importWorkouts(deps: HealthImportDeps): Promise<HealthImpo
     }
     try {
       await deps.save(workout);
-    } catch {
+    } catch (error) {
+      logger.warn('[HealthImport] Could not save a workout', error);
       failed++;
       continue;
     }
@@ -152,6 +154,7 @@ export function activityInputFromWorkout(workout: HealthWorkout): PostRunInput {
     photos: [],
     privacy: 'everyone',
     isManual: true,
+    isImported: true,
     startedAt: workout.startTime,
   };
 }

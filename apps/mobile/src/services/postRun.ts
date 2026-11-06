@@ -10,6 +10,7 @@ import type {
   ActivityStream,
   ActivityType,
   BestEffort,
+  HiddenStat,
   Lap,
   PrivacyZone,
   Ring,
@@ -56,6 +57,8 @@ export interface ActivityMetadataInput {
   polyline?: string;
   territory?: Ring | null;
   coordinates?: Array<[number, number]>;
+  mutedFromFeeds?: boolean;
+  hiddenStats?: HiddenStat[];
 }
 
 export interface PhotoUploader {
@@ -69,6 +72,9 @@ export interface PostRunStore {
   capturePolygon(userId: string, territory: Ring): void;
 }
 
+/** What a save is busy with, for the Save button: photos first (when there are any to send), then the rest. */
+export type SavePhase = 'uploading-photos' | 'saving';
+
 export interface PostRunDeps {
   clock: Clock;
   ids: IdGenerator;
@@ -80,6 +86,15 @@ export interface PostRunDeps {
   isVerified: () => boolean;
   /** Measures save -> confirmed -> visible in search; absent where there is no real network. */
   timing?: ActivityTiming;
+  /** Pause before the one retry of a failed metadata upload; tests pass 0. */
+  retryDelayMs?: number;
+  /**
+   * Runs the moment the activity is stored on this device, before any upload or onchain step. A
+   * caller that only needs "it is saved" (a bulk import) stops waiting here and lets the sync finish.
+   */
+  onSaved?: (activity: Activity) => void;
+  /** Told which part of the save is running, so a screen can show it. */
+  onProgress?: (phase: SavePhase) => void;
 }
 
 /** What the post-run pipeline tells the timing measurement. */
@@ -116,12 +131,18 @@ export interface PostRunInput {
   isCommute?: boolean;
   privateNote?: string;
   isManual: boolean;
+  /** From a file or another app; still `isManual` so it never counts toward records. */
+  isImported?: boolean;
   /** When the workout began, in ms: for an import, which happened before it was saved. Defaults to now. */
   startedAt?: number;
   /** Trim the route's ends from what gets published (the device keeps it whole). */
   hideRouteEnds?: boolean;
   /** Share the activity without its route map or territory outline (the device keeps both). */
   hideRoute?: boolean;
+  /** Keep it out of other athletes' Home feeds (it still shows on the author's profile). */
+  mutedFromFeeds?: boolean;
+  /** Figures other athletes' apps leave out. */
+  hiddenStats?: HiddenStat[];
   /** Recorded with a simulated location: anchored, but no reward, season credit or territory. */
   mocked?: boolean;
   /** Places whose surroundings are cut from the published route; saved with the activity. */
@@ -278,6 +299,8 @@ export async function savePostRun(input: PostRunInput, deps: PostRunDeps): Promi
     caloriesBurned: input.caloriesBurned,
     hideRouteEnds: input.hideRouteEnds ?? false,
     hideRoute: input.hideRoute || undefined,
+    mutedFromFeeds: input.mutedFromFeeds || undefined,
+    hiddenStats: input.hiddenStats?.length ? [...input.hiddenStats] : undefined,
     mocked: input.mocked || undefined,
     privacyZones: input.privacyZones,
     territory: input.territory,
@@ -291,6 +314,7 @@ export async function savePostRun(input: PostRunInput, deps: PostRunDeps): Promi
     // Photos start as the paths on this device; the links replace them once they are uploaded.
     images: input.photos.length > 0 ? [...input.photos] : undefined,
     isManual: input.isManual,
+    isImported: input.isImported || undefined,
     activityHash,
     createdAt: now,
   };
@@ -301,11 +325,13 @@ export async function savePostRun(input: PostRunInput, deps: PostRunDeps): Promi
   store.saveActivity(activity);
   deps.timing?.saved(id);
   if (input.territory) store.capturePolygon(deps.userId, input.territory);
+  deps.onSaved?.(activity);
 
   const finished = await withSyncLock(id, async () => {
-    const photos = staysOnDevice(input.privacy)
-      ? [...input.photos]
-      : await uploadPhotos(input.photos, deps);
+    const uploading = !staysOnDevice(input.privacy) && !input.photos.every(isPublished);
+    if (uploading) deps.onProgress?.('uploading-photos');
+    const photos = uploading ? await uploadPhotos(input.photos, deps) : [...input.photos];
+    deps.onProgress?.('saving');
     const published = photos.some((uri, index) => uri !== input.photos[index]);
     const current: Activity = published ? { ...activity, images: photos } : activity;
     if (published) store.updateActivity(id, { images: photos });
@@ -345,7 +371,7 @@ function skipReason(
 
 async function syncOnChain(
   { activity, photos, territory }: OnChainSubject,
-  deps: Pick<PostRunDeps, 'store' | 'chain' | 'isVerified' | 'timing'>
+  deps: Pick<PostRunDeps, 'store' | 'chain' | 'isVerified' | 'timing' | 'retryDelayMs'>
 ): Promise<OnChainOutcome> {
   const { store, chain } = deps;
   // The hash is derived from the id, so recomputing it gives the one saved with the activity.
@@ -401,7 +427,7 @@ async function syncOnChain(
           // Persists name/description/photos/route to IPFS and attaches the CID
           // onchain, so the activity's rich data survives logout or a device switch.
           // That copy is public, so it carries the route without its hidden ends and private places.
-          const metadata = await attempt('activity metadata', () =>
+          const upload = () =>
             chain.setMetadata(onchainActivityId, {
               name: activity.name,
               description: activity.description,
@@ -412,8 +438,21 @@ async function syncOnChain(
               // The chain stores only a hash/distance/duration/area: this is the
               // one durable place the real route shape lives.
               coordinates: shared.route.length > 0 ? shared.route : undefined,
-            })
-          );
+              ...(activity.mutedFromFeeds && { mutedFromFeeds: true }),
+              ...(activity.hiddenStats?.length ? { hiddenStats: activity.hiddenStats } : {}),
+            });
+          // The pinning service sometimes drops the first request after the phone has been idle
+          // (seen once on Sepolia: a "fetch failed" after 11 s, then 1-2 s calls); one retry keeps
+          // the activity from being saved without its route and photos for that.
+          const metadata = await attempt('activity metadata', async () => {
+            try {
+              return await upload();
+            } catch (error) {
+              if (isConflict(error)) throw error;
+              await new Promise((resolve) => setTimeout(resolve, deps.retryDelayMs ?? 2_000));
+              return upload();
+            }
+          });
           if (!metadata.ok) {
             steps.metadata = { status: 'failed', error: metadata.error };
           } else if (metadata.value?.confirmed) {

@@ -1,4 +1,5 @@
 import { isDuplicateActivity, type OwnActivity } from '@/utils/importDuplicates';
+import { trackFromFit } from '@/utils/importFit';
 import { trackFromGpx } from '@/utils/importGpx';
 import { tracksFromTcx } from '@/utils/importTcx';
 import type { ImportedTrack } from '@/utils/importTrack';
@@ -14,22 +15,34 @@ export interface FileImportItem {
 export type FileParse = { ok: true; items: FileImportItem[] } | { ok: false; message: string };
 
 /** The file kinds that can be imported, by extension. */
-export function fileKind(name: string): 'gpx' | 'tcx' | null {
+export function fileKind(name: string): 'gpx' | 'tcx' | 'fit' | null {
   const extension = name.toLowerCase().split('.').at(-1);
-  return extension === 'gpx' || extension === 'tcx' ? extension : null;
+  return extension === 'gpx' || extension === 'tcx' || extension === 'fit' ? extension : null;
 }
 
-/** Reads the activities in one GPX or TCX file, or says in a plain sentence why it cannot. */
+/** Reads the activities in one GPX, TCX or FIT file, or says in a plain sentence why it cannot. FIT files are binary, so they arrive as bytes and the others as text. */
 export function parseActivityFile(
   name: string,
-  text: string,
+  content: string | Uint8Array,
   options: { splitMeters: number }
 ): FileParse {
   const kind = fileKind(name);
-  if (!kind) return { ok: false, message: `${name} is not a GPX or TCX file.` };
+  if (!kind) return { ok: false, message: `${name} is not a GPX, TCX or FIT file.` };
 
-  const tracks: ImportedTrack[] | null =
-    kind === 'gpx' ? ((t) => (t ? [t] : null))(trackFromGpx(text)) : tracksFromTcx(text);
+  let tracks: ImportedTrack[] | null;
+  if (kind === 'fit') {
+    if (typeof content === 'string')
+      return { ok: false, message: `${name} is not a readable FIT file.` };
+    const fit = trackFromFit(content);
+    if (!fit.ok && fit.reason === 'corrupt')
+      return { ok: false, message: `${name} is damaged and cannot be read.` };
+    tracks = fit.ok ? [fit.track] : null;
+  } else if (typeof content === 'string') {
+    tracks =
+      kind === 'gpx' ? ((t) => (t ? [t] : null))(trackFromGpx(content)) : tracksFromTcx(content);
+  } else {
+    tracks = null;
+  }
   if (!tracks)
     return { ok: false, message: `${name} is not a readable ${kind.toUpperCase()} file.` };
 

@@ -21,6 +21,7 @@ import { Motion } from '@/constants/motion';
 import { useAccountOwnerGuard } from '@/hooks/useAccountOwnerGuard';
 import { useActivitySync } from '@/hooks/useActivitySync';
 import { useAuth } from '@/hooks/useAuth';
+import { useAutoHealthSync } from '@/hooks/useAutoHealthSync';
 import { useChainSync } from '@/hooks/useChainSync';
 import { useOutboxDrain } from '@/hooks/useOutbox';
 import { useOutboxToasts } from '@/hooks/useOutboxToasts';
@@ -32,6 +33,7 @@ import { usePushNotifications, usePushPrimer } from '@/hooks/usePushNotification
 import { useRecoveredRun } from '@/hooks/useRecoveredRun';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { getPlatform } from '@/platform';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useSocialStore } from '@/stores/socialStore';
 import { logger } from '@/utils/logger';
 
@@ -67,6 +69,8 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
   useOutboxToasts();
   useRequeueOrphanedPosts(ready && !syncing);
   useRecoveredRun(ready && !syncing);
+  const hasOnboarded = useSettingsStore((s) => s.hasOnboarded);
+  useAutoHealthSync(ready && !syncing && userId !== null && hasOnboarded);
   usePrivyMetadataSync();
   usePushNotifications(ready && !syncing, userId);
   const primer = usePushPrimer(ready && !syncing && userId !== null);
@@ -167,6 +171,7 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
         <Stack.Screen name="verify" />
         <Stack.Screen name="routes/[id]" />
         <Stack.Screen name="route-builder" />
+        <Stack.Screen name="flyover" options={{ animation: 'fade' }} />
         <Stack.Screen name="saved-routes" />
       </Stack>
       <PushPrimerSheet visible={primer.open} onAllow={primer.allow} onNotNow={primer.notNow} />
@@ -188,8 +193,6 @@ function MissingBuildConfig() {
         <AppErrorFallback
           title="This build is misconfigured"
           subtitle="It was built without its Privy app ID, so sign-in can't start. Install a fresh build."
-          buttonLabel="Close"
-          onRetry={() => {}}
         />
       </ThemeProvider>
     </GestureHandlerRootView>

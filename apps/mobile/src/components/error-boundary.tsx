@@ -47,7 +47,8 @@ interface AppErrorFallbackProps {
   title?: string;
   subtitle?: string;
   buttonLabel?: string;
-  onRetry: () => void;
+  /** Left out when there is nothing the user can do from here (a misconfigured build), so no dead button shows. */
+  onRetry?: () => void;
 }
 
 export function AppErrorFallback({
@@ -65,11 +66,13 @@ export function AppErrorFallback({
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
           {subtitle}
         </ThemedText>
-        <Tappable accessibilityRole="button" style={styles.button} onPress={onRetry}>
-          <ThemedText type="button" style={styles.buttonLabel}>
-            {buttonLabel}
-          </ThemedText>
-        </Tappable>
+        {onRetry ? (
+          <Tappable accessibilityRole="button" style={styles.button} onPress={onRetry}>
+            <ThemedText type="button" style={styles.buttonLabel}>
+              {buttonLabel}
+            </ThemedText>
+          </Tappable>
+        ) : null}
       </SafeAreaView>
     </ThemedView>
   );

@@ -14,10 +14,11 @@ import { metersPerDistanceUnit } from '@/utils/distanceUnits';
 import { MAX_GPX_BYTES } from '@/utils/gpxParse';
 import type { FileImportCounts } from '@/utils/importMessage';
 import { logger } from '@/utils/logger';
+import { untilSaved } from '@/utils/untilSaved';
 import { useUnitSystem } from './use-unit-system';
 import { usePostRun } from './usePostRun';
 
-/** Choosing GPX and TCX files, reviewing what they hold, and saving the ones the athlete keeps. */
+/** Choosing GPX, TCX and FIT files, reviewing what they hold, and saving the ones the athlete keeps. */
 export function useActivityFileImport() {
   const { save } = usePostRun();
   const unitSystem = useUnitSystem();
@@ -41,7 +42,7 @@ export function useActivityFileImport() {
 
       for (const asset of picked.assets) {
         if (!fileKind(asset.name)) {
-          problems.push(`${asset.name} is not a GPX or TCX file.`);
+          problems.push(`${asset.name} is not a GPX, TCX or FIT file.`);
           continue;
         }
         if ((asset.size ?? 0) > MAX_GPX_BYTES) {
@@ -49,9 +50,11 @@ export function useActivityFileImport() {
           continue;
         }
         try {
-          const parsed = parseActivityFile(asset.name, await files.readText(asset.uri), {
-            splitMeters,
-          });
+          const content =
+            fileKind(asset.name) === 'fit'
+              ? await files.readBytes(asset.uri)
+              : await files.readText(asset.uri);
+          const parsed = parseActivityFile(asset.name, content, { splitMeters });
           if (parsed.ok) found.push({ fileName: asset.name, items: parsed.items });
           else problems.push(parsed.message);
         } catch (error) {
@@ -84,7 +87,12 @@ export function useActivityFileImport() {
     for (const item of items) {
       if (!item.selected) continue;
       try {
-        await save({ ...item.input, privacy, hideRouteEnds, privacyZones });
+        // Saved on the device is what an import promises; uploading and the onchain steps carry on in
+        // the background (and the sync retry picks up whatever fails), so a slow chain never holds the button.
+        await untilSaved(
+          (onSaved) => save({ ...item.input, privacy, hideRouteEnds, privacyZones }, onSaved),
+          (error) => logger.warn('[Import] Background sync of an imported activity failed', error)
+        );
         imported++;
       } catch (error) {
         logger.warn('[Import] Could not save an activity', error);

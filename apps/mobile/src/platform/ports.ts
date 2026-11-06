@@ -152,6 +152,7 @@ export interface Files {
   size(uri: string): Promise<number | null>;
   readBase64(uri: string): Promise<string>;
   readText(uri: string): Promise<string>;
+  readBytes(uri: string): Promise<Uint8Array>;
   /** Writes into the app's cache directory (the OS may clear it) and returns the new file's URI. */
   writeCache(name: string, content: string, encoding?: 'utf8' | 'base64'): string;
 }

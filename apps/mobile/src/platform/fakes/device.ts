@@ -209,6 +209,8 @@ export class ScriptedPhotoLibrary implements PhotoLibrary {
 /** Files held in memory: tests seed `contents` for pick results and read back what was written. */
 export class MemoryFiles implements Files {
   contents = new Map<string, string>();
+  /** Binary files by URI, for `readBytes`. */
+  binary = new Map<string, Uint8Array>();
 
   async size(uri: string) {
     const content = this.contents.get(uri);
@@ -223,6 +225,12 @@ export class MemoryFiles implements Files {
 
   async readText(uri: string) {
     return this.readBase64(uri);
+  }
+
+  async readBytes(uri: string) {
+    const content = this.binary.get(uri);
+    if (content === undefined) throw new Error(`No such file: ${uri}`);
+    return content;
   }
 
   writeCache(name: string, content: string) {

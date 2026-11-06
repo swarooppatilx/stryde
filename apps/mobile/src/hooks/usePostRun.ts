@@ -6,7 +6,7 @@ import { DEV_TOOLS } from '@/constants/devTools';
 import { getPlatform } from '@/platform';
 import { createSharedActivityChain } from '@/services/activityChain';
 import { ipfsPhotoUploader } from '@/services/ipfsService';
-import { type PostRunInput, retryOnChain, savePostRun } from '@/services/postRun';
+import { type PostRunInput, retryOnChain, type SavePhase, savePostRun } from '@/services/postRun';
 import { getTimeToIndexed } from '@/services/timeToIndexed';
 import { useActivityStore } from '@/stores/activityStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
@@ -65,7 +65,14 @@ export function usePostRun() {
     };
   }, [wallet, address]);
 
-  const save = useCallback((input: PostRunInput) => savePostRun(input, deps()), [deps]);
+  const save = useCallback(
+    (
+      input: PostRunInput,
+      onSaved?: (activity: Activity) => void,
+      onProgress?: (phase: SavePhase) => void
+    ) => savePostRun(input, { ...deps(), onSaved, onProgress }),
+    [deps]
+  );
   const retry = useCallback((activity: Activity) => retryOnChain(activity, deps()), [deps]);
 
   return { save, retry };

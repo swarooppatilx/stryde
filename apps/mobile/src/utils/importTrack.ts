@@ -12,6 +12,15 @@ export interface TrackPoint {
   cadence?: number;
 }
 
+/** What a file says about an activity as a whole; the only record of one that has no GPS track. */
+export interface TrackSummary {
+  /** Milliseconds since the epoch. */
+  startTime: number;
+  durationMs: number;
+  distanceM: number;
+  heartRate?: { avg: number; max: number };
+}
+
 /** One recorded activity read from a file, before it is turned into an Activity. */
 export interface ImportedTrack {
   name?: string;
@@ -19,4 +28,6 @@ export interface ImportedTrack {
   points: TrackPoint[];
   /** The laps the device marked, when the file has them. */
   laps?: Lap[];
+  /** Present when the file has no GPS track: it then stands in for the points. */
+  summary?: TrackSummary;
 }
