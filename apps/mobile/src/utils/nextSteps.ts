@@ -25,3 +25,11 @@ export function nextStepsAfterSave(
   }
   return steps;
 }
+
+/** How the post-save buttons are laid out: Share leads when it is offered, else View activity does. */
+export function postSaveActions(steps: readonly NextStep[]): {
+  shareIsPrimary: boolean;
+  addPhoto: boolean;
+} {
+  return { shareIsPrimary: steps.includes('share'), addPhoto: steps.includes('addPhoto') };
+}

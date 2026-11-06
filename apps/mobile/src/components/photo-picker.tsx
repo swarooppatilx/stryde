@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { Palette } from '@/constants/palette';
-import { BorderRadius, Spacing, tint } from '@/constants/theme';
+import { BorderRadius, IconSize, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { MAX_PHOTOS, usePhotoPick } from '@/hooks/usePhotoPick';
 import { haptics } from '@/utils/haptics';
@@ -16,6 +16,8 @@ interface PhotoPickerProps {
   maxPhotos?: number;
   /** Called with a thumbnail's index when it is tapped, to look at it full screen. */
   onOpen?: (index: number) => void;
+  /** A larger empty tile with a brand-coloured dashed outline, for where photos are the point of the screen. */
+  prominent?: boolean;
 }
 
 export function PhotoPicker({
@@ -23,6 +25,7 @@ export function PhotoPicker({
   onPhotosChange,
   maxPhotos = MAX_PHOTOS,
   onOpen,
+  prominent = false,
 }: PhotoPickerProps) {
   const theme = useTheme();
   const pickImage = usePhotoPick(photos, onPhotosChange, maxPhotos);
@@ -38,15 +41,28 @@ export function PhotoPicker({
       <Tappable
         style={[
           styles.addButton,
-          { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+          prominent
+            ? [styles.addButtonProminent, { borderColor: theme.brand.primary }]
+            : { borderColor: theme.border },
+          {
+            backgroundColor: prominent ? tint(theme.brand.primary, 0.06) : theme.backgroundElement,
+          },
         ]}
         activeOpacity={0.7}
         onPress={pickImage}
         accessibilityRole="button"
         accessibilityLabel="Add photos"
       >
-        <Ionicons name="camera-outline" size={28} color={theme.textSecondary} />
-        <ThemedText type="small" themeColor="textSecondary">
+        <Ionicons
+          name={prominent ? 'image-outline' : 'camera-outline'}
+          size={prominent ? IconSize.hero : 28}
+          color={prominent ? theme.brand.primary : theme.textSecondary}
+        />
+        <ThemedText
+          type={prominent ? 'smallBold' : 'small'}
+          style={prominent ? { color: theme.brand.primary } : undefined}
+          themeColor={prominent ? undefined : 'textSecondary'}
+        >
           Add Photos
         </ThemedText>
         <ThemedText type="caption" themeColor="textSecondary">
@@ -126,6 +142,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderStyle: 'dashed',
+  },
+  addButtonProminent: {
+    paddingVertical: Spacing.five,
+    borderWidth: 1.5,
   },
   addButtonSmall: {
     width: 80,

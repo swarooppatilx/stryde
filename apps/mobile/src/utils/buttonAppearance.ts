@@ -1,6 +1,6 @@
 import { Palette } from '@/constants/palette';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerOutline';
 
 interface ButtonTheme {
   text: string;
@@ -25,7 +25,7 @@ export function buttonAppearance(
     const solid = variant === 'primary' || variant === 'danger';
     return {
       background: solid ? colors.border : CLEAR,
-      border: variant === 'secondary' ? colors.border : CLEAR,
+      border: variant === 'secondary' || variant === 'dangerOutline' ? colors.border : CLEAR,
       label: colors.textTertiary,
     };
   }
@@ -47,6 +47,12 @@ export function buttonAppearance(
         background: state.pressed ? colors.backgroundSelected : CLEAR,
         border: colors.borderBold,
         label: colors.text,
+      };
+    case 'dangerOutline':
+      return {
+        background: state.pressed ? colors.backgroundSelected : CLEAR,
+        border: brand.danger,
+        label: brand.danger,
       };
     case 'ghost':
       return {

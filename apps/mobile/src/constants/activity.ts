@@ -1,6 +1,12 @@
 import type { Ionicons } from '@expo/vector-icons';
 
-import type { ActivityEffort, ActivityFeel, ActivityType } from '@/types';
+import type {
+  ActivityEffort,
+  ActivityFeel,
+  ActivityPrivacy,
+  ActivityType,
+  HiddenStat,
+} from '@/types';
 
 export const SPORT_ICONS: Record<ActivityType, keyof typeof Ionicons.glyphMap> = {
   run: 'walk',
@@ -85,3 +91,16 @@ export function getSportIcon(type: ActivityType | undefined): keyof typeof Ionic
 export function getSportLabel(type: ActivityType | undefined): string {
   return SPORT_TYPES.find((s) => s.type === type)?.label ?? 'Activity';
 }
+
+/** Who can see an activity, as the shared segmented choice lists it. */
+/** What an author can keep from other people's view: only figures that are published at all (pace comes from the public distance and time). */
+export const HIDDEN_STAT_OPTIONS: readonly { value: HiddenStat; label: string }[] = [
+  { value: 'start_time', label: 'Start time' },
+  { value: 'pace', label: 'Pace' },
+];
+
+export const PRIVACY_CHOICES: readonly { value: ActivityPrivacy; label: string }[] = [
+  { value: 'everyone', label: 'Everyone' },
+  { value: 'followers', label: 'Followers' },
+  { value: 'only_me', label: 'Only Me' },
+];

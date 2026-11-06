@@ -29,6 +29,15 @@ describe('buttonAppearance', () => {
     expect(look('secondary', { pressed: true }).background).toBe('#sel');
   });
 
+  it('outlines a danger-outline button in red and tints it while pressed', () => {
+    expect(look('dangerOutline')).toMatchObject({
+      background: 'transparent',
+      border: '#d',
+      label: '#d',
+    });
+    expect(look('dangerOutline', { pressed: true }).background).toBe('#sel');
+  });
+
   it('shows a ghost button as accent text with no edge', () => {
     expect(look('ghost')).toMatchObject({
       background: 'transparent',
