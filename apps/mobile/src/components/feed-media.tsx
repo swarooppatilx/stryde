@@ -14,10 +14,12 @@ import { RouteThumbnail } from '@/components/route-thumbnail';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { Feed } from '@/constants/feed';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, IconSize, Spacing, Touch } from '@/constants/theme';
 import type { useTheme } from '@/hooks/use-theme';
 import type { SocialActivity } from '@/stores/socialStore';
 import { parsePolyline } from '@/utils/format';
+
+const DOT = Spacing.one + Spacing.half;
 
 function RouteSlide({
   activity,
@@ -37,7 +39,7 @@ function RouteSlide({
       height={height}
       fallback={
         <View style={[styles.thumbnailFallback, { backgroundColor: theme.background, height }]}>
-          <Ionicons name={icon} size={32} color={theme.textSecondary} />
+          <Ionicons name={icon} size={IconSize.stat} color={theme.textSecondary} />
         </View>
       }
     />
@@ -67,7 +69,7 @@ function FeedPhoto({
         ]}
         accessibilityLabel="Photo unavailable"
       >
-        <Ionicons name={icon} size={20} color={theme.textSecondary} />
+        <Ionicons name={icon} size={IconSize.inline} color={theme.textSecondary} />
         <ThemedText type="caption" themeColor="textSecondary">
           Photo unavailable
         </ThemedText>
@@ -211,7 +213,7 @@ export function FeedMedia({
 
 const styles = StyleSheet.create({
   thumbnailContainer: {
-    marginTop: Feed.edge,
+    marginTop: Spacing.three,
     overflow: 'hidden',
   },
   activityImage: {
@@ -219,20 +221,19 @@ const styles = StyleSheet.create({
     height: Feed.mediaHeight,
   },
   thumbnailFallback: {
-    height: 160,
     justifyContent: 'center',
     alignItems: 'center',
   },
   // Short on purpose: a failed photo should not hold a full-height blank in the feed.
   photoFailed: {
-    height: 64,
+    height: Touch.row,
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
   },
   carousel: {
-    marginTop: Feed.edge,
+    marginTop: Spacing.three,
   },
   carouselItem: {
     overflow: 'hidden',
@@ -244,8 +245,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   dot: {
-    width: 6,
-    height: 6,
+    width: DOT,
+    height: DOT,
     borderRadius: BorderRadius.full,
   },
 });

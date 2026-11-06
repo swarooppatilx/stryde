@@ -25,6 +25,8 @@ export function RouteElevationCard({ line, elevation }: Props) {
       {profile ? (
         <ScrubChart
           title="Elevation"
+          // Under 20 m of difference is a flat route: do not stretch it into hills.
+          minSpan={20}
           values={profile.values}
           times={profile.times}
           formatValue={(v) => formatElevation(v, unitSystem)}

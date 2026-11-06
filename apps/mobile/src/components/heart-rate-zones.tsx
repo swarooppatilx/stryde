@@ -16,8 +16,7 @@ interface Props {
 export function HeartRateZones({ zones, maxHr, restingHr }: Props) {
   const theme = useTheme();
   return (
-    <View style={styles.container} accessibilityLabel="Heart rate zones">
-      <ThemedText type="smallBold">Heart rate zones</ThemedText>
+    <View style={styles.container}>
       {zones.map(({ zone, seconds, share }) => (
         <View
           key={zone.id}
@@ -51,7 +50,7 @@ export function HeartRateZones({ zones, maxHr, restingHr }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { gap: Spacing.one, paddingVertical: Spacing.two },
+  container: { gap: Spacing.one },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   label: { width: 112 },
   track: { flex: 1, height: 8, borderRadius: BorderRadius.full, overflow: 'hidden' },

@@ -37,15 +37,21 @@ function RoundButton({
   icon,
   label,
   badge,
+  caption,
+  destructive,
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   badge?: number;
+  /** Visible word under the button; icons alone left Finish and Discard to guesswork. */
+  caption?: string;
+  destructive?: boolean;
   onPress(): void;
 }) {
   const theme = useTheme();
-  return (
+  const tint = destructive ? theme.dangerText : theme.text;
+  const button = (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
@@ -55,13 +61,22 @@ function RoundButton({
         { backgroundColor: theme.backgroundSelected, opacity: pressed ? 0.8 : 1 },
       ]}
     >
-      <Ionicons name={icon} size={24} color={theme.text} />
+      <Ionicons name={icon} size={24} color={tint} />
       {badge ? (
         <ThemedText type="caption" style={styles.badge}>
           {badge}
         </ThemedText>
       ) : null}
     </Pressable>
+  );
+  if (!caption) return button;
+  return (
+    <View style={styles.captioned}>
+      {button}
+      <ThemedText type="caption" style={{ color: tint }}>
+        {caption}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -106,8 +121,19 @@ export function RecordControls({
       ) : (
         <>
           <PillButton icon="play" label="Resume activity" caption="Resume" onPress={onResume} />
-          <RoundButton icon="checkmark" label="Finish activity" onPress={onFinish} />
-          <RoundButton icon="trash-outline" label="Discard activity" onPress={onDiscard} />
+          <RoundButton
+            icon="checkmark"
+            label="Finish activity"
+            caption="Finish"
+            onPress={onFinish}
+          />
+          <RoundButton
+            icon="trash-outline"
+            label="Discard activity"
+            caption="Discard"
+            destructive
+            onPress={onDiscard}
+          />
         </>
       )}
     </View>
@@ -115,7 +141,7 @@ export function RecordControls({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },
   pill: {
     flex: 1,
     height: BUTTON_SIZE,
@@ -134,5 +160,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  captioned: { alignItems: 'center', gap: Spacing.one },
   badge: { position: 'absolute', bottom: Spacing.two },
 });
