@@ -27,7 +27,6 @@ describe('who may call what', () => {
     '/activities/validate',
     '/social/follow',
     '/push/register',
-    '/routing/route',
     '/world/session',
   ])('%s needs the app API key', async (path) => {
     expect((await asks(path)).status).toBe(401);

@@ -21,7 +21,6 @@ export * as pushIntent from './pushIntent';
 export * as relay from './relay';
 export * as reportIntent from './reportIntent';
 export * as reports from './reports';
-export * as routing from './routing';
 export * as season from './season';
 export * as social from './social';
 export * as subgraph from './subgraph';

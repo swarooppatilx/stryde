@@ -14,7 +14,6 @@ import { ipfs } from './routes/ipfs.js';
 import { maintenance } from './routes/maintenance.js';
 import { push } from './routes/push.js';
 import { relay } from './routes/relay.js';
-import { routing } from './routes/routing.js';
 import { social } from './routes/social.js';
 import { world } from './routes/world.js';
 
@@ -63,8 +62,6 @@ const ROUTE_GROUPS = [
   { path: '/clubs', limit: 30, gated: true },
   { path: '/index', limit: 60, gated: true },
   { path: '/push', limit: 30, gated: true },
-  // A route being drawn sends one request per tapped point.
-  { path: '/routing', limit: 60, gated: true },
   // A verification polls every 2s for up to 3 minutes, so it needs well over 30 a minute.
   { path: '/world', limit: 120, gated: true },
   { path: '/relay', limit: 30, gated: false },
@@ -85,7 +82,6 @@ app.route('/clubs', clubs);
 app.route('/push', push);
 app.route('/world', world);
 app.route('/relay', relay);
-app.route('/routing', routing);
 app.route('/maintenance', maintenance);
 
 export default app;
