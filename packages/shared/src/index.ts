@@ -9,6 +9,11 @@ export {
   getWalletClient,
   setChainMode,
 } from './services/client';
+export {
+  MAX_CLUB_COMMENT_LENGTH,
+  MAX_CLUB_PHOTOS,
+  MAX_CLUB_POST_LENGTH,
+} from './services/clubIntent';
 export type {
   ClubAction,
   ClubComment,

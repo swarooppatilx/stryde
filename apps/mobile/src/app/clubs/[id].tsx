@@ -1,13 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { Image } from 'expo-image';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
+import { sendClubChange } from '@/backends/clubIntents';
 import { clubKey, setClubMember } from '@/backends/membership';
 import { AppButton } from '@/components/button';
+import { ClubEventsSection } from '@/components/club/club-events-section';
+import { ClubFeed } from '@/components/club/club-feed';
+import { ClubLeaderboard } from '@/components/club/club-leaderboard';
+import { ClubMembersPanel } from '@/components/club/club-members-panel';
 import { ClubMembers } from '@/components/club-members';
 import { DetailFallback } from '@/components/list-message';
 import { ShareButton } from '@/components/share-button';
@@ -15,28 +20,56 @@ import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { UnderlineTabs } from '@/components/underline-tabs';
 import { SPORT_ICONS } from '@/constants/activity';
+import { getCurrentUserId } from '@/constants/config';
 import { stockImageFor } from '@/constants/stockImages';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 import { useBalances } from '@/hooks/useBalances';
 import { useChainAction } from '@/hooks/useChainAction';
+import { useClubMembers } from '@/hooks/useClubMembers';
 import { useClubTreasury } from '@/hooks/useClubTreasury';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useDelivery } from '@/hooks/useOutbox';
+import { useUserResolver } from '@/hooks/useSocialUser';
+import { useClubStore } from '@/stores/clubStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useSocialStore } from '@/stores/socialStore';
 import type { ActivityType } from '@/types';
 import { sameAddress, viewerAddress } from '@/utils/address';
 import { Alert } from '@/utils/alert';
 import { confirmLeave } from '@/utils/confirmLeave';
 import { buildDetailDeepLink } from '@/utils/deepLink';
 import { parseEthAmount } from '@/utils/eth';
-import { formatMemberCount, SPORT_LABEL } from '@/utils/format';
+import { formatMemberCount, getDisplayName, SPORT_LABEL } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { ipfsToHttpUrl } from '@/utils/ipfsUrl';
 import { treasuryAmountError } from '@/utils/stakeAlerts';
+
+const CLUB_TABS = ['Overview', 'Feed', 'Leaderboard', 'Members'] as const;
+type ClubTab = (typeof CLUB_TABS)[number];
+const EMPTY_VIEW = { state: null, feed: [], loading: false, error: null };
+const DEFAULT_SETTINGS = {
+  name: '',
+  location: '',
+  description: '',
+  photo: '',
+  cover: '',
+  inviteOnly: false,
+  adminsOnlyPost: false,
+  showLeaderboard: true,
+};
+
+/** "Kavya has joined", "Kavya and Nithya have joined", "3 athletes you follow have joined". */
+export function followedJoinedText(names: readonly string[]): string {
+  if (names.length === 1) return `${names[0]} has joined`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} have joined`;
+  return `${names.length} athletes you follow have joined`;
+}
 
 /** How long typing must pause before an amount is judged, so "0." on the way to "0.05" is not an error. */
 const AMOUNT_PAUSE_MS = 500;
@@ -59,19 +92,10 @@ const SPORT_ICON_NAME = (sport: ActivityType | 'multi'): keyof typeof Ionicons.g
   return (SPORT_ICONS[sport] ?? 'walk') as keyof typeof Ionicons.glyphMap;
 };
 
-function joinAccessibilityLabel(clubName: string, isOwner: boolean, isJoined: boolean): string {
-  if (isOwner) return `You own ${clubName}`;
-  return isJoined ? `Leave ${clubName}` : `Join ${clubName}`;
-}
-
-function joinButtonLabel(isOwner: boolean, isJoined: boolean): string {
-  if (isOwner) return 'You own this club';
-  return isJoined ? 'Joined — Tap to Leave' : 'Join Club';
-}
-
 export default function ClubDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const goBack = useGoBack();
+  const router = useRouter();
   const theme = useTheme();
 
   const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
@@ -95,6 +119,56 @@ export default function ClubDetailScreen() {
   const isOwner = !!(club && sameAddress(club.owner, viewer ?? undefined));
   const quiet = isOwner || isJoined;
 
+  // Feed, settings, admins and join requests live in the club API; membership stays on chain.
+  const [tab, setTab] = useState<ClubTab>('Overview');
+  const loadClub = useClubStore((s) => s.load);
+  const clubView = useClubStore((s) => s.clubs[id ?? '']) ?? EMPTY_VIEW;
+  const me = (address ?? getCurrentUserId()).toLowerCase();
+  const settings = clubView.state?.settings ?? DEFAULT_SETTINGS;
+  const isAdmin = isOwner || (clubView.state?.admins ?? []).some((a) => a.toLowerCase() === me);
+  const removedMe = (clubView.state?.removed ?? []).some((a) => a.toLowerCase() === me);
+  const isActiveMember = (isJoined || isOwner) && !removedMe;
+  const myRequest = clubView.state?.requests.find((r) => r.member.toLowerCase() === me);
+  const { state: membersState } = useClubMembers(club?.id, club?.owner);
+  const memberList = membersState.status === 'ready' ? membersState.members : null;
+  const following = useSocialStore((s) => s.following);
+  const resolveUser = useUserResolver();
+  const nameOf = (who: string) => {
+    const user = resolveUser(who);
+    return user ? getDisplayName(user) : `${who.slice(0, 6)}…`;
+  };
+  const followedSet = new Set([...following].map((f) => f.toLowerCase()));
+  const joinedByFollowed = (memberList ?? []).filter((m) => followedSet.has(m.toLowerCase()));
+  const clubName = (settings.name || club?.name) ?? 'Club';
+  const coverImage = settings.cover || settings.photo;
+  const coverSource = coverImage
+    ? { uri: ipfsToHttpUrl(coverImage) }
+    : stockImageFor('club', club?.id ?? '');
+
+  /** Join, leave, or (for an invite-only club) ask to join and wait for an admin. */
+  const joinState: 'owner' | 'joined' | 'join' | 'request' | 'requested' = (() => {
+    if (isOwner) return 'owner';
+    if (isJoined) return 'joined';
+    if (!settings.inviteOnly || myRequest?.status === 'approved') return 'join';
+    return myRequest?.status === 'pending' ? 'requested' : 'request';
+  })();
+  const joinLabel = {
+    owner: 'You own this club',
+    joined: 'Joined — Tap to Leave',
+    join: myRequest?.status === 'approved' ? 'Approved — Join Club' : 'Join Club',
+    request: 'Request to join',
+    requested: 'Request sent',
+  }[joinState];
+
+  const transferOwnership = async (member: string) => {
+    if (!club) return;
+    const result = await run(
+      (w) => services.group.transferGroupOwnership(w, BigInt(club.id), member as `0x${string}`),
+      { pending: 'Transferring ownership…', success: 'Ownership transferred' }
+    );
+    if (result?.confirmed) void fetchClubs();
+  };
+
   const { balance: treasuryBalance, refresh: refreshTreasury } = useClubTreasury(club?.id);
   const { eth: balanceWei } = useBalances(address);
 
@@ -114,6 +188,11 @@ export default function ClubDetailScreen() {
     setWithdrawAmount('');
   }, [clubId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload when the club changes
+  useEffect(() => {
+    if (id) void loadClub(id);
+  }, [id]);
+
   useFocusEffect(
     useCallback(() => {
       fetchClubs();
@@ -130,11 +209,12 @@ export default function ClubDetailScreen() {
         fetchClubs(),
         address ? fetchJoinedClubs(address) : Promise.resolve(),
         refreshTreasury(),
+        id ? loadClub(id) : Promise.resolve(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchClubs, fetchJoinedClubs, address, refreshTreasury]);
+  }, [fetchClubs, fetchJoinedClubs, address, refreshTreasury, id, loadClub]);
 
   if (!club) {
     return (
@@ -162,6 +242,15 @@ export default function ClubDetailScreen() {
       </ThemedView>
     );
   }
+
+  const handleJoinPress = () => {
+    if (joinState === 'request') {
+      haptics.impactMedium();
+      void sendClubChange({ clubId: club.id, action: 'request' });
+      return;
+    }
+    void handleJoin();
+  };
 
   const handleJoin = async () => {
     haptics.impactMedium();
@@ -261,12 +350,32 @@ export default function ClubDetailScreen() {
             numberOfLines={1}
             style={{ flex: 1, textAlign: 'center' }}
           >
-            {club.name}
+            {clubName}
           </ThemedText>
-          <ShareButton
-            label="Share this club"
-            message={`${club.name} on Stryde\n${buildDetailDeepLink('clubs', club.id)}`}
-          />
+          <View style={styles.headerActions}>
+            <Tappable
+              onPress={() => router.push(`/club-invite?id=${club.id}`)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Invite to the club"
+            >
+              <Ionicons name="person-add-outline" size={22} color={theme.text} />
+            </Tappable>
+            <ShareButton
+              label="Share this club"
+              message={`${clubName} on Stryde\n${buildDetailDeepLink('clubs', club.id)}`}
+            />
+            {(isJoined || isOwner) && (
+              <Tappable
+                onPress={() => router.push(`/club-settings?id=${club.id}`)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Club settings"
+              >
+                <Ionicons name="settings-outline" size={22} color={theme.text} />
+              </Tappable>
+            )}
+          </View>
         </ThemedView>
 
         <ScrollView
@@ -284,13 +393,13 @@ export default function ClubDetailScreen() {
         >
           <ThemedView style={styles.hero}>
             <Image
-              source={stockImageFor('club', club.id)}
+              source={coverSource}
               style={styles.cover}
               contentFit="cover"
               // Decorative: the title below names the club.
               accessible={false}
             />
-            <ThemedText type="title">{club.name}</ThemedText>
+            <ThemedText type="title">{clubName}</ThemedText>
             <ThemedView style={styles.metaRow}>
               <MetaItem
                 icon={SPORT_ICON_NAME(club.sportType)}
@@ -300,103 +409,14 @@ export default function ClubDetailScreen() {
                 icon="people-outline"
                 text={`${formatMemberCount(club.memberCount)} ${club.memberCount === 1 ? 'member' : 'members'}`}
               />
-              {/* Every club on this registry is open to join: there is no private club on-chain. */}
-              <MetaItem icon="globe-outline" text="Public" />
+              <MetaItem
+                icon={settings.inviteOnly ? 'lock-closed-outline' : 'globe-outline'}
+                text={settings.inviteOnly ? 'Invite only' : 'Public'}
+              />
             </ThemedView>
-            {club.location ? <MetaItem icon="location-outline" text={club.location} /> : null}
-          </ThemedView>
-
-          <ThemedView style={styles.section}>
-            <ThemedText type="eyebrow" themeColor="textSecondary">
-              About
-            </ThemedText>
-            <ThemedText type="small" style={{ color: theme.text }}>
-              {club.description}
-            </ThemedText>
-          </ThemedView>
-
-          <ClubMembers clubId={club.id} owner={club.owner} />
-
-          <ThemedView style={[styles.treasuryCard, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedView style={styles.treasuryHeader}>
-              <Ionicons name="wallet-outline" size={18} color={theme.brand.primary} />
-              <ThemedText type="eyebrow" themeColor="textSecondary">
-                Club Treasury
-              </ThemedText>
-            </ThemedView>
-            <ThemedText style={[styles.treasuryBalance, { color: theme.text }]}>
-              {treasuryBalance === null ? '—' : `${formatEther(treasuryBalance)} ETH`}
-            </ThemedText>
-            <ThemedText
-              type="caption"
-              style={{ color: theme.textSecondary, marginBottom: Spacing.two }}
-            >
-              Shared funds owned by the club, not by any one member.
-            </ThemedText>
-            <ThemedText
-              type="caption"
-              style={{ color: theme.textSecondary, marginBottom: Spacing.two }}
-            >
-              Anyone can contribute. Only the club owner can withdraw.
-            </ThemedText>
-
-            <ThemedView style={styles.treasuryRow}>
-              <View style={styles.treasuryInput}>
-                <TextField
-                  placeholder="0.0 ETH"
-                  value={depositAmount}
-                  onChangeText={setDepositAmount}
-                  keyboardType="decimal-pad"
-                  error={shownDepositError}
-                  accessibilityLabel="Amount to contribute"
-                />
-              </View>
-              <AppButton
-                variant="secondary"
-                fullWidth={false}
-                style={styles.treasuryBtn}
-                onPress={handleDeposit}
-                disabled={
-                  !wallet ||
-                  isTreasuryPending ||
-                  parseEthAmount(depositAmount) === null ||
-                  depositError !== null
-                }
-                loading={isTreasuryPending}
-              >
-                Contribute
-              </AppButton>
-            </ThemedView>
-
-            {isOwner && (
-              <ThemedView style={[styles.treasuryRow, { marginTop: Spacing.two }]}>
-                <View style={styles.treasuryInput}>
-                  <TextField
-                    placeholder="0.0 ETH"
-                    value={withdrawAmount}
-                    onChangeText={setWithdrawAmount}
-                    keyboardType="decimal-pad"
-                    error={shownWithdrawError}
-                    accessibilityLabel="Amount to withdraw"
-                  />
-                </View>
-                <AppButton
-                  variant="secondary"
-                  fullWidth={false}
-                  style={styles.treasuryBtn}
-                  onPress={handleWithdraw}
-                  disabled={
-                    !wallet ||
-                    isTreasuryPending ||
-                    parseEthAmount(withdrawAmount) === null ||
-                    withdrawError !== null
-                  }
-                  loading={isTreasuryPending}
-                >
-                  Withdraw
-                </AppButton>
-              </ThemedView>
-            )}
+            {settings.location || club.location ? (
+              <MetaItem icon="location-outline" text={settings.location || club.location} />
+            ) : null}
           </ThemedView>
 
           {/* An owner's button does nothing, so it is drawn like a joined one, not as the main action. */}
@@ -408,11 +428,11 @@ export default function ClubDetailScreen() {
                 borderColor: quiet ? theme.border : theme.brand.primary,
               },
             ]}
-            onPress={handleJoin}
+            onPress={handleJoinPress}
             activeOpacity={0.7}
-            disabled={isPending || isOwner}
+            disabled={isPending || isOwner || joinState === 'requested'}
             accessibilityRole="button"
-            accessibilityLabel={joinAccessibilityLabel(club.name, isOwner, isJoined)}
+            accessibilityLabel={`${joinLabel}, ${clubName}`}
           >
             {isPending ? (
               <ActivityIndicator size="small" color={quiet ? theme.textSecondary : Brand.white} />
@@ -421,10 +441,157 @@ export default function ClubDetailScreen() {
                 type="smallBold"
                 style={{ color: quiet ? theme.textSecondary : Brand.white }}
               >
-                {joinButtonLabel(isOwner, isJoined)}
+                {joinLabel}
               </ThemedText>
             )}
           </Tappable>
+
+          {joinedByFollowed.length > 0 && (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.followedLine}>
+              {followedJoinedText(joinedByFollowed.map(nameOf))}
+            </ThemedText>
+          )}
+
+          <UnderlineTabs
+            tabs={CLUB_TABS}
+            active={tab}
+            onChange={(next) => setTab(next as ClubTab)}
+            style={styles.tabs}
+          />
+
+          {tab === 'Feed' && (
+            <ClubFeed
+              clubId={club.id}
+              posts={clubView.feed}
+              me={me}
+              isMember={isActiveMember}
+              isAdmin={isAdmin}
+              adminsOnlyPost={settings.adminsOnlyPost}
+              loading={clubView.loading}
+              error={clubView.error}
+              onRetry={() => void loadClub(club.id)}
+            />
+          )}
+          {tab === 'Leaderboard' && (
+            <ClubLeaderboard
+              members={memberList}
+              me={me}
+              hidden={!settings.showLeaderboard}
+              isMember={isActiveMember}
+            />
+          )}
+          {tab === 'Members' && (
+            <ClubMembersPanel
+              clubId={club.id}
+              members={memberList}
+              state={clubView.state}
+              me={me}
+              isOwner={isOwner}
+              isAdmin={isAdmin}
+              onTransferOwnership={(member) => void transferOwnership(member)}
+            />
+          )}
+
+          {tab === 'Overview' && (
+            <>
+              <ThemedView style={styles.section}>
+                <ThemedText type="eyebrow" themeColor="textSecondary">
+                  About
+                </ThemedText>
+                <ThemedText type="small" style={{ color: theme.text }}>
+                  {settings.description || club.description}
+                </ThemedText>
+              </ThemedView>
+
+              <ClubMembers clubId={club.id} owner={club.owner} />
+
+              <ThemedView
+                style={[styles.treasuryCard, { backgroundColor: theme.backgroundElement }]}
+              >
+                <ThemedView style={styles.treasuryHeader}>
+                  <Ionicons name="wallet-outline" size={18} color={theme.brand.primary} />
+                  <ThemedText type="eyebrow" themeColor="textSecondary">
+                    Club Treasury
+                  </ThemedText>
+                </ThemedView>
+                <ThemedText style={[styles.treasuryBalance, { color: theme.text }]}>
+                  {treasuryBalance === null ? '—' : `${formatEther(treasuryBalance)} ETH`}
+                </ThemedText>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.textSecondary, marginBottom: Spacing.two }}
+                >
+                  Shared funds owned by the club, not by any one member.
+                </ThemedText>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.textSecondary, marginBottom: Spacing.two }}
+                >
+                  Anyone can contribute. Only the club owner can withdraw.
+                </ThemedText>
+
+                <ThemedView style={styles.treasuryRow}>
+                  <View style={styles.treasuryInput}>
+                    <TextField
+                      placeholder="0.0 ETH"
+                      value={depositAmount}
+                      onChangeText={setDepositAmount}
+                      keyboardType="decimal-pad"
+                      error={shownDepositError}
+                      accessibilityLabel="Amount to contribute"
+                    />
+                  </View>
+                  <AppButton
+                    variant="secondary"
+                    fullWidth={false}
+                    style={styles.treasuryBtn}
+                    onPress={handleDeposit}
+                    disabled={
+                      !wallet ||
+                      isTreasuryPending ||
+                      parseEthAmount(depositAmount) === null ||
+                      depositError !== null
+                    }
+                    loading={isTreasuryPending}
+                  >
+                    Contribute
+                  </AppButton>
+                </ThemedView>
+
+                {isOwner && (
+                  <ThemedView style={[styles.treasuryRow, { marginTop: Spacing.two }]}>
+                    <View style={styles.treasuryInput}>
+                      <TextField
+                        placeholder="0.0 ETH"
+                        value={withdrawAmount}
+                        onChangeText={setWithdrawAmount}
+                        keyboardType="decimal-pad"
+                        error={shownWithdrawError}
+                        accessibilityLabel="Amount to withdraw"
+                      />
+                    </View>
+                    <AppButton
+                      variant="secondary"
+                      fullWidth={false}
+                      style={styles.treasuryBtn}
+                      onPress={handleWithdraw}
+                      disabled={
+                        !wallet ||
+                        isTreasuryPending ||
+                        parseEthAmount(withdrawAmount) === null ||
+                        withdrawError !== null
+                      }
+                      loading={isTreasuryPending}
+                    >
+                      Withdraw
+                    </AppButton>
+                  </ThemedView>
+                )}
+              </ThemedView>
+
+              <ClubEventsSection eventIds={clubView.state?.events ?? []} />
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -432,6 +599,9 @@ export default function ClubDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  followedLine: { textAlign: 'center' },
+  tabs: { marginBottom: Spacing.two },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   header: {
@@ -457,23 +627,6 @@ const styles = StyleSheet.create({
   },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  statsRow: {
-    flexDirection: 'row',
-    borderRadius: BorderRadius.lg,
-    paddingVertical: Spacing.three,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: Spacing.one,
-  },
-  statValue: {
-    ...textStyle(TypeScale.bodyBold),
-  },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 32,
-  },
   section: {
     gap: Spacing.two,
   },
