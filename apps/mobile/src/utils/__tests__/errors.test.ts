@@ -1,6 +1,7 @@
 import {
   BaseError,
   ContractFunctionRevertedError,
+  ExecutionRevertedError,
   encodeErrorResult,
   FeeCapTooLowError,
   HttpRequestError,
@@ -154,5 +155,51 @@ describe('raw technical text never reaches people', () => {
 
   it('treats a very long message as a dump, not something to read', () => {
     expect(getParsedError(new Error('x'.repeat(400)))).toBe(GENERIC);
+  });
+});
+
+describe('how each kind of failure reads', () => {
+  const GENERIC = 'Something went wrong. Please try again.';
+  const GASLESS = "Saving isn't set up for this app yet. Contact support.";
+  const CONNECTION = "Can't reach the network. Check your connection and try again.";
+
+  it('names what a reverted execution refused', () => {
+    const error = new ExecutionRevertedError({ message: 'execution reverted: Not allowed' });
+
+    expect(getParsedError(error)).toBe(`That didn't go through: ${error.shortMessage}`);
+  });
+
+  it('recognises a paymaster failure by its error name inside a wrapped error', () => {
+    const inner = new Error('bundler said no');
+    inner.name = 'PaymasterDepositTooLowError';
+
+    expect(getParsedError(new BaseError('Could not send.', { cause: inner }))).toBe(GASLESS);
+  });
+
+  it('recognises a paymaster failure by its wording in a wrapped error', () => {
+    expect(getParsedError(new BaseError('The paymaster refused it.'))).toBe(GASLESS);
+  });
+
+  it('shows the short message of a wrapped error when it reads like a sentence', () => {
+    expect(getParsedError(new BaseError('That name is taken'))).toBe('That name is taken');
+  });
+
+  it('replaces the short message of a wrapped error when it is technical', () => {
+    expect(getParsedError(new BaseError('execution reverted: custom error 0x05b94333'))).toBe(
+      GENERIC
+    );
+  });
+
+  it('reports a plain network failure as a connection problem', () => {
+    expect(getParsedError(new Error('Network request failed'))).toBe(CONNECTION);
+  });
+
+  it('reports a wrapped timeout as a connection problem', () => {
+    const timeout = new Error('slow');
+    timeout.name = 'TimeoutError';
+
+    expect(getParsedError(new BaseError('Request timed out.', { cause: timeout }))).toBe(
+      CONNECTION
+    );
   });
 });

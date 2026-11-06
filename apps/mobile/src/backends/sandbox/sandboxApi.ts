@@ -20,6 +20,16 @@ const json = (status: number, body: unknown) =>
 
 const refuse = (status: number, code: string, error: string) => json(status, { error, code });
 
+const INVALID_JSON = () => json(400, { error: 'Invalid JSON body' });
+
+function parseJsonBody(init?: RequestInit): { body: Record<string, unknown> } | null {
+  try {
+    return { body: JSON.parse(String(init?.body ?? '')) };
+  } catch {
+    return null;
+  }
+}
+
 const lower = (value: unknown) => String(value ?? '').toLowerCase();
 
 export function createSandboxApi(
@@ -168,52 +178,59 @@ export function createSandboxApi(
     return json(200, { cid: `bafysandbox${(hash >>> 0).toString(36)}`, size: body.length });
   };
 
+  const serveClubs = (url: URL, method: string, init?: RequestInit): Response | null => {
+    let body: Record<string, unknown> | null = null;
+    if (method === 'POST') {
+      const parsed = parseJsonBody(init);
+      if (!parsed) return INVALID_JSON();
+      body = parsed.body;
+    }
+    const answer = clubs.handle(
+      url.pathname.replace(/^.*\/api\/clubs\//, ''),
+      method,
+      url.searchParams,
+      body
+    );
+    return answer ? json(answer.status, answer.body) : null;
+  };
+
+  const SOCIAL_WRITES: Record<string, (body: { intent?: Record<string, unknown> }) => Response> = {
+    follow: applyFollow,
+    about: applyAbout,
+    post: applyPost,
+    'comment-like': applyCommentLike,
+    report: () => json(200, { reported: true, created: true }),
+  };
+
+  const writeSocial = (route: string, init?: RequestInit): Response | null => {
+    const parsed = parseJsonBody(init);
+    if (!parsed) return INVALID_JSON();
+    const write = Object.hasOwn(SOCIAL_WRITES, route) ? SOCIAL_WRITES[route] : undefined;
+    return write?.(parsed.body as { intent?: Record<string, unknown> }) ?? null;
+  };
+
+  const readSocial = (route: string, query: URLSearchParams): Response | null => {
+    if (route.startsWith('following/'))
+      return json(200, followList(lower(route.slice(10)), 'follower'));
+    if (route.startsWith('followers/'))
+      return json(200, followList(lower(route.slice(10)), 'followee'));
+    if (route === 'about') return readAbout(query);
+    if (route === 'posts') return readPosts(query);
+    if (route === 'comment-likes') return readCommentLikes(query);
+    return null;
+  };
+
   const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     const method = (init?.method ?? 'GET').toUpperCase();
     if (method === 'POST' && url.pathname.includes('/api/relay/')) return confirmRelay();
     if (method === 'POST' && url.pathname.endsWith('/api/ipfs/upload')) return pin(init);
-    if (url.pathname.includes('/api/clubs/')) {
-      let body: Record<string, unknown> | null = null;
-      if (method === 'POST') {
-        try {
-          body = JSON.parse(String(init?.body ?? ''));
-        } catch {
-          return json(400, { error: 'Invalid JSON body' });
-        }
-      }
-      const answer = clubs.handle(
-        url.pathname.replace(/^.*\/api\/clubs\//, ''),
-        method,
-        url.searchParams,
-        body
-      );
-      if (answer) return json(answer.status, answer.body);
-    }
+    const clubAnswer = url.pathname.includes('/api/clubs/') ? serveClubs(url, method, init) : null;
+    if (clubAnswer) return clubAnswer;
     const route = url.pathname.replace(/^.*\/api\/social\//, '');
-
-    if (method === 'POST') {
-      let body: { intent?: Record<string, unknown> };
-      try {
-        body = JSON.parse(String(init?.body ?? ''));
-      } catch {
-        return json(400, { error: 'Invalid JSON body' });
-      }
-      if (route === 'follow') return applyFollow(body);
-      if (route === 'about') return applyAbout(body);
-      if (route === 'post') return applyPost(body);
-      if (route === 'comment-like') return applyCommentLike(body);
-      if (route === 'report') return json(200, { reported: true, created: true });
-    } else {
-      if (route.startsWith('following/'))
-        return json(200, followList(lower(route.slice(10)), 'follower'));
-      if (route.startsWith('followers/'))
-        return json(200, followList(lower(route.slice(10)), 'followee'));
-      if (route === 'about') return readAbout(url.searchParams);
-      if (route === 'posts') return readPosts(url.searchParams);
-      if (route === 'comment-likes') return readCommentLikes(url.searchParams);
-    }
-    return json(404, { error: `Not faked in the sandbox: ${method} ${route}` });
+    const answer =
+      method === 'POST' ? writeSocial(route, init) : readSocial(route, url.searchParams);
+    return answer ?? json(404, { error: `Not faked in the sandbox: ${method} ${route}` });
   };
 
   return { fetch: fakeFetch as typeof fetch };
