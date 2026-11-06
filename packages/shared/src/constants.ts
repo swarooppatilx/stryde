@@ -8,10 +8,14 @@ export interface ChainConfig {
   chain: Chain;
   chainId: number;
   rpcUrl: string;
+  /** Read-only backups, tried in order when `rpcUrl` fails a call (a pruned log range, an outage). */
+  fallbackRpcUrls?: readonly string[];
   /** Empty string means no subgraph is deployed for this mode; callers read events directly (see services/sync.ts). */
   subgraphUrl: string;
   /** First block of the current deployment; event scans start here instead of at genesis. */
   deployBlock: bigint;
+  /** Where activity history starts when later than `deployBlock`; older activity is left out of the feed. */
+  feedFromBlock?: bigint;
   contracts: {
     profileRegistry: `0x${string}`;
     activityRegistry: `0x${string}`;
@@ -47,9 +51,14 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
     chainId: 11155111,
     // Ankr's free eth_sepolia endpoint rejects eth_getTransactionReceipt without an API key, which breaks confirmation polling (writes succeed but the app spins for the 3-minute viem timeout); publicnode has no such gate.
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    // publicnode prunes old logs ("pruned history unavailable"), which breaks the event scans that
+    // start at deployBlock; the Tenderly gateway still serves them (checked 2026-11-06).
+    fallbackRpcUrls: ['https://sepolia.gateway.tenderly.co'],
     // Empty on purpose: the v0.6.0 subgraph indexes the previous deployment's addresses. Reads use the chain-log fallbacks until the Arkiv index serves them.
     subgraphUrl: '',
     deployBlock: 12063931n,
+    // The feed starts fresh from here: earlier test activity is deliberately left out (2026-11-06).
+    feedFromBlock: 12078041n,
     contracts: {
       profileRegistry: '0x348CE6aF8eA0C50fb44F284dCCA73b7EE5112314',
       activityRegistry: '0x30a910fc25F0977907Af86345c0B26C34e7d2439',

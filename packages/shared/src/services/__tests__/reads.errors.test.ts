@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const readContract = vi.hoisted(() => vi.fn());
 const getLogs = vi.hoisted(() => vi.fn());
 
-// The chain head sits a little past the deploy block, so a redeploy does not leave the scan with an empty range.
+// The chain head sits a little past where the scans start (the feed start block when there is one), so no scan has an empty range.
 vi.mock('../client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../client')>();
   return {
@@ -11,7 +11,10 @@ vi.mock('../client', async (importOriginal) => {
     getPublicClient: () => ({
       readContract,
       getLogs,
-      getBlockNumber: async () => actual.getActiveConfig().deployBlock + 100n,
+      getBlockNumber: async () => {
+        const { deployBlock, feedFromBlock } = actual.getActiveConfig();
+        return (feedFromBlock && feedFromBlock > deployBlock ? feedFromBlock : deployBlock) + 100n;
+      },
       chain: undefined,
     }),
   };
