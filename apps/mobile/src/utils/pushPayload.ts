@@ -23,7 +23,7 @@ export function parsePushPayload(data: unknown): PushPayload | null {
 const SCREEN_BY_KIND: Partial<
   Record<
     NotificationKind,
-    '/activities/[id]' | '/athletes/[id]' | '/clubs/[id]' | '/challenges/[id]'
+    '/activities/[id]' | '/athletes/[id]' | '/clubs/[id]' | '/challenges/[id]' | '/segment-detail'
   >
 > = {
   kudos: '/activities/[id]',
@@ -34,12 +34,15 @@ const SCREEN_BY_KIND: Partial<
   newFollower: '/athletes/[id]',
   clubUpdates: '/clubs/[id]',
   challenges: '/challenges/[id]',
+  segments: '/segment-detail',
 };
 
 /** The screen a tap on this notification opens; null when there is nowhere specific to go. */
 export function routeForPush(payload: PushPayload): Href | null {
   const pathname = SCREEN_BY_KIND[payload.kind];
   if (!pathname || !payload.id) return null;
+  // The segment screen reads its segment from `key`.
+  if (pathname === '/segment-detail') return { pathname, params: { key: payload.id } };
   return { pathname, params: { id: payload.id } };
 }
 

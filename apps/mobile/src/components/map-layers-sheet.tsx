@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DEFAULT_CENTER, ENV } from '@/constants/config';
@@ -75,6 +76,7 @@ interface MapLayersSheetProps {
 /** One sheet for what the base map looks like and what is drawn on it: the map's layers button opens it. */
 export function MapLayersSheet({ visible, onClose, layers, previewCenter }: MapLayersSheetProps) {
   const theme = useTheme();
+  const router = useRouter();
   const { bottom } = useSafeAreaInsets();
   const prefs = useMapPrefsStore();
   const appearanceDark = resolveMapStyle(prefs.style, theme.isDark) === 'dark';
@@ -285,6 +287,32 @@ export function MapLayersSheet({ visible, onClose, layers, previewCenter }: MapL
                   </View>
                 );
               })}
+            </View>
+
+            <View style={styles.section}>
+              <Tappable
+                onPress={() => {
+                  onClose();
+                  router.push({
+                    pathname: '/offline-maps',
+                    params: previewCenter
+                      ? { lng: String(previewCenter[0]), lat: String(previewCenter[1]) }
+                      : {},
+                  });
+                }}
+                style={styles.row}
+                accessibilityRole="button"
+                accessibilityLabel="Offline maps"
+              >
+                <Ionicons name="cloud-download-outline" size={22} color={theme.text} />
+                <View style={styles.rowText}>
+                  <ThemedText>Offline maps</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    Save map areas for places with no signal
+                  </ThemedText>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+              </Tappable>
             </View>
           </ScrollView>
         </View>

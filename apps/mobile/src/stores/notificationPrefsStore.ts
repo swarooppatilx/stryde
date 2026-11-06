@@ -11,6 +11,7 @@ export type NotificationKind =
   | 'clubUpdates'
   | 'challenges'
   | 'milestones'
+  | 'segments'
   | 'goalReached'
   | 'streakAtRisk'
   | 'weeklySummary'
@@ -33,6 +34,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKindInfo[] = [
   { kind: 'clubUpdates', label: 'Club posts and events', local: false },
   { kind: 'challenges', label: 'Challenge invites and progress', local: false },
   { kind: 'milestones', label: 'Milestones and badges', local: false },
+  { kind: 'segments', label: 'Segment records', local: false },
   { kind: 'goalReached', label: 'Goal reached', local: false },
   { kind: 'streakAtRisk', label: 'Streak at risk', local: false },
   { kind: 'weeklySummary', label: 'Weekly summary', local: false },

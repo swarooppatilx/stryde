@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
+import { ChipRow } from '@/components/filter-chips';
 import { ScreenHeader } from '@/components/screen-header';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
@@ -18,11 +19,17 @@ import { useViemWallet } from '@/hooks/useViemWallet';
 import { createSegment, nearbySegments, type Segment } from '@/services/arkivService';
 import { isNotConfigured } from '@/services/strydeApi';
 import { useActivityStore } from '@/stores/activityStore';
+import { starredList, useSegmentStarsStore } from '@/stores/segmentStarsStore';
 import type { Activity } from '@/types';
 import { Alert } from '@/utils/alert';
 import { formatDistance } from '@/utils/format';
 import { haversineDistance } from '@/utils/geo';
 import { Toast } from '@/utils/toast';
+
+const FILTERS = [
+  { value: 'nearby', label: 'Nearby' },
+  { value: 'starred', label: 'Starred' },
+] as const;
 
 function trackOf(activity: Activity): Array<{ latitude: number; longitude: number }> {
   return activity.polyline.split(';').flatMap((p) => {
@@ -44,6 +51,9 @@ export default function SegmentsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState('');
+  const [only, setOnly] = useState<'nearby' | 'starred'>('nearby');
+  const starred = useSegmentStarsStore((s) => s.starred);
+  const toggleStar = useSegmentStarsStore((s) => s.toggle);
   const [creating, setCreating] = useState(false);
 
   const candidates = useMemo(
@@ -79,9 +89,14 @@ export default function SegmentsScreen() {
     }, [load])
   );
 
+  const shown = useMemo(
+    () => (only === 'starred' ? starredList(starred) : segments),
+    [only, starred, segments]
+  );
+
   const sorted = useMemo(() => {
-    if (!position) return segments;
-    return [...segments].sort(
+    if (!position) return shown;
+    return [...shown].sort(
       (a, b) =>
         haversineDistance(
           position.latitude,
@@ -96,7 +111,7 @@ export default function SegmentsScreen() {
           b.start.longitude
         )
     );
-  }, [segments, position]);
+  }, [shown, position]);
 
   const create = async () => {
     const activity = candidates.find((a) => a.id === selectedId);
@@ -134,8 +149,10 @@ export default function SegmentsScreen() {
             ranked boards only count World ID–linked humans.
           </ThemedText>
 
-          {loading && <ActivityIndicator color={theme.brand.primary} />}
-          {error && (
+          <ChipRow options={FILTERS} value={only} onChange={setOnly} contentStyle={styles.chips} />
+
+          {loading && only === 'nearby' && <ActivityIndicator color={theme.brand.primary} />}
+          {error && only === 'nearby' && (
             <Card style={styles.card}>
               <ThemedText type="small" themeColor="textSecondary">
                 {error}
@@ -143,7 +160,15 @@ export default function SegmentsScreen() {
             </Card>
           )}
 
-          {!loading && !error && sorted.length === 0 && (
+          {sorted.length === 0 && only === 'starred' && (
+            <Card style={styles.card}>
+              <ThemedText type="small" themeColor="textSecondary">
+                Star a segment to keep it here, even with no signal.
+              </ThemedText>
+            </Card>
+          )}
+
+          {!loading && !error && sorted.length === 0 && only === 'nearby' && (
             <Card style={styles.card}>
               <ThemedText type="small" themeColor="textSecondary">
                 No segments near you yet. Create the first one from a recent run below.
@@ -177,6 +202,18 @@ export default function SegmentsScreen() {
                       : ''}
                   </ThemedText>
                 </ThemedView>
+                <TouchableOpacity
+                  onPress={() => toggleStar(segment)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={starred[segment.key] ? 'Unstar segment' : 'Star segment'}
+                >
+                  <Ionicons
+                    name={starred[segment.key] ? 'star' : 'star-outline'}
+                    size={20}
+                    color={theme.brand.primary}
+                  />
+                </TouchableOpacity>
                 <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
               </Card>
             </TouchableOpacity>
@@ -244,6 +281,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   card: { gap: Spacing.three },
+  chips: { paddingHorizontal: 0 },
   segmentRow: {
     flexDirection: 'row',
     alignItems: 'center',

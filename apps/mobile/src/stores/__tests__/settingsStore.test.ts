@@ -287,7 +287,57 @@ describe('preferred sports', () => {
     expect(migrate({ autoPause: true }, 9)).toMatchObject({ preferredSports: [] });
   });
 
-  it('are on version 12', () => {
-    expect(useSettingsStore.persist.getOptions().version).toBe(12);
+  it('are on version 13', () => {
+    expect(useSettingsStore.persist.getOptions().version).toBe(13);
+  });
+});
+
+describe('save-form defaults', () => {
+  it('start with nothing hidden, the route shown and the activity in feeds', () => {
+    expect(useSettingsStore.getState()).toMatchObject({
+      defaultHideRoute: false,
+      defaultHiddenStats: [],
+      defaultMutedFromFeeds: false,
+    });
+  });
+
+  it('adds and removes a default hidden figure without repeats', () => {
+    const { setDefaultHiddenStat } = useSettingsStore.getState();
+    setDefaultHiddenStat('pace', true);
+    setDefaultHiddenStat('pace', true);
+    setDefaultHiddenStat('start_time', true);
+    expect(useSettingsStore.getState().defaultHiddenStats).toEqual(['start_time', 'pace']);
+    setDefaultHiddenStat('pace', false);
+    expect(useSettingsStore.getState().defaultHiddenStats).toEqual(['start_time']);
+  });
+
+  it('is cleared with the rest on reset', () => {
+    useSettingsStore.getState().setDefaultMutedFromFeeds(true);
+    useSettingsStore.getState().setDefaultHideRoute(true);
+    useSettingsStore.getState().reset();
+    expect(useSettingsStore.getState()).toMatchObject({
+      defaultMutedFromFeeds: false,
+      defaultHideRoute: false,
+    });
+  });
+});
+
+describe('migrating to the save-form defaults', () => {
+  it('adds the three defaults, off, and keeps what was saved', () => {
+    expect(migrate({ hideRouteEnds: true, defaultPrivacy: 'followers' }, 12)).toEqual({
+      hideRouteEnds: true,
+      defaultPrivacy: 'followers',
+      defaultHideRoute: false,
+      defaultHiddenStats: [],
+      defaultMutedFromFeeds: false,
+    });
+  });
+
+  it('adds them when migrating from much older versions too', () => {
+    expect(migrate({}, 0)).toMatchObject({
+      defaultHideRoute: false,
+      defaultHiddenStats: [],
+      defaultMutedFromFeeds: false,
+    });
   });
 });

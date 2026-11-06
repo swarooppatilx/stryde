@@ -5,6 +5,7 @@ import {
   elevationScrubTarget,
   elevationSeries,
   heartRateScrubTarget,
+  powerScrubTarget,
 } from '@/utils/chartPages';
 
 const stream = (over: Partial<ActivityStream> = {}): ActivityStream => ({
@@ -51,6 +52,27 @@ describe('chartPages', () => {
       'elevation',
       'heartRate',
     ]);
+  });
+
+  it('adds a power page after heart rate when the stream carries watts', () => {
+    const rich = stream({
+      heartRate: { t: [0, 15, 30], bpm: [110, 140, 150] },
+      power: { t: [0, 15, 30], w: [180, 220, 210] },
+    });
+    expect(chartPages({ stream: rich, activityType: 'ride' })).toEqual([
+      'pace',
+      'heartRate',
+      'power',
+    ]);
+  });
+
+  it('hides power for a single reading or all zeros', () => {
+    expect(
+      chartPages({ stream: stream({ power: { t: [0], w: [200] } }), activityType: 'ride' })
+    ).toEqual(['pace']);
+    expect(
+      chartPages({ stream: stream({ power: { t: [0, 10], w: [0, 0] } }), activityType: 'ride' })
+    ).toEqual(['pace']);
   });
 
   it('offers elevation alone for an activity with a route lookup but no stream', () => {
@@ -105,5 +127,18 @@ describe('heartRateScrubTarget', () => {
   it('passes a lifted finger through, and copes with no readings', () => {
     expect(heartRateScrubTarget(stream(), 0)).toBeNull();
     expect(heartRateScrubTarget(stream(), null)).toBeNull();
+  });
+});
+
+describe('powerScrubTarget', () => {
+  it('finds the stream point nearest in time to a power reading', () => {
+    const s = stream({ power: { t: [0, 14, 31], w: [100, 120, 130] } });
+    expect(powerScrubTarget(s, 1)).toBe(1);
+    expect(powerScrubTarget(s, 2)).toBe(3);
+  });
+
+  it('passes a lifted finger through, and copes with no readings', () => {
+    expect(powerScrubTarget(stream(), 0)).toBeNull();
+    expect(powerScrubTarget(stream(), null)).toBeNull();
   });
 });

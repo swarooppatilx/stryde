@@ -16,6 +16,7 @@ import { BrandWordmark } from '@/components/brand';
 import { AppButton } from '@/components/button';
 import { CommentsSheet } from '@/components/comments-sheet';
 import { FeedCard } from '@/components/feed-card';
+import { FeedExtraCard } from '@/components/feed-extra-card';
 import { FeedSkeleton } from '@/components/feed-skeleton';
 import { ChipRow } from '@/components/filter-chips';
 import { GettingStartedCard } from '@/components/getting-started-card';
@@ -44,6 +45,8 @@ import { useUnsavedRunPrompt } from '@/hooks/useUnsavedRunPrompt';
 import { getPlatform } from '@/platform';
 import { useActivityStore } from '@/stores/activityStore';
 import { useBlockStore } from '@/stores/blockStore';
+import { useClubStore } from '@/stores/clubStore';
+import { useCommunityStore } from '@/stores/communityStore';
 import { useFeedPrefsStore } from '@/stores/feedPrefsStore';
 import { useGoalsStore } from '@/stores/goalsStore';
 import { usePostStore } from '@/stores/postStore';
@@ -62,6 +65,14 @@ import { sameAddress } from '@/utils/address';
 import { Alert } from '@/utils/alert';
 import { confirmDeletePost } from '@/utils/confirmDeletePost';
 import { confirmSkipSetup } from '@/utils/confirmSkipSetup';
+import {
+  CARD_GAP,
+  type FeedExtraCard as ExtraCard,
+  interleaveCards,
+  pickChallengeCard,
+  pickClubCard,
+  pickSuggestedCard,
+} from '@/utils/feedCards';
 import {
   effectiveSport,
   FEED_ORDER_LABEL,
@@ -98,10 +109,15 @@ const FEED_PAGE_SIZE = 10;
 
 const TOP_BAR_WORDMARK = 104;
 
+const CLUB_FEEDS_LOADED = 3;
+
 type FeedItem =
   | { kind: 'activity'; activity: SocialActivity; user: SocialUser }
   | { kind: 'post'; post: PostEntry; user: SocialUser };
 
+type ListItem = FeedItem | { kind: 'card'; card: ExtraCard };
+
+const listItemKey = (item: ListItem) => (item.kind === 'card' ? item.card.id : itemKey(item));
 const itemKey = (item: FeedItem) => (item.kind === 'post' ? item.post.id : item.activity.id);
 const itemTime = (item: FeedItem) =>
   item.kind === 'post' ? item.post.createdAt : item.activity.createdAt.getTime() / 1000;
@@ -259,6 +275,43 @@ export default function HomeScreen() {
     scope === 'Everyone' ? feedOrder : 'latest',
     (item) => following.has(itemAuthor(item).toLowerCase())
   );
+  const dismissedCards = useFeedPrefsStore((s) => s.dismissedCards);
+  const dismissCard = useFeedPrefsStore((s) => s.dismissCard);
+  const clubs = useCommunityStore((s) => s.clubs);
+  const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
+  const events = useCommunityStore((s) => s.events);
+  const joinedEvents = useCommunityStore((s) => s.joinedEvents);
+  const clubViews = useClubStore((s) => s.clubs);
+  const loadClub = useClubStore((s) => s.load);
+  // The joined clubs' feeds are fetched per club; the first few are enough for one card.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load once per set of joined clubs
+  useEffect(() => {
+    for (const id of joinedClubIds.slice(0, CLUB_FEEDS_LOADED)) {
+      const view = useClubStore.getState().view(id);
+      if (!view.state && !view.loading) void loadClub(id);
+    }
+  }, [joinedClubIds.join(',')]);
+  const extraCards: ExtraCard[] = [];
+  const clubFeeds = Object.fromEntries(Object.entries(clubViews).map(([id, v]) => [id, v.feed]));
+  const clubCard = pickClubCard(clubs, joinedClubIds, clubFeeds, dismissedCards);
+  const challengeCard = pickChallengeCard(
+    events,
+    joinedEvents,
+    activities,
+    new Date(),
+    dismissedCards
+  );
+  const suggestedCard = pickSuggestedCard(users, following, me, hidden, dismissedCards);
+  for (const card of [challengeCard, clubCard, suggestedCard]) if (card) extraCards.push(card);
+  // Cards only break up the open feed: a sport filter or a narrower tab is a deliberate view.
+  const showCards = scope === 'Everyone' && sport === 'all';
+  const listItems: ListItem[] = showCards
+    ? interleaveCards<ListItem, ListItem>(
+        orderedItems,
+        extraCards.map((card) => ({ kind: 'card' as const, card })),
+        CARD_GAP
+      )
+    : orderedItems;
   const sportOptions = [
     { value: 'all' as SportChoice, label: 'All sports' },
     ...sportsPresent.map((type) => ({
@@ -269,7 +322,7 @@ export default function HomeScreen() {
 
   // The newest item the reader has seen at the top; a refresh past it while scrolled away shows the pill.
   const newestTime = latestTime(feedItems.map(itemTime));
-  const listRef = useRef<FlatList<FeedItem>>(null);
+  const listRef = useRef<FlatList<ListItem>>(null);
   const seenTop = useRef<number | null>(null);
   const [scrolledDown, setScrolledDown] = useState(false);
   const [newPill, setNewPill] = useState(false);
@@ -293,9 +346,9 @@ export default function HomeScreen() {
     setNewPill(false);
   };
 
-  const pagedItems = orderedItems.slice(0, visibleCount);
+  const pagedItems = listItems.slice(0, visibleCount);
   const loadMore = () =>
-    setVisibleCount((count) => nextVisibleCount(count, orderedItems.length, FEED_PAGE_SIZE));
+    setVisibleCount((count) => nextVisibleCount(count, listItems.length, FEED_PAGE_SIZE));
   const changeScope = (next: FeedScope) => {
     setScope(next);
     setVisibleCount(FEED_PAGE_SIZE);
@@ -387,7 +440,10 @@ export default function HomeScreen() {
 
   // The list re-mounts cards as they scroll in and out; only a post's first appearance animates.
   const animatedPosts = useRef(new Set<string>());
-  const renderFeedItem = ({ item, index }: { item: FeedItem; index: number }) => {
+  const renderFeedItem = ({ item, index }: { item: ListItem; index: number }) => {
+    if (item.kind === 'card') {
+      return <FeedExtraCard card={item.card} onDismiss={() => dismissCard(item.card.id)} />;
+    }
     const key = itemKey(item);
     const firstTime = !animatedPosts.current.has(key);
     animatedPosts.current.add(key);
@@ -580,12 +636,12 @@ export default function HomeScreen() {
           scrollEventThrottle={100}
           onEndReached={loadMore}
           onEndReachedThreshold={0.6}
-          keyExtractor={itemKey}
+          keyExtractor={listItemKey}
           renderItem={renderFeedItem}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={renderEmptyFeed}
           ListFooterComponent={
-            visibleCount < orderedItems.length ? (
+            visibleCount < listItems.length ? (
               <ActivityIndicator style={styles.footer} color={theme.brand.primary} />
             ) : null
           }

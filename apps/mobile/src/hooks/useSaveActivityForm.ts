@@ -126,6 +126,7 @@ export function useSaveActivityForm() {
   const hideRouteEnds = useSettingsStore((s) => s.hideRouteEnds);
   const privacyZones = useSettingsStore((s) => s.privacyZones);
   const defaultPrivacy = useSettingsStore((s) => s.defaultPrivacy);
+  const defaults = useSettingsStore.getState();
 
   const [isSaving, setIsSaving] = useState(false);
   const [phase, setPhase] = useState<SavePhase | undefined>();
@@ -141,9 +142,9 @@ export function useSaveActivityForm() {
   const [feel, setFeel] = useState<ActivityFeel | undefined>();
   const [effort, setEffort] = useState<ActivityEffort | undefined>();
   const [isCommute, setIsCommute] = useState(false);
-  const [hideRoute, setHideRoute] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [hiddenStats, setHiddenStats] = useState<HiddenStat[]>([]);
+  const [hideRoute, setHideRoute] = useState(defaults.defaultHideRoute);
+  const [muted, setMuted] = useState(defaults.defaultMutedFromFeeds);
+  const [hiddenStats, setHiddenStats] = useState<HiddenStat[]>(defaults.defaultHiddenStats);
   const [privateNote, setPrivateNote] = useState('');
   const manual = useManualEntry(activityType, unitSystem);
 

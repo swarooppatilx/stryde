@@ -6,6 +6,7 @@ import { Tappable } from '@/components/tappable';
 import { BorderRadius, Touch } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { type OverflowActionKey, overflowActionKeys } from '@/utils/activityActions';
+import { EXPORT_FORMAT_LABEL, type ExportFormat } from '@/utils/activityExport';
 import { ThemedView } from './themed-view';
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
   onCopy(): void;
   onFlyover(): void;
   onDownload(): void;
-  onExportGpx(): void;
+  onExport(format: ExportFormat): void;
   onToggleSavedRoute(): void;
   onDelete(): void;
 }
@@ -31,12 +32,13 @@ export function ActivityActionRow({
   onCopy,
   onFlyover,
   onDownload,
-  onExportGpx,
+  onExport,
   onToggleSavedRoute,
   onDelete,
 }: Props) {
   const theme = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
   const overflow = overflowActionKeys({ hasRoute, isOwner });
   const menu: Record<OverflowActionKey, SheetAction> = {
     flyover: { label: 'Fly over route', icon: 'airplane-outline', onPress: onFlyover },
@@ -46,7 +48,11 @@ export function ActivityActionRow({
       icon: 'download-outline',
       onPress: onDownload,
     },
-    gpx: { label: 'Export route as GPX', icon: 'document-text-outline', onPress: onExportGpx },
+    gpx: {
+      label: 'Export activity file',
+      icon: 'document-text-outline',
+      onPress: () => setFormatOpen(true),
+    },
     delete: {
       label: 'Delete activity',
       icon: 'trash-outline',
@@ -54,6 +60,11 @@ export function ActivityActionRow({
       destructive: true,
     },
   };
+  const formatActions: SheetAction[] = (['gpx', 'tcx', 'fit'] as const).map((format) => ({
+    label: EXPORT_FORMAT_LABEL[format],
+    icon: 'document-text-outline',
+    onPress: () => onExport(format),
+  }));
   const round: Array<{
     key: string;
     show: boolean;
@@ -103,6 +114,12 @@ export function ActivityActionRow({
         visible={menuOpen}
         actions={overflow.map((key) => menu[key])}
         onClose={() => setMenuOpen(false)}
+      />
+      <ActionSheet
+        visible={formatOpen}
+        title="Export as"
+        actions={formatActions}
+        onClose={() => setFormatOpen(false)}
       />
     </ThemedView>
   );

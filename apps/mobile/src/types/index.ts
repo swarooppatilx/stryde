@@ -84,6 +84,19 @@ export interface Gear {
   /** Meters already covered before it was added here. */
   startingDistance: number;
   retired?: boolean;
+  /** Parts worn out separately from the item, such as a chain or insoles. */
+  components?: GearComponent[];
+}
+
+export interface GearComponent {
+  id: string;
+  name: string;
+  /** Epoch ms from which activities on the parent gear count toward this part. */
+  installedAt: number;
+  /** Meters the part is meant to last; at least one budget is set. */
+  budgetDistance?: number;
+  /** Moving time (ms) the part is meant to last. */
+  budgetTime?: number;
 }
 
 /** Speed over time for a recording; kept on this device, never published. */

@@ -13,7 +13,7 @@ beforeEach(() => {
 describe('notification preferences', () => {
   it('lists the thirteen kinds, each once', () => {
     const kinds = NOTIFICATION_KINDS.map((k) => k.kind);
-    expect(new Set(kinds).size).toBe(13);
+    expect(new Set(kinds).size).toBe(14);
     expect(kinds).toContain('streakAtRisk');
     expect(kinds).toContain('recordingNotice');
     expect(kinds).toContain('uploadFailure');
@@ -22,7 +22,7 @@ describe('notification preferences', () => {
 
   it('starts with every kind on', () => {
     for (const { kind } of NOTIFICATION_KINDS) expect(isEnabled(kind), kind).toBe(true);
-    expect(enabledCount(useNotificationPrefsStore.getState().prefs)).toBe(13);
+    expect(enabledCount(useNotificationPrefsStore.getState().prefs)).toBe(14);
   });
 
   it('turns one kind off and back on without touching the others', () => {
@@ -30,7 +30,7 @@ describe('notification preferences', () => {
 
     expect(isEnabled('kudos')).toBe(false);
     expect(isEnabled('comments')).toBe(true);
-    expect(enabledCount(useNotificationPrefsStore.getState().prefs)).toBe(12);
+    expect(enabledCount(useNotificationPrefsStore.getState().prefs)).toBe(13);
 
     useNotificationPrefsStore.getState().setEnabled('kudos', true);
     expect(isEnabled('kudos')).toBe(true);
@@ -54,9 +54,9 @@ describe('notification preferences', () => {
     expect(prefs.kudos).toBe(false);
     expect(prefs.comments).toBe(true);
     expect('marketing' in prefs).toBe(false);
-    expect(Object.keys(prefs)).toHaveLength(13);
-    expect(Object.keys(sanitizePrefs(undefined))).toHaveLength(13);
-    expect(Object.keys(sanitizePrefs(7))).toHaveLength(13);
+    expect(Object.keys(prefs)).toHaveLength(14);
+    expect(Object.keys(sanitizePrefs(undefined))).toHaveLength(14);
+    expect(Object.keys(sanitizePrefs(7))).toHaveLength(14);
   });
 
   it('persists at version 1', () => {

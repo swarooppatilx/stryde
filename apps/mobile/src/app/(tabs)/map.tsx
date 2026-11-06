@@ -27,6 +27,7 @@ import { useDownloadedRouteIds } from '@/hooks/useDownloadedRouteIds';
 import { useFitRoute } from '@/hooks/useFitRoute';
 import { useHideTabBar } from '@/hooks/useHideTabBar';
 import { type DistanceFilter, type TimeFilter, useMap } from '@/hooks/useMap';
+import { useMapSegments } from '@/hooks/useMapSegments';
 import { useOnline } from '@/hooks/useOnline';
 import { useRoutePreview } from '@/hooks/useRoutePreview';
 import type { PlaceResult } from '@/services/placeSearch';
@@ -105,6 +106,7 @@ export default function MapScreen() {
   const mapType = useMapPrefsStore((s) => s.mapType);
   const terrain3d = useMapPrefsStore((s) => s.terrain3d);
   const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
+  const showSegments = useMapPrefsStore((s) => s.showSegments);
   const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   // Map-only: every control, the sheet and the tab bar step aside for an uncluttered map.
@@ -172,6 +174,10 @@ export default function MapScreen() {
     handleTerritoryPress,
     closeTerritory,
   } = useMap();
+  const segmentLayer = useMapSegments(
+    showSegments,
+    location ? [location.longitude, location.latitude] : null
+  );
   // 3D terrain is only worth seeing from an angle: switching it on leans the map over.
   const [leanedFor3d, setLeanedFor3d] = useState(false);
   if (terrain3d && !tilted && !leanedFor3d) {
@@ -305,6 +311,9 @@ export default function MapScreen() {
         terrain3d={terrain3d}
         poi={showPoi}
         bikeLanes={showBikeLanes}
+        segmentPins={segmentLayer.pins}
+        segmentsVisible={showSegments}
+        onCameraMove={segmentLayer.onCameraMove}
         activityRoutes={activityRoutes}
         markers={placeMarkers}
         compassTopOffset={compassTopOffset}
@@ -604,7 +613,7 @@ export default function MapScreen() {
       <MapLayersSheet
         visible={styleMenuOpen}
         onClose={() => setStyleMenuOpen(false)}
-        layers={['routes', 'heatmap', 'others', 'poi', 'bikeLanes']}
+        layers={['routes', 'heatmap', 'others', 'segments', 'poi', 'bikeLanes']}
         previewCenter={location ? [location.longitude, location.latitude] : null}
       />
       <ActionSheet

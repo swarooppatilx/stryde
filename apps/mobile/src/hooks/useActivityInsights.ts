@@ -4,6 +4,7 @@ import { useProfileStore } from '@/stores/profileStore';
 import type { Activity } from '@/types';
 import { isPlausibleBestEffort } from '@/utils/bestEfforts';
 import { timeInZones } from '@/utils/heartRateZones';
+import { thresholdSpeed, timeInPaceZones } from '@/utils/paceZones';
 import { personalRecords, recordsHeldBy } from '@/utils/personalRecords';
 import { similarRuns } from '@/utils/similarRuns';
 
@@ -32,7 +33,16 @@ export function useActivityInsights(activity: Activity | null | undefined, isOwn
       ? recordsHeldBy(personalRecords(sameSport), activity.id, sameSport.length)
       : [];
 
+  const threshold =
+    activity && isOwner ? thresholdSpeed(ownActivities, activity.activityType, Date.now()) : null;
+  const paceZones =
+    activity?.stream && threshold
+      ? timeInPaceZones(activity.stream, activity.activityType, threshold)
+      : [];
+
   return {
+    paceZones,
+    threshold,
     bestEfforts,
     zoneTimes,
     similar,

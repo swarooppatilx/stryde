@@ -44,6 +44,7 @@ import { Palette } from '@/constants/palette';
 import { Brand, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
 import { ensureMapbox } from '@/services/mapbox';
 import type { Ring } from '@/types';
+import type { ResultPin } from '@/utils/activityResults';
 import type { HeatCell } from '@/utils/heatmap';
 import { type PuckPosition, puckFeatureCollection } from '@/utils/locationPuck';
 import {
@@ -157,6 +158,18 @@ export interface MapRouteProps {
   guideLine?: readonly LngLatPair[];
   /** Numbered pins where each kilometre (or mile) ends along the route. */
   splitMarkers?: readonly SplitMarker[];
+  /** Where a personal record began along the route. */
+  resultPins?: readonly ResultPin[];
+  /** Segment gates (start and finish) to mark; the layers stay mounted and are hidden with `segmentsVisible`. */
+  segmentPins?: readonly SegmentPin[];
+  segmentsVisible?: boolean;
+}
+
+export interface SegmentPin {
+  key: string;
+  start: LngLatPair;
+  end: LngLatPair;
+  starred: boolean;
 }
 
 /** Split pins appear once the map is close enough for them not to crowd the line. */
@@ -248,6 +261,30 @@ function splitFeaturePoints(
   };
 }
 
+function resultPinPoints(pins: readonly ResultPin[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  return {
+    type: 'FeatureCollection' as const,
+    features: pins.map((pin) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: pin.coordinate },
+      properties: { label: pin.label },
+    })),
+  };
+}
+
+function segmentPinPoints(pins: readonly SegmentPin[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  return {
+    type: 'FeatureCollection' as const,
+    features: pins.flatMap((pin) =>
+      (['start', 'end'] as const).map((role) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: pin[role] },
+        properties: { key: pin.key, role, starred: pin.starred },
+      }))
+    ),
+  };
+}
+
 function heatmapFeaturePoints(
   heatmapPoints: ReadonlyArray<LngLatPair | HeatCell>,
   heatmapVisible: boolean
@@ -322,6 +359,9 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   zoomRange,
   position,
   splitMarkers = [],
+  resultPins = [],
+  segmentPins = [],
+  segmentsVisible = false,
   paceSegments,
   guideLine,
   onMapReady,
@@ -353,6 +393,10 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   );
 
   const splitGeoJSON = useMemo(() => splitFeaturePoints(splitMarkers), [splitMarkers]);
+  const pinGeoJSON = useMemo(() => resultPinPoints(resultPins), [resultPins]);
+  const segmentGeoJSON = useMemo(() => segmentPinPoints(segmentPins), [segmentPins]);
+  const segmentVisibility = segmentsVisible && segmentPins.length > 0 ? 'visible' : 'none';
+  const pinVisibility = resultPins.length > 0 ? 'visible' : 'none';
 
   const puckGeoJSON = useMemo(
     () => (position === undefined ? null : puckFeatureCollection(position)),
@@ -717,6 +761,44 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
           />
         </ShapeSource>
       )}
+
+      <ShapeSource id="segment-pins" shape={segmentGeoJSON}>
+        <CircleLayer
+          id="segment-pins-dot"
+          style={{
+            visibility: segmentVisibility,
+            circleRadius: ['case', ['get', 'starred'], 7, 5] as never,
+            circleColor: ['match', ['get', 'role'], 'start', Brand.success, Brand.danger] as never,
+            circleStrokeColor: ['case', ['get', 'starred'], Brand.primary, Palette.white] as never,
+            circleStrokeWidth: 2,
+          }}
+        />
+      </ShapeSource>
+
+      <ShapeSource id="result-pins" shape={pinGeoJSON}>
+        <CircleLayer
+          id="result-pins-dot"
+          style={{
+            visibility: pinVisibility,
+            circleRadius: 11,
+            circleColor: Palette.orange.o3,
+            circleStrokeColor: Palette.white,
+            circleStrokeWidth: 2,
+          }}
+        />
+        <SymbolLayer
+          id="result-pins-label"
+          style={{
+            visibility: resultPins.length > 0 ? textVisibility : 'none',
+            textField: ['get', 'label'],
+            textFont: MAPBOX_FONT.bold,
+            textSize: 9,
+            textAllowOverlap: true,
+            textIgnorePlacement: true,
+            textColor: Palette.white,
+          }}
+        />
+      </ShapeSource>
 
       {routesGeoJSON && (
         <ShapeSource id="activity-routes" shape={routesGeoJSON}>

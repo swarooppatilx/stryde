@@ -1,5 +1,6 @@
 import { offlineManager } from '@rnmapbox/maps';
 import { ensureMapbox } from '@/services/mapbox';
+import { type OfflinePacksPort, type PackProgress, toStatus } from '@/services/offlineRegions';
 import { logger } from '@/utils/logger';
 import {
   OFFLINE_ZOOM,
@@ -19,30 +20,13 @@ export interface OfflineMapStatus {
 
 export const NO_OFFLINE_MAP: OfflineMapStatus = { state: 'none', percent: 0, bytes: 0 };
 
-type ProgressStatus = {
-  state: string;
-  percentage: number;
-  completedResourceSize: number;
-};
-
-function toStatus(status: ProgressStatus): OfflineMapStatus {
-  if (status.state === 'complete' || status.percentage >= 100) {
-    return { state: 'ready', percent: 100, bytes: status.completedResourceSize };
-  }
-  return {
-    state: 'downloading',
-    percent: Math.round(status.percentage),
-    bytes: status.completedResourceSize,
-  };
-}
-
 /** What is on the phone for a route's map. */
 export async function routeMapStatus(routeId: string): Promise<OfflineMapStatus> {
   if (!ensureMapbox()) return NO_OFFLINE_MAP;
   try {
     const pack = await offlineManager.getPack(offlinePackName(routeId));
     if (!pack) return NO_OFFLINE_MAP;
-    return toStatus((await pack.status()) as unknown as ProgressStatus);
+    return toStatus((await pack.status()) as unknown as PackProgress);
   } catch (error) {
     logger.warn('[OfflineMaps] Could not read the offline map', error);
     return NO_OFFLINE_MAP;
@@ -76,7 +60,7 @@ export async function downloadRouteMap(
       maxZoom: OFFLINE_ZOOM.max,
       metadata: { routeId },
     },
-    (_pack, status) => onStatus(toStatus(status as unknown as ProgressStatus)),
+    (_pack, status) => onStatus(toStatus(status as unknown as PackProgress)),
     (_pack, error) => {
       logger.warn('[OfflineMaps] Download failed', error);
       onStatus({ ...NO_OFFLINE_MAP, state: 'failed' });
@@ -102,7 +86,7 @@ export async function listDownloadedRouteIds(): Promise<Set<string>> {
       packs.map(async (pack) => {
         const id = routeIdFromPackName(pack.name);
         if (!id) return null;
-        const status = (await pack.status()) as unknown as ProgressStatus;
+        const status = (await pack.status()) as unknown as PackProgress;
         return toStatus(status).state === 'ready' ? id : null;
       })
     );
@@ -112,3 +96,32 @@ export async function listDownloadedRouteIds(): Promise<Set<string>> {
     return new Set();
   }
 }
+
+/** The Mapbox offline manager as the region service's port. */
+export const mapboxOfflinePacks: OfflinePacksPort = {
+  async list() {
+    if (!ensureMapbox()) return [];
+    const packs = await offlineManager.getPacks();
+    return packs.map((pack) => ({
+      name: pack.name,
+      metadata: pack.metadata,
+      status: async () => (await pack.status()) as unknown as PackProgress,
+    }));
+  },
+  async create(options, onProgress, onError) {
+    if (!ensureMapbox()) {
+      onError(new Error('No map token in this build'));
+      return;
+    }
+    await offlineManager.deletePack(options.name).catch(() => {});
+    await offlineManager.createPack(
+      options,
+      (_pack, status) => onProgress(status as unknown as PackProgress),
+      (_pack, error) => onError(error)
+    );
+  },
+  async remove(name) {
+    if (!ensureMapbox()) return;
+    await offlineManager.deletePack(name);
+  },
+};

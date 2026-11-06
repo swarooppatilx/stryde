@@ -171,6 +171,37 @@ export const INBOX_COPY = {
   kudos: ' gave kudos to your activity',
 } as const;
 
+/** Lines for inbox items about a club, an event or the athlete's own badges; the name is the club, event or badge. */
+export const INBOX_LINE = {
+  club_post: (title: string) => ` posted in ${title}`,
+  club_request: (title: string) => ` asked to join ${title}`,
+  club_approved: (title: string) => `You're in ${title}: your request was approved`,
+  event_reminder: (title: string, started: boolean) =>
+    started ? `${title} is on now` : `${title} starts within a day`,
+  milestone: (title: string) => `You earned the ${title} badge`,
+} as const;
+
+export const INBOX_FILTER = {
+  all: 'All',
+  follow: 'Followers',
+  kudos: 'Kudos',
+  comment: 'Comments',
+  club: 'Clubs',
+  event: 'Events',
+  milestone: 'Badges',
+} as const;
+
+/** What a filter with nothing in it says. */
+export const INBOX_EMPTY = {
+  all: 'New followers, kudos and comments on your activities show up here.',
+  follow: 'No new followers yet.',
+  kudos: 'No kudos yet. They show up here when someone likes your activity.',
+  comment: 'No comments yet.',
+  club: 'Posts in your clubs, and join requests to clubs you run, show up here.',
+  event: 'Reminders for events you joined show up here, the day before they start.',
+  milestone: 'Badges you earn show up here.',
+} as const;
+
 /** The dropdown under the "+" on Home. Recording lives on the Record tab, so it is not offered here. */
 export const CREATE_MENU_COPY = {
   menu: 'Create menu',

@@ -30,10 +30,24 @@ export const COMING_LATER = 'Coming later';
 export function flyoutRows({
   trackLaps,
   mapStyle,
+  liveShare,
 }: {
   trackLaps: boolean;
   mapStyle: MapStylePref;
+  /** Whether the live beacon is on; null when it cannot work here, which leaves the row out. */
+  liveShare: boolean | null;
 }): FlyoutRow[] {
+  const share: FlyoutRow[] =
+    liveShare === null
+      ? []
+      : [
+          {
+            id: 'share',
+            title: 'Share live location',
+            subtitle: liveShare ? 'On' : 'Off',
+            available: true,
+          },
+        ];
   return [
     { id: 'laps', title: 'Track laps', subtitle: trackLaps ? 'On' : 'Off', available: true },
     {
@@ -43,7 +57,7 @@ export function flyoutRows({
       available: true,
     },
     { id: 'layers', title: 'Map layers', subtitle: MAP_STYLE_LABELS[mapStyle], available: true },
-    { id: 'share', title: 'Share live location', subtitle: COMING_LATER, available: false },
+    ...share,
     { id: 'sensor', title: 'Add a sensor', subtitle: COMING_LATER, available: false },
   ];
 }

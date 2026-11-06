@@ -34,4 +34,9 @@ export const MAP_LAYER_OPTIONS: Record<MapLayer, MapLayerOption> = {
     hint: 'Routes other athletes have shared',
     icon: 'people-outline',
   },
+  segments: {
+    label: 'Segments',
+    hint: 'Segments you starred and ones near the map view',
+    icon: 'flag-outline',
+  },
 };

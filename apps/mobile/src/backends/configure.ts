@@ -2,6 +2,7 @@ import { services, setChainMode, setIpfsConfig } from '@repo/shared';
 import { ENV, getChainMode, getCurrentUserId } from '@/constants/config';
 import { DEV_TOOLS } from '@/constants/devTools';
 import { startRelayQueue } from '@/services/relayQueue';
+import { registerAccountDeleteIntents } from './accountDeleteIntents';
 import { getActiveProfileId } from './activeProfile';
 import { apiConfigFor } from './apiConfig';
 import { setBalanceReader } from './balanceSource';
@@ -55,6 +56,7 @@ export function configureBackends(): void {
   registerClubIntents();
   registerPostIntents();
   registerReportIntents();
+  registerAccountDeleteIntents();
   registerPushIntents();
   // Sandbox has no chain to read other athletes from, so give it some. Dev builds only; the require
   // keeps the fixtures out of release bundles.

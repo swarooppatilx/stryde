@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildInbox, countUnread } from '@/utils/inbox';
+import {
+  buildInbox,
+  countUnread,
+  groupsPresent,
+  type InboxItem,
+  inboxGroupOf,
+  readAllCutoff,
+  unreadByGroup,
+} from '@/utils/inbox';
 
 const ME = '0xaaaa000000000000000000000000000000000001';
 const A = '0xbbbb000000000000000000000000000000000002';
@@ -126,5 +134,132 @@ describe('buildInbox with blocked athletes', () => {
     });
 
     expect(items.map((i) => i.actorId)).toEqual([B]);
+  });
+});
+
+type ClubArg = NonNullable<Parameters<typeof buildInbox>[0]['clubs']>[number];
+
+describe('club, event and milestone items', () => {
+  const NOW = Date.parse('2026-11-06T12:00:00Z');
+  const unix = (iso: string) => Date.parse(iso) / 1000;
+  const club = (over: Partial<ClubArg> = {}): ClubArg => ({
+    id: '7',
+    name: 'Dawn Runners',
+    managedByMe: false,
+    requests: [],
+    posts: [],
+    ...over,
+  });
+  const base = { me: ME, followers: [], activities: [], now: NOW };
+
+  it('lists other members posts in a club, not the athlete’s own', () => {
+    const items = buildInbox({
+      ...base,
+      clubs: [
+        club({
+          posts: [
+            { id: 'p1', author: A, createdAt: unix('2026-11-06T09:00:00Z') },
+            { id: 'p2', author: ME, createdAt: unix('2026-11-06T10:00:00Z') },
+          ],
+        }),
+      ],
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: 'club_post',
+      actorId: A,
+      clubId: '7',
+      title: 'Dawn Runners',
+    });
+  });
+
+  it('shows pending join requests only to the club’s managers', () => {
+    const requests = [
+      { member: A, status: 'pending', at: unix('2026-11-05T09:00:00Z') },
+      { member: B, status: 'declined', at: unix('2026-11-05T09:00:00Z') },
+    ];
+    expect(buildInbox({ ...base, clubs: [club({ requests })] })).toHaveLength(0);
+    const managed = buildInbox({ ...base, clubs: [club({ requests, managedByMe: true })] });
+    expect(managed.map((i) => [i.kind, i.actorId])).toEqual([['club_request', A]]);
+  });
+
+  it('tells the athlete when their own request was approved', () => {
+    const items = buildInbox({
+      ...base,
+      clubs: [
+        club({ requests: [{ member: ME, status: 'approved', at: unix('2026-11-04T09:00:00Z') }] }),
+      ],
+    });
+    expect(items[0]).toMatchObject({ kind: 'club_approved', title: 'Dawn Runners' });
+    expect(items[0]?.actorId).toBeUndefined();
+  });
+
+  it('hides club items from blocked people', () => {
+    const items = buildInbox({
+      ...base,
+      hidden: new Set([A.toLowerCase()]),
+      clubs: [club({ posts: [{ id: 'p1', author: A, createdAt: unix('2026-11-06T09:00:00Z') }] })],
+    });
+    expect(items).toHaveLength(0);
+  });
+
+  it('reminds about a joined event in the day before it starts, until it ends', () => {
+    const event = (id: string, startOffsetH: number, hours = 2) => ({
+      id,
+      title: `Event ${id}`,
+      startDate: new Date(NOW + startOffsetH * 3_600_000),
+      endDate: new Date(NOW + (startOffsetH + hours) * 3_600_000),
+    });
+    const items = buildInbox({
+      ...base,
+      events: [event('soon', 5), event('far', 48), event('now', -1), event('over', -10)],
+    });
+    expect(items.map((i) => i.eventId).sort()).toEqual(['now', 'soon']);
+    const soon = items.find((i) => i.eventId === 'soon');
+    expect(soon?.kind).toBe('event_reminder');
+    expect(soon?.at.getTime()).toBe(NOW + 5 * 3_600_000 - 24 * 3_600_000);
+    expect(soon?.startsAt?.getTime()).toBe(NOW + 5 * 3_600_000);
+  });
+
+  it('lists recent badges only', () => {
+    const items = buildInbox({
+      ...base,
+      milestones: [
+        { id: 'five_km', title: '5K', at: new Date(NOW - 2 * 86_400_000) },
+        { id: 'old', title: 'Old', at: new Date(NOW - 90 * 86_400_000) },
+      ],
+    });
+    expect(items.map((i) => i.title)).toEqual(['5K']);
+  });
+});
+
+describe('inbox grouping', () => {
+  const item = (id: string, kind: InboxItem['kind'], at: number): InboxItem => ({
+    id,
+    kind,
+    at: new Date(at),
+  });
+  const items = [
+    item('a', 'club_post', 5000),
+    item('b', 'club_request', 4000),
+    item('c', 'kudos', 3000),
+    item('d', 'milestone', 1000),
+  ];
+
+  it('groups club kinds together and keeps first-seen order', () => {
+    expect(groupsPresent(items)).toEqual(['club', 'kudos', 'milestone']);
+    expect(inboxGroupOf('club_approved')).toBe('club');
+    expect(inboxGroupOf('event_reminder')).toBe('event');
+  });
+
+  it('counts unread per group', () => {
+    expect(unreadByGroup(items, 2000)).toEqual({ club: 2, kudos: 1 });
+    expect(unreadByGroup(items, 9000)).toEqual({});
+  });
+
+  it('reads everything up to the newest item and never goes backwards', () => {
+    expect(readAllCutoff(items, 0)).toBe(5000);
+    expect(readAllCutoff(items, 8000)).toBe(8000);
+    expect(readAllCutoff([], 3)).toBe(3);
   });
 });

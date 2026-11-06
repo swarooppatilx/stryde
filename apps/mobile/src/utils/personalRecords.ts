@@ -1,5 +1,6 @@
 import type { Activity } from '@/types';
 import { isPlausibleBestEffort } from './bestEfforts';
+import { formatDistance, formatDuration, formatElevation, type UnitSystem } from './format';
 
 export type RecordKind =
   | 'fastest-400m'
@@ -36,6 +37,26 @@ const FASTEST: readonly { kind: RecordKind; distance: number }[] = [
   { kind: 'fastest-half', distance: 21_097 },
   { kind: 'fastest-marathon', distance: 42_195 },
 ];
+
+/** The stretch each fastest-effort record covers, in metres. */
+export const RECORD_DISTANCE: Partial<Record<RecordKind, number>> = Object.fromEntries(
+  FASTEST.map((f) => [f.kind, f.distance])
+);
+
+/** A record's value as shown: a time, a distance or a climb. */
+export function recordValueText(
+  record: Pick<PersonalRecord, 'kind' | 'value'>,
+  unitSystem: UnitSystem
+): string {
+  switch (record.kind) {
+    case 'longest-distance':
+      return formatDistance(record.value, unitSystem);
+    case 'biggest-climb':
+      return formatElevation(record.value, unitSystem);
+    default:
+      return formatDuration(record.value);
+  }
+}
 
 interface Holder {
   value: number;

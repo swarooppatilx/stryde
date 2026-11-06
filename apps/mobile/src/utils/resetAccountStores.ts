@@ -16,6 +16,7 @@ import { useProfileStore } from '@/stores/profileStore';
 import { useRecentSearchStore } from '@/stores/recentSearchStore';
 import { useRecordUiStore } from '@/stores/recordUiStore';
 import { useRouteStore } from '@/stores/routeStore';
+import { useSegmentStarsStore } from '@/stores/segmentStarsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
@@ -43,6 +44,7 @@ export function resetAccountStores(): void {
   useBodyStore.getState().reset();
   useRouteStore.getState().reset();
   useBlockStore.getState().reset();
+  useSegmentStarsStore.getState().reset();
   useFeedPrefsStore.getState().reset();
   useMapPrefsStore.getState().reset();
   useRecordUiStore.getState().reset();

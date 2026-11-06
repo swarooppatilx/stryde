@@ -4,7 +4,9 @@ import type Svg from 'react-native-svg';
 
 import { ENV } from '@/constants/config';
 import { getPlatform } from '@/platform';
+import type { ExportFile } from '@/utils/activityExport';
 import { Alert } from '@/utils/alert';
+import { bytesToBase64 } from '@/utils/base64';
 import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
 import { TRACE_FOLDER } from '@/utils/trackingTrace';
@@ -72,17 +74,34 @@ export function shareRouteImage(svgRef: SvgRef, activityId?: string): Promise<vo
   });
 }
 
+const fileStemOf = (stem: string) =>
+  stem.replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 60) || 'activity';
+
 /** Shares the route as a .gpx file, for any app that imports tracks. */
 export function shareGpx(fileStem: string, gpx: string): Promise<void> {
+  return shareExportFile(fileStem, {
+    extension: 'gpx',
+    mime: 'application/gpx+xml',
+    content: gpx,
+    encoding: 'utf8',
+  });
+}
+
+/** Shares an activity file (GPX, TCX or FIT) through the system share sheet. */
+export function shareExportFile(fileStem: string, file: ExportFile): Promise<void> {
   return withFailureAlert('Export', 'Could not export this route.', async () => {
-    const safeStem = fileStem.replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 60) || 'activity';
-    const uri = getPlatform().files.writeCache(`${safeStem}.gpx`, gpx);
-    await Share.open({
-      url: uri,
-      type: 'application/gpx+xml',
-      filename: `${safeStem}.gpx`,
-      failOnCancel: false,
-    });
+    const filename = `${fileStemOf(fileStem)}.${file.extension}`;
+    const uri = getPlatform().files.writeCache(filename, file.content, file.encoding);
+    await Share.open({ url: uri, type: file.mime, filename, failOnCancel: false });
+  });
+}
+
+/** Shares a ZIP of activity files through the system share sheet. */
+export function shareZip(fileStem: string, zip: Uint8Array): Promise<void> {
+  return withFailureAlert('Export', 'Could not export your activities.', async () => {
+    const filename = `${fileStemOf(fileStem)}.zip`;
+    const uri = getPlatform().files.writeCache(filename, bytesToBase64(zip), 'base64');
+    await Share.open({ url: uri, type: 'application/zip', filename, failOnCancel: false });
   });
 }
 

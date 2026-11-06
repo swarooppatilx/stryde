@@ -40,6 +40,13 @@ describe('routeForPush', () => {
     expect(routeForPush({ kind, id: 'x1' })).toEqual({ pathname, params: { id: 'x1' } });
   });
 
+  it('opens the segment screen by key for a segment record', () => {
+    expect(routeForPush({ kind: 'segments', id: '0xabc' })).toEqual({
+      pathname: '/segment-detail',
+      params: { key: '0xabc' },
+    });
+  });
+
   it('has no screen to open without an id for a screen that needs one', () => {
     expect(routeForPush({ kind: 'kudos' })).toBeNull();
   });
