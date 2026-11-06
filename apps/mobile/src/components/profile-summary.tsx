@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { type Href, router } from 'expo-router';
 import type { ReactElement } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
@@ -61,16 +62,50 @@ export function WalletPills({
     <ThemedView style={styles.pills}>
       <WalletChip address={address} ensName={ensName} />
       {strdWei !== null && (
-        <ThemedView
+        <TouchableOpacity
           style={[styles.pill, { borderColor: theme.border }]}
-          accessibilityLabel={`${formatTokenAmount(strdWei, 'STRD')} balance`}
+          onPress={() => router.push('/cash-out')}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${formatTokenAmount(strdWei, 'STRD')} balance, cash out`}
         >
           <Ionicons name="disc-outline" size={13} color={theme.brand.primary} />
           <ThemedText type="small" style={[styles.pillText, { color: theme.text }]}>
             {formatTokenAmount(strdWei, 'STRD')}
           </ThemedText>
-        </ThemedView>
+          <Ionicons name="swap-horizontal" size={11} color={theme.textSecondary} />
+        </TouchableOpacity>
       )}
+    </ThemedView>
+  );
+}
+
+const PARTNER_SHORTCUTS: { icon: IconName; label: string; href: Href }[] = [
+  { icon: 'sparkles-outline', label: 'AI Coach', href: '/coach' },
+  { icon: 'flag-outline', label: 'Segments', href: '/segments' },
+  { icon: 'swap-horizontal-outline', label: 'Cash out', href: '/cash-out' },
+];
+
+/** Coach (World Agent Pass), Arkiv segments and the Uniswap cash-out, one tap from the profile. */
+export function PartnerShortcuts() {
+  const theme = useTheme();
+  return (
+    <ThemedView style={styles.pills}>
+      {PARTNER_SHORTCUTS.map(({ icon, label, href }) => (
+        <TouchableOpacity
+          key={label}
+          style={[styles.pill, { borderColor: theme.brand.primary }]}
+          onPress={() => router.push(href)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+        >
+          <Ionicons name={icon} size={13} color={theme.brand.primary} />
+          <ThemedText type="small" style={[styles.pillText, { color: theme.brand.primary }]}>
+            {label}
+          </ThemedText>
+        </TouchableOpacity>
+      ))}
     </ThemedView>
   );
 }

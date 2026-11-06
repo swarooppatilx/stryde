@@ -169,6 +169,12 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
         <Stack.Screen name="badges/[id]" />
         <Stack.Screen name="create-post" />
         <Stack.Screen name="verify" />
+        <Stack.Screen name="finish-line" />
+        <Stack.Screen name="coach" />
+        <Stack.Screen name="segments" />
+        <Stack.Screen name="segment-detail" />
+        <Stack.Screen name="live-beacon" />
+        <Stack.Screen name="cash-out" />
         <Stack.Screen name="routes/[id]" />
         <Stack.Screen name="route-builder" />
         <Stack.Screen name="flyover" options={{ animation: 'fade' }} />
