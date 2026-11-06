@@ -18,6 +18,8 @@ import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useChainAction } from '@/hooks/useChainAction';
 import { useDiscardGuard } from '@/hooks/useDiscardGuard';
 import { useGoBack } from '@/hooks/useGoBack';
+import { getPlatform } from '@/platform';
+import { ensureForegroundLocation } from '@/services/locationPermission';
 import { sportTypeToOnchain, useCommunityStore } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
 import { Alert } from '@/utils/alert';
@@ -25,6 +27,14 @@ import { formatWeekdayDay } from '@/utils/dates';
 import { distanceUnitLabel, parseDistanceMeters } from '@/utils/distanceUnits';
 import { eventBlocker } from '@/utils/eventBlocker';
 import { haptics } from '@/utils/haptics';
+import { logger } from '@/utils/logger';
+import {
+  formatMeetingPoint,
+  type MeetingPoint,
+  meetingPointToChain,
+  usefulPlaceName,
+} from '@/utils/meetingPoint';
+import { Toast } from '@/utils/toast';
 
 const DAY_MS = 86_400_000;
 
@@ -60,6 +70,34 @@ export default function CreateEventScreen() {
     title.trim() !== '' || description.trim() !== '' || distanceInput !== ''
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [meetingPoint, setMeetingPoint] = useState<MeetingPoint | undefined>();
+  const [meetingName, setMeetingName] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  /** Uses where the host is standing as the meeting point. */
+  const setFromMyLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      if (!(await ensureForegroundLocation())) {
+        Toast.info('Location is needed to set the meeting point.', 2.5);
+        return;
+      }
+      const here = await getPlatform().location.getCurrent('balanced');
+      const point = { latitude: here.latitude, longitude: here.longitude };
+      setMeetingPoint(point);
+      setMeetingName(null);
+      void getPlatform()
+        .geocoder.placeName(point.latitude, point.longitude)
+        .then((name) => setMeetingName(usefulPlaceName(name)))
+        .catch(() => undefined);
+    } catch (error) {
+      logger.warn('[CreateEvent] Could not read the location', error);
+      Toast.fail("Couldn't get your location. Check that location is on.", 2.5);
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const distanceMeters = parseDistanceMeters(distanceInput, unitSystem);
   const datesValid = endDate.getTime() > startDate.getTime();
@@ -113,6 +151,7 @@ export default function CreateEventScreen() {
             startTime: Math.floor(startDate.getTime() / 1000),
             endTime: Math.floor(endDate.getTime() / 1000),
             distanceGoal: distanceMeters,
+            ...meetingPointToChain(meetingPoint),
           }),
         { pending: 'Creating event...', success: 'Event created' },
         {
@@ -129,6 +168,7 @@ export default function CreateEventScreen() {
               distanceGoal: distanceMeters,
               participantCount: 1,
               host: address,
+              meetingPoint,
             });
             applyEventJoin(pendingId, true);
           },
@@ -259,6 +299,45 @@ export default function CreateEventScreen() {
             />
           </ThemedView>
 
+          <ThemedView style={styles.field}>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
+              Meeting point (optional)
+            </ThemedText>
+            {meetingPoint ? (
+              <View
+                style={[
+                  styles.selector,
+                  { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                ]}
+              >
+                <Ionicons name="location" size={18} color={theme.brand.primary} />
+                <ThemedText type="smallBold" numberOfLines={1} style={styles.flex}>
+                  {meetingName ?? formatMeetingPoint(meetingPoint)}
+                </ThemedText>
+                <Tappable
+                  onPress={() => {
+                    setMeetingPoint(undefined);
+                    setMeetingName(null);
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove the meeting point"
+                >
+                  <Ionicons name="close" size={18} color={theme.textSecondary} />
+                </Tappable>
+              </View>
+            ) : (
+              <AppButton
+                variant="secondary"
+                loading={locating}
+                onPress={() => void setFromMyLocation()}
+                icon={<Ionicons name="navigate-outline" size={16} color={theme.text} />}
+              >
+                Use my location
+              </AppButton>
+            )}
+          </ThemedView>
+
           {blocker && title.trim() !== '' && (
             <ThemedText type="caption" themeColor="textSecondary">
               {blocker}
@@ -311,6 +390,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: BorderRadius.sm,

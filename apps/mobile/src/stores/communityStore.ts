@@ -5,6 +5,7 @@ import type { ActivityType } from '@/types';
 import type { ChallengeEvent } from '@/types/event';
 import { sameAddress } from '@/utils/address';
 import { logger } from '@/utils/logger';
+import { meetingPointFromChain } from '@/utils/meetingPoint';
 import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
 
 export interface Club {
@@ -51,6 +52,7 @@ function toChallengeEvent(
         : (ACTIVITY_TYPE_BY_ID[event.sportType] ?? 'run'),
     description: event.description,
     host: event.host,
+    meetingPoint: meetingPointFromChain(event.startLat, event.startLng),
   };
 }
 

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { services } from '@repo/shared';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -12,30 +13,40 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { eventKey, setEventMember } from '@/backends/membership';
+import { AppButton } from '@/components/button';
 import { CommunityCard } from '@/components/community-card';
 import { DetailFallback } from '@/components/list-message';
 import { ShareButton } from '@/components/share-button';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { UserAvatar } from '@/components/user-avatar';
 import { stockImageFor } from '@/constants/stockImages';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useChainAction } from '@/hooks/useChainAction';
+import { useEventParticipants } from '@/hooks/useEventParticipants';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useDelivery } from '@/hooks/useOutbox';
+import { useUserResolver } from '@/hooks/useSocialUser';
+import { getPlatform } from '@/platform';
 import { useCommunityStore } from '@/stores/communityStore';
+import { Alert } from '@/utils/alert';
 import { calendarLink } from '@/utils/calendarLink';
 import { confirmLeave } from '@/utils/confirmLeave';
 import { formatDateRange } from '@/utils/dates';
 import { buildDetailDeepLink } from '@/utils/deepLink';
 import { eventJoinState, eventStatus } from '@/utils/eventStatus';
-import { formatDistance, formatMemberCount, SPORT_LABEL } from '@/utils/format';
+import { formatDistance, formatMemberCount, getDisplayName, SPORT_LABEL } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
+import { directionsUrl, formatMeetingPoint, usefulPlaceName } from '@/utils/meetingPoint';
 import { otherEvents } from '@/utils/otherEvents';
 import { Toast } from '@/utils/toast';
+
+/** How many sign-ups to show before "and N more". */
+const SHOWN_PARTICIPANTS = 8;
 
 function joinAccessibilityLabel(title: string, isHost: boolean, isJoined: boolean): string {
   if (isHost) return `You host ${title}`;
@@ -51,7 +62,12 @@ export default function EventDetailScreen() {
   const joinedEvents = useCommunityStore((s) => s.joinedEvents);
   const isEventHost = useCommunityStore((s) => s.isEventHost);
 
-  const { address } = useChainAction();
+  const { address, run } = useChainAction();
+  const upsertEvent = useCommunityStore((s) => s.upsertEvent);
+  const removeEvent = useCommunityStore((s) => s.removeEvent);
+  const resolveUser = useUserResolver();
+  const { participants } = useEventParticipants(id);
+  const [placeName, setPlaceName] = useState<string | null>(null);
   const joining = useDelivery(eventKey(id ?? '')) !== undefined;
 
   const event = useCommunityStore((s) => s.events.find((e) => e.id === id));
@@ -72,6 +88,19 @@ export default function EventDetailScreen() {
     await fetchEvents();
     setRefreshing(false);
   };
+  const meetingPoint = event?.meetingPoint;
+  useEffect(() => {
+    if (!meetingPoint) return;
+    let cancelled = false;
+    // Only a real place name; the coordinates are shown anyway.
+    void getPlatform()
+      .geocoder.placeName(meetingPoint.latitude, meetingPoint.longitude)
+      .then((name) => !cancelled && setPlaceName(usefulPlaceName(name)))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingPoint]);
   const isJoined = event ? joinedEvents.includes(event.id) : false;
   const isHost = isEventHost(id ?? '', address ?? undefined);
 
@@ -115,6 +144,33 @@ export default function EventDetailScreen() {
     }
     await setEventMember(event.id, true);
   };
+
+  const cancelEvent = () =>
+    Alert.alert(
+      `Cancel ${event.title}?`,
+      'It disappears for everyone who signed up. This cannot be undone.',
+      [
+        { text: 'Keep event', style: 'cancel' },
+        {
+          text: 'Cancel event',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await run(
+              (wallet) => services.event.cancelEvent(wallet, BigInt(event.id)),
+              { pending: 'Cancelling event...', success: 'Event cancelled' },
+              { apply: () => removeEvent(event.id), revert: () => upsertEvent(event) }
+            );
+            if (result?.confirmed) goBack();
+          },
+        },
+      ]
+    );
+
+  const nameOf = (who: string) => {
+    const user = resolveUser(who);
+    return user ? getDisplayName(user) : `${who.slice(0, 6)}…${who.slice(-4)}`;
+  };
+  const me = address?.toLowerCase();
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -215,6 +271,41 @@ export default function EventDetailScreen() {
             </ThemedText>
           </ThemedView>
 
+          {meetingPoint && (
+            <ThemedView style={styles.section}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                Meeting point
+              </ThemedText>
+              <View style={[styles.placeRow, { backgroundColor: theme.backgroundElement }]}>
+                <Ionicons name="location" size={20} color={theme.brand.primary} />
+                <View style={styles.flex}>
+                  <ThemedText type="smallBold" numberOfLines={2}>
+                    {placeName ?? formatMeetingPoint(meetingPoint)}
+                  </ThemedText>
+                  {placeName ? (
+                    <ThemedText type="caption" themeColor="textSecondary">
+                      {formatMeetingPoint(meetingPoint)}
+                    </ThemedText>
+                  ) : null}
+                </View>
+                <Tappable
+                  onPress={() =>
+                    void Linking.openURL(directionsUrl(meetingPoint)).catch(() =>
+                      Toast.fail("Couldn't open maps", 1.5)
+                    )
+                  }
+                  hitSlop={8}
+                  accessibilityRole="link"
+                  accessibilityLabel="Directions to the meeting point"
+                >
+                  <ThemedText type="smallBold" style={{ color: theme.accentText }}>
+                    Directions
+                  </ThemedText>
+                </Tappable>
+              </View>
+            </ThemedView>
+          )}
+
           {status.phase !== 'ended' && (
             <Tappable
               onPress={() =>
@@ -271,6 +362,45 @@ export default function EventDetailScreen() {
               </ThemedText>
             )}
           </Tappable>
+
+          {participants && participants.length > 0 && (
+            <ThemedView style={styles.section}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                Who's going
+              </ThemedText>
+              {participants.slice(0, SHOWN_PARTICIPANTS).map((who) => (
+                <Tappable
+                  key={who}
+                  onPress={() => router.push(`/athletes/${who}`)}
+                  style={styles.personRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${nameOf(who)}'s profile`}
+                >
+                  <UserAvatar uri={resolveUser(who)?.avatar} name={nameOf(who)} size="sm" />
+                  <ThemedText type="small" numberOfLines={1} style={styles.flex}>
+                    {nameOf(who)}
+                    {who === me ? ' (you)' : ''}
+                  </ThemedText>
+                  {who === event.host?.toLowerCase() ? (
+                    <ThemedText type="caption" themeColor="textSecondary">
+                      Host
+                    </ThemedText>
+                  ) : null}
+                </Tappable>
+              ))}
+              {participants.length > SHOWN_PARTICIPANTS ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  and {participants.length - SHOWN_PARTICIPANTS} more
+                </ThemedText>
+              ) : null}
+            </ThemedView>
+          )}
+
+          {isHost && status.phase !== 'ended' && (
+            <AppButton variant="danger" onPress={cancelEvent}>
+              Cancel event
+            </AppButton>
+          )}
 
           {more.length > 0 && (
             <ThemedView style={styles.section}>
@@ -344,6 +474,20 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  flex: { flex: 1 },
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: BorderRadius.lg,
+  },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingVertical: Spacing.one,
   },
   joinBtn: {
     alignItems: 'center',

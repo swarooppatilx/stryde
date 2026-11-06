@@ -56,6 +56,7 @@ export function buildCommunitySeed(now: number): CommunitySeed {
         sportType: 'run',
         description: 'A group long run at an easy pace.',
         host: hex(1),
+        meetingPoint: { latitude: 18.5292, longitude: 73.8237 },
       },
     ],
   };
@@ -78,6 +79,12 @@ export function mergeCommunitySeed(current: CommunitySlice, seed: CommunitySeed)
 
 /** Dhanya's developer wallet (persona slot 1): an admin of the running club once she joins it. */
 export const SANDBOX_DHANYA = '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc';
+
+/** Who signed up for each seeded event, earliest first; the Sandbox has no subgraph to list them. */
+export const SANDBOX_EVENT_PARTICIPANTS: Readonly<Record<string, readonly string[]>> = {
+  '9101': [hex(3), hex(1), hex(2), hex(4)],
+  '9102': [hex(1), hex(4), hex(3)],
+};
 
 /** Who belongs to each seeded club, owner first; the Sandbox has no chain to list them. */
 export const SANDBOX_CLUB_MEMBERS: Readonly<Record<string, readonly string[]>> = {
