@@ -19,6 +19,7 @@ import {
 } from '@arkiv-network/sdk/schema';
 import { hexToString, http, stringToHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { arkivConfigFromEnv } from './arkiv.js';
 
 /**
  * Stryde's social/ephemeral layer on Arkiv. The Stryde writer wallet creates
@@ -99,7 +100,7 @@ let walletClient: ArkivWallet | null = null;
 let writerAddress: `0x${string}` | null = null;
 
 function chain() {
-  return rabdi({ accessKey: process.env.ARKIV_ACCESS_KEY ?? '' });
+  return rabdi({ accessKey: arkivConfigFromEnv().accessKey ?? '' });
 }
 
 export function isArkivConfigured(): boolean {
