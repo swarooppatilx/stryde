@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TEXT_TYPE_STYLES } from '@/components/textTypes';
 import { TypeScale, textStyle } from '@/constants/typography';
@@ -40,7 +40,7 @@ describe('type="title" usage', () => {
     const root = join(__dirname, '..', '..');
     const offenders = sourceFiles(root)
       .filter((file) => readFileSync(file, 'utf8').includes('type="title"'))
-      .map((file) => relative(root, file))
+      .map((file) => relative(root, file).split(sep).join('/'))
       .filter((file) => !PAGE_TITLE_SCREENS.has(file));
 
     expect(offenders).toEqual([]);

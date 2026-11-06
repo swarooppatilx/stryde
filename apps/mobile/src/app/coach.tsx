@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
 import { CoachPlanCard } from '@/components/coach-plan-card';
+import { CoachRequestsPanel } from '@/components/coach-requests-panel';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -29,8 +30,11 @@ import {
   requestHumanApproval,
   revokeAgent,
 } from '@/services/humanPassService';
+import { useActivityStore } from '@/stores/activityStore';
+import { useCoachStore } from '@/stores/coachStore';
 import { useWorldVerificationStore } from '@/stores/worldVerificationStore';
 import { Alert } from '@/utils/alert';
+import { planUpdates } from '@/utils/planKept';
 import { Toast } from '@/utils/toast';
 
 const REFRESH_MS = 5_000;
@@ -86,6 +90,16 @@ export default function CoachScreen() {
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // A run saved since the athlete said "I'm doing this" keeps that day's plan.
+  useFocusEffect(
+    useCallback(() => {
+      const { plans, markPlanDone } = useCoachStore.getState();
+      for (const { day, runId } of planUpdates(plans, useActivityStore.getState().activities)) {
+        markPlanDone(day, runId);
+      }
+    }, [])
+  );
 
   const refresh = useCallback(async () => {
     if (!auth) return;
@@ -193,7 +207,8 @@ export default function CoachScreen() {
             </Card>
           )}
 
-          {!status?.banned && <CoachPlanCard wallet={address} />}
+          {!status?.banned && <CoachPlanCard auth={auth} />}
+          {!status?.banned && <CoachRequestsPanel auth={auth} />}
 
           {loadError && (
             <Card style={styles.card}>
