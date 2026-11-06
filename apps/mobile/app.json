@@ -129,6 +129,14 @@
         {
           "motionPermission": "Allow Stryde to count your steps while tracking activities."
         }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Stryde reads heart rate and steps from your Apple Watch to prove real effort on segments.",
+          "NSHealthUpdateUsageDescription": false,
+          "background": false
+        }
       ]
     ],
     "experiments": {
