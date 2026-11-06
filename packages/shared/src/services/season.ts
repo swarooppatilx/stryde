@@ -177,7 +177,9 @@ export async function ensureActiveSeason(
   const started = await relayStartSeason(30 * 24 * 60 * 60);
   if (!started.confirmed) {
     throw new Error(
-      started.queued ? 'Season start is queued until you are back online' : 'Season did not start'
+      started.queued
+        ? 'Season start has not been confirmed yet and will be retried'
+        : 'Season did not start'
     );
   }
   currentSeasonCache.clear();

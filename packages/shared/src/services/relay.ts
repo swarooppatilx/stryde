@@ -93,8 +93,12 @@ class RelayHttpError extends Error {
 /** Answers that will not change on retry: the request itself is wrong or not allowed. */
 const PERMANENT_STATUSES = new Set([400, 403, 404, 409, 422]);
 const MAX_REPLAY_ATTEMPTS = 8;
-/** Aborts a hung request so it becomes an error isNetworkError() recognises and is queued for retry instead of silently lost. */
-const REQUEST_TIMEOUT_MS = 20_000;
+/**
+ * Aborts a hung request so it becomes an error isNetworkError() recognises and is queued for retry instead of silently lost.
+ * The relayer answers only after the receipt, and Sepolia writes took 14-21 s on the first live run, so 20 s
+ * queued (and so double-sent) writes that were about to confirm.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
 
 /** Raw relay POST — no queue involvement. Throws on any non-2xx/network error. */
 async function relayPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
