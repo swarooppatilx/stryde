@@ -136,8 +136,7 @@ function mapIdKitError(error: string, detail?: string): WorldVerificationError {
     case 'verification_failed':
       return {
         code: error,
-        message:
-          'World rejected the proof. Start the check again; your run is saved either way.',
+        message: 'World rejected the proof. Start the check again; your run is saved either way.',
       };
     default:
       return {
@@ -213,9 +212,7 @@ export async function runWorldCheck(
 
       const nullifier = extractNullifier(poll.result);
       if (!nullifier) {
-        throw new Error(
-          'World App returned a proof Stryde could not read. Start the check again.'
-        );
+        throw new Error('World App returned a proof Stryde could not read. Start the check again.');
       }
 
       return { nullifier, proof: poll.result, pass: poll.pass, ticket: poll.ticket };

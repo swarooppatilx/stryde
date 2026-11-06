@@ -469,9 +469,7 @@ arkiv.post('/beacons', async (c) => {
     paceSecPerKm: Number(body.paceSecPerKm ?? 0),
     batteryPct: typeof body.batteryPct === 'number' ? body.batteryPct : null,
   });
-  return result
-    ? c.json(result)
-    : c.json({ error: 'This run id belongs to another athlete' }, 409);
+  return result ? c.json(result) : c.json({ error: 'This run id belongs to another athlete' }, 409);
 });
 
 arkiv.get('/beacons/:runId', async (c) => {
