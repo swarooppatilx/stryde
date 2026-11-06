@@ -1,20 +1,5 @@
-import { Crown, MessageCircle, ThumbsUp } from "lucide-react";
-
-export type ActivityPost = {
-  id: string;
-  athleteName: string;
-  athleteInitials: string;
-  timeAgo: string;
-  title: string;
-  note: string;
-  distance: string;
-  duration: string;
-  pace: string;
-  elevation: string;
-  territoryClaimed: string;
-  kudosCount: number;
-  commentsCount: number;
-};
+import { Crown, MessageCircle, ThumbsUp } from 'lucide-react';
+import type { ActivityPost } from '../../_lib/feed';
 
 export function ActivityCard({ post }: { post: ActivityPost }) {
   return (
@@ -25,60 +10,41 @@ export function ActivityCard({ post }: { post: ActivityPost }) {
             {post.athleteInitials}
           </div>
           <div>
-            <p className="m-0 text-[15px] font-semibold text-[#0b0e14]">
-              {post.athleteName}
-            </p>
+            <p className="m-0 text-[15px] font-semibold text-[#0b0e14]">{post.athleteName}</p>
             <p className="m-0 text-[12px] text-[#7a828a]">{post.timeAgo}</p>
           </div>
         </div>
 
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ebecee] bg-[#faf9f8] px-3 py-1 text-[12px] font-medium text-[var(--color-brand)]">
-          <Crown size={13} />
-          {post.territoryClaimed}
-        </span>
+        {post.territoryClaimed ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ebecee] bg-[#faf9f8] px-3 py-1 text-[12px] font-medium text-[var(--color-brand)]">
+            <Crown size={13} />
+            {post.territoryClaimed}
+          </span>
+        ) : null}
       </div>
 
       <div>
-        <p className="m-0 text-[18px] font-medium tracking-tight text-[#0b0e14]">
-          {post.title}
-        </p>
-        <p className="mt-1 text-[14px] leading-relaxed text-[#7a828a]">
-          {post.note}
-        </p>
+        <p className="m-0 text-[18px] font-medium tracking-tight text-[#0b0e14]">{post.title}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 rounded-[16px] border border-[#ebecee] bg-[#faf9f8] p-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 rounded-[16px] border border-[#ebecee] bg-[#faf9f8] p-4 sm:grid-cols-3">
         <div>
           <span className="text-[11px] font-medium uppercase tracking-wider text-[#7a828a]">
             Distance
           </span>
-          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">
-            {post.distance}
-          </p>
+          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">{post.distance}</p>
         </div>
         <div>
           <span className="text-[11px] font-medium uppercase tracking-wider text-[#7a828a]">
             Duration
           </span>
-          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">
-            {post.duration}
-          </p>
+          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">{post.duration}</p>
         </div>
         <div>
           <span className="text-[11px] font-medium uppercase tracking-wider text-[#7a828a]">
             Pace
           </span>
-          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">
-            {post.pace}
-          </p>
-        </div>
-        <div>
-          <span className="text-[11px] font-medium uppercase tracking-wider text-[#7a828a]">
-            Elevation
-          </span>
-          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">
-            {post.elevation}
-          </p>
+          <p className="m-0 mt-0.5 text-[16px] font-medium text-[#0b0e14]">{post.pace}</p>
         </div>
       </div>
 

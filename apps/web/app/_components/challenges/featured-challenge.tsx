@@ -1,13 +1,12 @@
-import { Calendar, Trophy } from "lucide-react";
+import { Calendar, Trophy } from 'lucide-react';
 
 const CHALLENGE = {
-  title: "ASSOS SHIFT Territory Grand Prix",
-  tag: "Featured Grand Prix",
-  sport: "Ride 91km in 14 days",
-  reward:
-    "Enter to win an onchain Commemorative Kit NFT plus 15% partner gear discounts.",
-  dates: "7 Sept to 20 Sept",
-  prizePool: "2.5 ETH + Sector Master Badge",
+  title: 'ASSOS SHIFT Territory Grand Prix',
+  tag: 'Featured Grand Prix',
+  sport: 'Ride 91km in 14 days',
+  reward: 'Enter to win an onchain Commemorative Kit NFT plus 15% partner gear discounts.',
+  dates: '7 Sept to 20 Sept',
+  prizePool: '2.5 ETH + Sector Master Badge',
 };
 
 export function FeaturedChallenge() {
@@ -18,21 +17,15 @@ export function FeaturedChallenge() {
           <Trophy size={13} />
           {CHALLENGE.tag}
         </span>
-        <span className="text-[13px] font-medium text-[var(--color-brand)]">
-          Open Registration
-        </span>
+        <span className="text-[13px] font-medium text-[var(--color-brand)]">Open Registration</span>
       </div>
 
       <div>
         <h2 className="m-0 text-[26px] font-medium tracking-tight text-[#0b0e14] sm:text-[32px]">
           {CHALLENGE.title}
         </h2>
-        <p className="mt-1 text-[16px] font-medium text-[#0b0e14]/80">
-          {CHALLENGE.sport}
-        </p>
-        <p className="mt-2 text-[14px] leading-relaxed text-[#7a828a]">
-          {CHALLENGE.reward}
-        </p>
+        <p className="mt-1 text-[16px] font-medium text-[#0b0e14]/80">{CHALLENGE.sport}</p>
+        <p className="mt-2 text-[14px] leading-relaxed text-[#7a828a]">{CHALLENGE.reward}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4 border-t border-[#ebecee] pt-5 text-[13px] text-[#0b0e14]">

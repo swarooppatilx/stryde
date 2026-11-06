@@ -1,6 +1,6 @@
-import Image from "next/image";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
 
 export function TerritoryBanner() {
   return (
@@ -14,9 +14,8 @@ export function TerritoryBanner() {
               </h2>
 
               <p className="m-0 text-[16px] leading-relaxed text-[#7a828a]">
-                When you run closed loops around parks, blocks, and
-                neighborhoods, Stryde computes the enclosed polygon and mints it
-                to your profile.
+                When you run closed loops around parks, blocks, and neighborhoods, Stryde computes
+                the enclosed polygon and mints it to your profile.
               </p>
 
               <div className="pt-2">

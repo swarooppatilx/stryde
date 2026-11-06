@@ -1,22 +1,22 @@
-import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
-import { StrydeMark } from "../icons/stryde-mark";
+import { ArrowUpRight } from 'lucide-react';
+import Link from 'next/link';
+import { StrydeMark } from '../icons/stryde-mark';
 
-const GITHUB_URL = "https://github.com/swarooppatilx/stryde";
+const GITHUB_URL = 'https://github.com/swarooppatilx/stryde';
 
 const usefulLinks = [
-  { label: "Activities", href: "/activities" },
-  { label: "Challenges", href: "/challenges" },
-  { label: "Territory Map", href: "/maps" },
+  { label: 'Activities', href: '/activities' },
+  { label: 'Challenges', href: '/challenges' },
+  { label: 'Territory Map', href: '/maps' },
 ];
 
 const aboutLinks = [
   {
-    label: "ETHOnline Registration",
-    href: "https://ethglobal.com/showcase/stryde-yh9p9",
+    label: 'ETHOnline Registration',
+    href: 'https://ethglobal.com/showcase/stryde-yh9p9',
   },
-  { label: "Source Code", href: GITHUB_URL },
-  { label: "World ID Verification", href: "https://world.org/" },
+  { label: 'Source Code', href: GITHUB_URL },
+  { label: 'World ID Verification', href: 'https://world.org/' },
 ];
 
 export function SiteFooter() {
@@ -32,8 +32,8 @@ export function SiteFooter() {
               </span>
             </div>
             <p className="m-0 max-w-sm text-[14px] leading-relaxed text-[#7a828a]">
-              The community running protocol. Track routes, claim onchain
-              territories, and verify your human achievements.
+              The community running protocol. Track routes, claim onchain territories, and verify
+              your human achievements.
             </p>
             <div className="pt-2">
               <a

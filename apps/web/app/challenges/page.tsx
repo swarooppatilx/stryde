@@ -1,8 +1,8 @@
-import { FeaturedChallenge } from "../_components/challenges/featured-challenge";
-import { FilterTags } from "../_components/challenges/filter-tags";
-import { LeaderboardTable } from "../_components/challenges/leaderboard-table";
-import { SiteFooter } from "../_components/layout/site-footer";
-import { SiteHeader } from "../_components/layout/site-header";
+import { FeaturedChallenge } from '../_components/challenges/featured-challenge';
+import { FilterTags } from '../_components/challenges/filter-tags';
+import { LeaderboardTable } from '../_components/challenges/leaderboard-table';
+import { SiteFooter } from '../_components/layout/site-footer';
+import { SiteHeader } from '../_components/layout/site-header';
 
 export default function ChallengesPage() {
   return (

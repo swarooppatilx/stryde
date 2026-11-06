@@ -1,28 +1,25 @@
-"use client";
+'use client';
 
-import { useRef } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { ArrowUpRight } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRef } from 'react';
 
-const GITHUB_URL = "https://github.com/swarooppatilx/stryde";
+const GITHUB_URL = 'https://github.com/swarooppatilx/stryde';
 
 export function Hero() {
   const trackRef = useRef<HTMLDivElement>(null);
 
   const { scrollYProgress } = useScroll({
     target: trackRef,
-    offset: ["start start", "end end"],
+    offset: ['start start', 'end end'],
   });
 
   const clipPath = useTransform(
     scrollYProgress,
     [0, 0.7],
-    [
-      "inset(16vh 10vw 16vh 10vw round 32px)",
-      "inset(0vh 0vw 0vh 0vw round 0px)",
-    ]
+    ['inset(16vh 10vw 16vh 10vw round 32px)', 'inset(0vh 0vw 0vh 0vw round 0px)']
   );
   const imageScale = useTransform(scrollYProgress, [0, 0.7], [1.2, 1]);
   const overlayOpacity = useTransform(scrollYProgress, [0.4, 0.7], [0, 1]);
@@ -37,14 +34,12 @@ export function Hero() {
           <h1 className="m-0 max-w-4xl text-[44px] font-normal leading-[1.08] tracking-[-0.03em] text-[#0b0e14] sm:text-[64px] md:text-[84px]">
             Run with the community.
             <br />
-            <span className="font-medium text-[var(--color-brand)]">
-              Own the map.
-            </span>
+            <span className="font-medium text-[var(--color-brand)]">Own the map.</span>
           </h1>
 
           <p className="mt-6 max-w-2xl text-[17px] leading-relaxed text-[#7a828a] sm:text-[19px]">
-            An open sports network where your mileage captures real physical
-            territory. Verified with World ID, stored onchain.
+            An open sports network where your mileage captures real physical territory. Verified
+            with World ID, stored onchain.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

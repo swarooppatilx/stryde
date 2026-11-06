@@ -1,35 +1,20 @@
-const ROWS = [
-  {
-    rank: 1,
-    athlete: "Sarah Chen",
-    distance: "212.4 km",
-    territory: "1.40 km²",
-    verified: true,
-  },
-  {
-    rank: 2,
-    athlete: "Fernando Rayra",
-    distance: "198.1 km",
-    territory: "1.10 km²",
-    verified: true,
-  },
-  {
-    rank: 3,
-    athlete: "Priya Sharma",
-    distance: "176.5 km",
-    territory: "0.90 km²",
-    verified: true,
-  },
-  {
-    rank: 4,
-    athlete: "Marcus Webb",
-    distance: "154.2 km",
-    territory: "0.70 km²",
-    verified: false,
-  },
-];
+import { fetchLeaderboard, formatArea, formatKm } from '../../_lib/leaderboard';
 
-export function LeaderboardTable() {
+const NOTE = 'rounded-[24px] border border-[#ebecee] bg-white p-6 text-[14px] text-[#7a828a]';
+
+/** The current season's leaderboard, read live from Stryde's subgraph on every revalidation. */
+export async function LeaderboardTable() {
+  const rows = await fetchLeaderboard();
+
+  if (rows === null) {
+    return (
+      <p className={NOTE}>The live leaderboard is unavailable right now. Try again shortly.</p>
+    );
+  }
+  if (rows.length === 0) {
+    return <p className={NOTE}>No athletes on the board yet. Be the first to record a run.</p>;
+  }
+
   return (
     <div className="overflow-hidden rounded-[24px] border border-[#ebecee] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.03)]">
       <div className="overflow-x-auto">
@@ -51,7 +36,7 @@ export function LeaderboardTable() {
             </tr>
           </thead>
           <tbody>
-            {ROWS.map((row) => (
+            {rows.map((row) => (
               <tr
                 key={row.rank}
                 className="border-b border-[#ebecee] last:border-none transition-colors hover:bg-[#faf9f8]"
@@ -62,9 +47,7 @@ export function LeaderboardTable() {
                       1
                     </span>
                   ) : (
-                    <span className="text-[14px] font-semibold text-[#7a828a]">
-                      {row.rank}
-                    </span>
+                    <span className="text-[14px] font-semibold text-[#7a828a]">{row.rank}</span>
                   )}
                 </td>
                 <td className="px-6 py-4 text-[14px] font-medium text-[#0b0e14]">
@@ -78,10 +61,10 @@ export function LeaderboardTable() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-[14px] text-[#7a828a]">
-                  {row.distance}
+                  {formatKm(row.distanceMeters)}
                 </td>
                 <td className="px-6 py-4 text-[14px] font-medium text-[var(--color-brand)]">
-                  {row.territory}
+                  {formatArea(row.territorySqm)}
                 </td>
               </tr>
             ))}
