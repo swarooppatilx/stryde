@@ -95,3 +95,26 @@ export async function getUserEventsFromSubgraph(
   const eventParticipants = data.eventParticipants;
   return eventParticipants.filter((ep) => ep.event.active).map((ep) => mapEventEntity(ep.event));
 }
+
+const EVENT_PARTICIPANTS_QUERY = `
+  query GetEventParticipants($event: String!) {
+    eventParticipants(first: 1000, where: { event: $event, active: true }, orderBy: joinedAt) {
+      user { id }
+    }
+  }
+`;
+
+/** The wallets currently signed up for an event, earliest first. Null when no subgraph is configured. */
+export async function getEventParticipantsFromSubgraph(
+  eventId: bigint
+): Promise<`0x${string}`[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+
+  const data = await querySubgraph<{ eventParticipants: { user: { id: string } }[] }>(
+    subgraphUrl,
+    EVENT_PARTICIPANTS_QUERY,
+    { event: eventId.toString() }
+  );
+  return data.eventParticipants.map((p) => p.user.id as `0x${string}`);
+}
