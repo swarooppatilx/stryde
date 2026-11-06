@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppSwitch } from '@/components/app-switch';
 import { AppButton } from '@/components/button';
 import { ChipRow } from '@/components/filter-chips';
 import { type MapMarker, MapRoute } from '@/components/map-route';
@@ -15,23 +17,29 @@ import { MapChrome } from '@/constants/mapChrome';
 import { BorderRadius, type Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useDiscardGuard } from '@/hooks/useDiscardGuard';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useRouteElevation } from '@/hooks/useRouteElevation';
+import { useRouteSnapping } from '@/hooks/useRouteSnapping';
 import { getPlatform } from '@/platform';
 import { resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRouteStore } from '@/stores/routeStore';
 import type { ActivityType } from '@/types';
+import { confirmDestructive } from '@/utils/confirmDestructive';
 import { formatDistance, formatElevation, toPolyline } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import type { RoutePoint } from '@/utils/route';
+import { sampleAlong } from '@/utils/routeBuilder';
 import {
-  addWaypoint,
-  clearWaypoints,
-  reverseWaypoints,
-  sampleAlong,
-  undoWaypoint,
-  waypointsDistance,
-} from '@/utils/routeBuilder';
+  addPoint,
+  deletePoint,
+  emptyPlan,
+  planDistance,
+  planLine,
+  resnapPlan,
+  reversePlan,
+  routingProfileFor,
+} from '@/utils/routePlan';
 import { routeProfile } from '@/utils/routeProfile';
 import { Toast } from '@/utils/toast';
 
@@ -69,10 +77,21 @@ export default function RouteBuilderScreen() {
   const stylePref = useMapPrefsStore((s) => s.style);
   const save = useRouteStore((s) => s.save);
   const [center, setCenter] = useState<RoutePoint | null>(null);
-  const [points, setPoints] = useState<RoutePoint[]>([]);
+  const [plan, setPlan] = useState(emptyPlan);
+  const [manual, setManual] = useState(false);
+  const points = plan.waypoints;
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [sport, setSport] = useState<ActivityType>('run');
+  const { allowLeave } = useDiscardGuard(points.length > 0);
+  const profileName = routingProfileFor(sport);
+  const [snapFailed, setSnapFailed] = useState(false);
+  useRouteSnapping(plan, setPlan, profileName, (reason) => {
+    const message = services.routing.routingErrorMessage(reason);
+    // One toast per stretch of trouble, not one per tapped point.
+    if (message && !snapFailed) Toast.fail(message, 2.5);
+    if (message) setSnapFailed(true);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -89,8 +108,9 @@ export default function RouteBuilderScreen() {
     };
   }, []);
 
-  const distance = waypointsDistance(points);
-  const sampled = useMemo(() => sampleAlong(points, SAMPLE_STEP_M), [points]);
+  const line = useMemo(() => planLine(plan), [plan]);
+  const distance = planDistance(plan);
+  const sampled = useMemo(() => sampleAlong(line, SAMPLE_STEP_M), [line]);
   const elevation = useRouteElevation(sampled, ELEVATION_DELAY_MS);
   const profile = elevation.status === 'ready' ? routeProfile(sampled, elevation.elevations) : null;
 
@@ -115,13 +135,14 @@ export default function RouteBuilderScreen() {
   const confirmSave = () => {
     const saved = save({
       name: name.trim() || `Route of ${formatDistance(distance, unitSystem)}`,
-      polyline: toPolyline(points),
+      polyline: toPolyline(line),
       distance,
       sport,
       // The estimate shown on this screen, when it has arrived; a drawn route has no duration.
       elevationGain: profile?.gain,
     });
     Toast.success('Route saved', 1);
+    allowLeave();
     router.replace(`/routes/${saved.id}`);
   };
 
@@ -129,14 +150,15 @@ export default function RouteBuilderScreen() {
     <ThemedView type="background" style={styles.container}>
       {center && (
         <MapRoute
-          coordinates={points.length > 1 ? points : undefined}
+          coordinates={line.length > 1 ? line : undefined}
           markers={markers}
           initialCenter={center}
           initialZoom={15}
           showUserLocation={false}
           onMapLongPress={(point) => {
             haptics.impactMedium();
-            setPoints((current) => addWaypoint(current, point));
+            setSnapFailed(false);
+            setPlan((current) => addPoint(current, point, { snap: !manual }));
           }}
           dark={resolveMapStyle(stylePref, theme.isDark) === 'dark'}
           compassTopOffset={insets.top + MapChrome.edge + 56}
@@ -155,7 +177,9 @@ export default function RouteBuilderScreen() {
           style={[styles.hint, theme.shadows.raised, { backgroundColor: theme.backgroundElement }]}
         >
           <ThemedText type="caption" themeColor="textSecondary" numberOfLines={2}>
-            Press and hold the map to add a point. Straight lines between points.
+            {manual
+              ? 'Manual mode: press and hold the map to add points, joined by straight lines.'
+              : 'Press and hold the map to add a point. The route follows roads and paths.'}
           </ThemedText>
         </View>
       </View>
@@ -176,7 +200,6 @@ export default function RouteBuilderScreen() {
         {saving ? (
           <View style={styles.stack}>
             <TextField label="Route name" value={name} onChangeText={setName} maxLength={60} />
-            <ChipRow options={SPORTS} value={sport} onChange={setSport} />
             <AppButton onPress={confirmSave}>Save route</AppButton>
             <AppButton variant="ghost" onPress={() => setSaving(false)}>
               Keep editing
@@ -184,6 +207,24 @@ export default function RouteBuilderScreen() {
           </View>
         ) : (
           <>
+            {/* The sport picks the network the route is snapped to, so it is chosen while drawing. */}
+            <ChipRow
+              options={SPORTS}
+              value={sport}
+              onChange={(next) => {
+                // Cycling and walking use different networks, so the drawn legs are routed again.
+                if (routingProfileFor(next) !== profileName && !manual) setPlan(resnapPlan);
+                setSport(next);
+              }}
+            />
+            <View style={styles.snapRow}>
+              <ThemedText type="small">Follow roads and paths</ThemedText>
+              <AppSwitch
+                checked={!manual}
+                onChange={(on) => setManual(!on)}
+                label="Follow roads and paths. Off draws straight lines (manual mode)"
+              />
+            </View>
             <View style={styles.tools}>
               <AppButton
                 variant="secondary"
@@ -191,7 +232,9 @@ export default function RouteBuilderScreen() {
                 fullWidth={false}
                 style={styles.tool}
                 disabled={points.length === 0}
-                onPress={() => setPoints(undoWaypoint)}
+                onPress={() =>
+                  setPlan((current) => deletePoint(current, current.waypoints.length - 1))
+                }
               >
                 Undo
               </AppButton>
@@ -201,7 +244,7 @@ export default function RouteBuilderScreen() {
                 fullWidth={false}
                 style={styles.tool}
                 disabled={points.length < 2}
-                onPress={() => setPoints(reverseWaypoints)}
+                onPress={() => setPlan(reversePlan)}
               >
                 Reverse
               </AppButton>
@@ -211,7 +254,14 @@ export default function RouteBuilderScreen() {
                 fullWidth={false}
                 style={styles.tool}
                 disabled={points.length === 0}
-                onPress={() => setPoints(clearWaypoints())}
+                onPress={() =>
+                  confirmDestructive({
+                    title: 'Clear Route',
+                    message: `Remove all ${points.length} points from this route?`,
+                    confirmLabel: 'Clear Route',
+                    onConfirm: () => setPlan(emptyPlan()),
+                  })
+                }
               >
                 Clear
               </AppButton>
@@ -260,6 +310,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius.xl,
   },
   tools: { flexDirection: 'row', gap: Spacing.two },
+  snapRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tool: { flex: 1 },
   stack: { gap: Spacing.two },
 });
