@@ -11,15 +11,14 @@ import { ipfsPhotoUploader } from '@/services/ipfsService';
 import { useActivityStore } from '@/stores/activityStore';
 import { activityKey, useSocialStore } from '@/stores/socialStore';
 import type { Activity, Ring } from '@/types';
+import { activityExportFile, type ExportFormat } from '@/utils/activityExport';
 import { sameAddress } from '@/utils/address';
 import { Alert } from '@/utils/alert';
 import { elevationProfile } from '@/utils/elevation';
 import { parsePolyline } from '@/utils/format';
-import { toGpx } from '@/utils/gpx';
 import { logger } from '@/utils/logger';
 import { polylineFromMetadata } from '@/utils/route';
-import { routeTimes } from '@/utils/routeTimes';
-import { copyRouteImage, saveRouteImage, shareGpx, shareRouteImage } from '@/utils/share';
+import { copyRouteImage, saveRouteImage, shareExportFile, shareRouteImage } from '@/utils/share';
 import { Toast } from '@/utils/toast';
 import { useCurrentUserId } from './useCurrentUserId';
 import { useViemWallet } from './useViemWallet';
@@ -198,20 +197,15 @@ export function useActivity() {
     await shareRouteImage(svgRef, activity.id);
   }, [activity]);
 
-  const exportGpx = useCallback(async () => {
-    if (!activity) return;
-    const gpx = toGpx({
-      name: activity.name || 'Activity',
-      activityType: activity.activityType,
-      // The first fix when it was kept; the save time is only the end of the activity, near enough for a title.
-      startedAt: new Date(activity.stream?.startedAt ?? activity.createdAt),
-      route: coordinates,
-      // Absent until the DEM lookup lands, which just means a track without <ele>.
-      elevations: elevationData?.elevations,
-      times: (activity.stream && routeTimes(coordinates, activity.stream)) || undefined,
-    });
-    if (gpx) await shareGpx(activity.name || activity.id, gpx);
-  }, [activity, coordinates, elevationData]);
+  const exportActivity = useCallback(
+    async (format: ExportFormat) => {
+      if (!activity) return;
+      // Elevations are absent until the DEM lookup lands, which just means a track without altitude.
+      const file = activityExportFile(format, activity, coordinates, elevationData?.elevations);
+      if (file) await shareExportFile(activity.name || activity.id, file);
+    },
+    [activity, coordinates, elevationData]
+  );
 
   const copy = useCallback(async () => {
     await copyRouteImage(svgRef);
@@ -263,7 +257,7 @@ export function useActivity() {
     handleSaveDescription: saveDescription,
     handleCancelEditDescription: cancelEditDescription,
     handleShare: share,
-    handleExportGpx: exportGpx,
+    handleExport: exportActivity,
     handleCopy: copy,
     handleDownload: download,
     goBack,

@@ -20,6 +20,7 @@ import {
   elevationScrubTarget,
   elevationSeries,
   heartRateScrubTarget,
+  powerScrubTarget,
 } from '@/utils/chartPages';
 import { formatElevation, type UnitSystem } from '@/utils/format';
 
@@ -39,9 +40,10 @@ const PAGE_LABEL: Record<ChartPage, string> = {
   pace: 'Pace',
   elevation: 'Elevation',
   heartRate: 'Heart rate',
+  power: 'Power',
 };
 
-/** Pace, elevation and heart rate as swipeable cards with page dots; a page appears only when there is data for it. */
+/** Pace, elevation, heart rate and power as swipeable cards with page dots; a page appears only when there is data for it. */
 export function ActivityChartPager({
   stream,
   elevations,
@@ -56,6 +58,7 @@ export function ActivityChartPager({
   const pages = chartPages({ stream, elevations, activityType });
   const elevation = elevationSeries(stream, elevations);
   const heartRate = stream?.heartRate;
+  const power = stream?.power;
 
   if (pages.length === 0) return null;
 
@@ -100,6 +103,22 @@ export function ActivityChartPager({
           summary={`Peak ${Math.round(peak)} bpm`}
           accessibilityLabel={`Heart rate over time, peak ${Math.round(peak)} beats per minute. Drag across it to read a moment.`}
           onScrubChange={(i) => onScrubChange(heartRateScrubTarget(stream, i))}
+        />
+      );
+    }
+    if (kind === 'power' && power) {
+      const peak = Math.max(...power.w);
+      return (
+        <ScrubChart
+          title="Power"
+          minRange={50}
+          values={power.w}
+          times={power.t}
+          timed
+          formatValue={(v) => `${Math.round(v)} W`}
+          summary={`Peak ${Math.round(peak)} W`}
+          accessibilityLabel={`Power over time, peak ${Math.round(peak)} watts. Drag across it to read a moment.`}
+          onScrubChange={(i) => onScrubChange(powerScrubTarget(stream, i))}
         />
       );
     }

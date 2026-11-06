@@ -26,6 +26,7 @@ import {
   type Segment,
   segmentLeaderboard,
 } from '@/services/arkivService';
+import { useSegmentStarsStore } from '@/stores/segmentStarsStore';
 import { formatDistance, formatDurationLong } from '@/utils/format';
 
 const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -38,6 +39,8 @@ export default function SegmentDetailScreen() {
   const [scope, setScope] = useState<'verified' | 'all'>('verified');
   const [efforts, setEfforts] = useState<Effort[]>([]);
   const [loading, setLoading] = useState(true);
+  const isStarred = useSegmentStarsStore((s) => Boolean(key && s.starred[key]));
+  const toggleStar = useSegmentStarsStore((s) => s.toggle);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -104,6 +107,17 @@ export default function SegmentDetailScreen() {
               <ThemedText type="small" themeColor="textSecondary">
                 {formatDistance(segment.distanceM)} · created by {shortAddress(segment.creator)}
               </ThemedText>
+              <TouchableOpacity
+                onPress={() => toggleStar(segment)}
+                accessibilityRole="button"
+                accessibilityLabel={isStarred ? 'Unstar segment' : 'Star segment'}
+              >
+                <Ionicons
+                  name={isStarred ? 'star' : 'star-outline'}
+                  size={20}
+                  color={theme.brand.primary}
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => Linking.openURL(`${ARKIV_EXPLORER}/entity/${segment.key}`)}
               >

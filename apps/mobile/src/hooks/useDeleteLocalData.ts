@@ -12,10 +12,24 @@ import { logger } from '@/utils/logger';
 import { resetAccountStores } from '@/utils/resetAccountStores';
 import { unsyncedActivities } from '@/utils/unsyncedActivities';
 
-/** Removes everything this phone holds about the account (including the unsent queue) and signs out; on-chain data stays, which the confirmation says first. */
-export function useDeleteLocalData() {
+/** Wipes this phone's account data (the unsent queue too) and signs out, without asking. Callers confirm first. */
+export function useWipeLocalData() {
   const { logout } = useAuth();
   const router = useRouter();
+
+  return async () => {
+    await logout();
+    await getOutbox().clear();
+    await discardInFlightRun(getPlatform().storage, trackingSession);
+    resetAccountStores();
+    reapplySandboxSeed();
+    router.replace('/login');
+  };
+}
+
+/** Removes everything this phone holds about the account (including the unsent queue) and signs out; on-chain data stays, which the confirmation says first. */
+export function useDeleteLocalData() {
+  const wipe = useWipeLocalData();
 
   return () => {
     // Counted when asked, so the warning names what would be lost right now.
@@ -31,12 +45,7 @@ export function useDeleteLocalData() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logout();
-              await getOutbox().clear();
-              await discardInFlightRun(getPlatform().storage, trackingSession);
-              resetAccountStores();
-              reapplySandboxSeed();
-              router.replace('/login');
+              await wipe();
             } catch (error) {
               logger.error('[DeleteLocalData] Failed', error);
               Alert.alert('Could not delete the data', 'Please try again.');

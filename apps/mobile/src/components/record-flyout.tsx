@@ -11,11 +11,20 @@ interface RecordFlyoutProps {
   rows: FlyoutRow[];
   trackLaps: boolean;
   onToggleLaps(on: boolean): void;
+  liveShare: boolean;
+  onToggleShare(on: boolean): void;
   onOpen(id: Exclude<FlyoutRowId, 'laps' | 'share' | 'sensor'>): void;
 }
 
 /** The options a drag up from the handle reveals; each row says what it is set to. */
-export function RecordFlyout({ rows, trackLaps, onToggleLaps, onOpen }: RecordFlyoutProps) {
+export function RecordFlyout({
+  rows,
+  trackLaps,
+  onToggleLaps,
+  liveShare,
+  onToggleShare,
+  onOpen,
+}: RecordFlyoutProps) {
   const theme = useTheme();
   return (
     <View style={styles.list}>
@@ -36,6 +45,14 @@ export function RecordFlyout({ rows, trackLaps, onToggleLaps, onOpen }: RecordFl
             <View key={row.id} style={style}>
               {text}
               <AppSwitch checked={trackLaps} onChange={onToggleLaps} label="Track laps" />
+            </View>
+          );
+        }
+        if (row.id === 'share') {
+          return (
+            <View key={row.id} style={style}>
+              {text}
+              <AppSwitch checked={liveShare} onChange={onToggleShare} label={row.title} />
             </View>
           );
         }

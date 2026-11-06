@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type LayoutChangeEvent, Pressable, Share, StyleSheet, View } from 'react-native';
+import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FollowRouteBanner } from '@/components/follow-route-banner';
@@ -22,7 +22,7 @@ import { ThemedText } from '@/components/themed-text';
 import { WatchStrip } from '@/components/watch-strip';
 import { ZoomControls } from '@/components/zoom-controls';
 import { SPORT_TYPES } from '@/constants/activity';
-import { DEFAULT_CENTER, ENV } from '@/constants/config';
+import { DEFAULT_CENTER } from '@/constants/config';
 import { MapChrome } from '@/constants/mapChrome';
 import { Palette } from '@/constants/palette';
 import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
@@ -35,6 +35,8 @@ import { useFollowRoute } from '@/hooks/useFollowRoute';
 import { useGpsPreview } from '@/hooks/useGpsPreview';
 import { useHideTabBar } from '@/hooks/useHideTabBar';
 import { useLapCard } from '@/hooks/useLapCard';
+import { useLiveBeacon } from '@/hooks/useLiveBeacon';
+import { useLiveSegments } from '@/hooks/useLiveSegments';
 import { useLocationServices } from '@/hooks/useLocationServices';
 import { useNow } from '@/hooks/useNow';
 import { usePreRunReadiness } from '@/hooks/usePreRunReadiness';
@@ -42,17 +44,14 @@ import type { RecoveryChoice } from '@/hooks/useRecoveredRun';
 import { useStartCountdown } from '@/hooks/useStartCountdown';
 import { useTrackingSession } from '@/hooks/useTrackingSession';
 import { useVerticalSwipe } from '@/hooks/useVerticalSwipe';
-import { useViemWallet } from '@/hooks/useViemWallet';
 import { getPlatform } from '@/platform';
 import { setFinishedSession } from '@/services/activityPipeline';
-import { endBeacon, pushBeacon } from '@/services/arkivService';
 import { confirmStart } from '@/services/startChecks';
 import { territoryService } from '@/services/territoryService';
 import { trackingService } from '@/services/trackingService';
 import { useFollowRouteStore } from '@/stores/followRouteStore';
 import { layerBadgeCount, resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRecordUiStore } from '@/stores/recordUiStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import type { ActivityType, Ring } from '@/types';
 import { Alert } from '@/utils/alert';
 import { colorSegments } from '@/utils/colorSegments';
@@ -62,6 +61,7 @@ import { formatDistance, METERS_PER_MILE } from '@/utils/format';
 import { describeGpsSignal } from '@/utils/gpsSignal';
 import { haptics } from '@/utils/haptics';
 import { livePaceStops } from '@/utils/livePace';
+import { liveSegmentLine } from '@/utils/liveSegments';
 import type { LiveStatData } from '@/utils/liveStats';
 import { logger } from '@/utils/logger';
 import { isTooShort } from '@/utils/minimumRun';
@@ -75,7 +75,6 @@ import { splitMarkers as splitPins } from '@/utils/splitMarkers';
 import { Toast } from '@/utils/toast';
 
 const ZOOM_RANGE = { min: MIN_ZOOM, max: MAX_ZOOM };
-const BEACON_INTERVAL_MS = 30_000;
 /** Slow to fast along the live trail, as on a saved run's map. */
 const PACE_COLORS = [Palette.blue.b4, Palette.yellow.y3, Palette.orange.o3];
 
@@ -241,56 +240,12 @@ export default function TrackingScreen() {
 
   const countdown = useStartCountdown(handleStart);
 
-  // Live beacon: a 10-minute Arkiv entity the server patches every BEACON_INTERVAL_MS, so
-  // friends can follow the run and it vanishes after.
-  const liveBeacon = useSettingsStore((s) => s.liveBeacon);
-  const runIdRef = useRef('');
-  const [beaconLive, setBeaconLive] = useState(false);
-  const beaconInput = useRef({ fix: location, distance, duration });
-  beaconInput.current = { fix: location, distance, duration };
-  const { address: athlete } = useViemWallet();
-  useEffect(() => {
-    if (!isSessionActive || !liveBeacon || !athlete) return;
-    if (!runIdRef.current) {
-      runIdRef.current = getPlatform()
-        .ids.next()
-        .replace(/[^A-Za-z0-9_-]/g, '')
-        .padEnd(8, '0')
-        .slice(0, 32);
-    }
-    const push = () => {
-      const { fix: last, distance: distanceM, duration: durationMs } = beaconInput.current;
-      if (!last) return;
-      const durationSec = durationMs / 1000;
-      pushBeacon({
-        runId: runIdRef.current,
-        athlete,
-        latitude: last.latitude,
-        longitude: last.longitude,
-        paceSecPerKm: distanceM > 50 ? Math.round(durationSec / (distanceM / 1000)) : 0,
-      })
-        .then(() => setBeaconLive(true))
-        .catch((error) => {
-          setBeaconLive(false);
-          logger.warn('[Record] Beacon update failed', error);
-        });
-    };
-    push();
-    const interval = setInterval(push, BEACON_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [isSessionActive, liveBeacon, athlete]);
-
-  const endLiveBeacon = () => {
-    if (runIdRef.current && beaconLive) endBeacon(runIdRef.current).catch(() => undefined);
-    runIdRef.current = '';
-    setBeaconLive(false);
-  };
-
-  const shareLiveBeacon = () => {
-    Share.share({
-      message: `Follow my ${activityLabel.toLowerCase()} live on Stryde: ${ENV.API_URL}/api/live/${runIdRef.current}`,
-    }).catch(() => undefined);
-  };
+  const liveSegment = useLiveSegments(isSessionActive, location);
+  const beacon = useLiveBeacon({
+    active: isSessionActive,
+    progress: { fix: location, distance, duration },
+    activityLabel,
+  });
 
   const captureFinishedTrack = () =>
     setFinishedSession(
@@ -345,7 +300,7 @@ export default function TrackingScreen() {
     finishing.current = true;
     try {
       captureFinishedTrack();
-      endLiveBeacon();
+      beacon.end();
       const result = await finish();
       if (!result.ok) {
         Alert.alert('Could not finish', result.error);
@@ -374,7 +329,7 @@ export default function TrackingScreen() {
       onConfirm: async () => {
         finishing.current = true;
         try {
-          endLiveBeacon();
+          beacon.end();
           await finish();
         } finally {
           finishing.current = false;
@@ -612,6 +567,7 @@ export default function TrackingScreen() {
                   <StatusPill label={signal.label} searching={signal.level === 'searching'} />
                 ) : undefined
               }
+              segment={liveSegment ? liveSegmentLine(liveSegment) : null}
               onLock={() => setLocked(true)}
               onExpand={() => setFullStats(true)}
               onLayout={(event) => setIslandHeight(event.nativeEvent.layout.height)}
@@ -628,10 +584,10 @@ export default function TrackingScreen() {
                   </ThemedText>
                 </Pressable>
               )}
-              {beaconLive && (
+              {beacon.live && (
                 <Pressable
                   style={styles.liveNote}
-                  onPress={shareLiveBeacon}
+                  onPress={beacon.share}
                   accessibilityRole="button"
                   accessibilityLabel="Share live location"
                 >
@@ -686,9 +642,15 @@ export default function TrackingScreen() {
               </GestureDetector>
               {flyoutOpen && (
                 <RecordFlyout
-                  rows={flyoutRows({ trackLaps, mapStyle })}
+                  rows={flyoutRows({
+                    trackLaps,
+                    mapStyle,
+                    liveShare: beacon.available ? beacon.enabled : null,
+                  })}
                   trackLaps={trackLaps}
                   onToggleLaps={setTrackLaps}
+                  liveShare={beacon.enabled}
+                  onToggleShare={beacon.toggle}
                   onOpen={(id) => {
                     setFlyoutOpen(false);
                     if (id === 'settings') router.push('/recording-settings');

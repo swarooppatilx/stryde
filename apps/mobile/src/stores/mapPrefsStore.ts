@@ -7,7 +7,7 @@ import type { HeatmapPeriod, HeatmapRange, HeatmapSource } from '@/utils/heatmap
 import type { FollowMode } from '@/utils/recordCamera';
 import { chainScopedStorageAdapter } from '@/utils/storage';
 
-export type MapLayer = 'routes' | 'heatmap' | 'others' | 'poi' | 'bikeLanes';
+export type MapLayer = 'routes' | 'heatmap' | 'others' | 'poi' | 'bikeLanes' | 'segments';
 export type MapStylePref = 'auto' | 'light' | 'dark';
 /** The base map: drawn streets and trails, aerial imagery, or imagery with streets and labels on top. */
 export type MapType = 'standard' | 'satellite' | 'hybrid';
@@ -19,6 +19,8 @@ interface MapPrefsState {
   /** Parks and other places are labelled on the base map. */
   showPoi: boolean;
   showBikeLanes: boolean;
+  /** Nearby and starred segments are drawn on the map. */
+  showSegments: boolean;
   sport: SportFilter;
   time: TimeFilter;
   distance: DistanceFilter;
@@ -60,6 +62,7 @@ const DEFAULTS = {
   showOthers: false,
   showPoi: true,
   showBikeLanes: false,
+  showSegments: false,
   style: 'auto',
   heatmapColor: 'classic',
   mapType: 'standard',
@@ -84,6 +87,7 @@ export const useMapPrefsStore = create<MapPrefsState>()(
             others: { showOthers: on },
             poi: { showPoi: on },
             bikeLanes: { showBikeLanes: on },
+            segments: { showSegments: on },
           }[layer]
         ),
       setSport: (sport) => set({ sport }),
@@ -125,18 +129,23 @@ export function resolveMapStyle(pref: MapStylePref, appIsDark: boolean): 'light'
 
 /** How many optional overlays are on: the number shown on the layers button. Labels on the base map do not count. */
 export function layerBadgeCount(
-  prefs: Pick<MapPrefsState, 'showRoutes' | 'showHeatmap' | 'showOthers' | 'showBikeLanes'>
+  prefs: Pick<MapPrefsState, 'showRoutes' | 'showHeatmap' | 'showOthers' | 'showBikeLanes'> &
+    Partial<Pick<MapPrefsState, 'showSegments'>>
 ): number {
-  return [prefs.showRoutes, prefs.showHeatmap, prefs.showOthers, prefs.showBikeLanes].filter(
-    Boolean
-  ).length;
+  return [
+    prefs.showRoutes,
+    prefs.showHeatmap,
+    prefs.showOthers,
+    prefs.showBikeLanes,
+    prefs.showSegments,
+  ].filter(Boolean).length;
 }
 
 /** Whether one layer's switch is on. */
 export function isLayerOn(
   prefs: Pick<
     MapPrefsState,
-    'showRoutes' | 'showHeatmap' | 'showOthers' | 'showPoi' | 'showBikeLanes'
+    'showRoutes' | 'showHeatmap' | 'showOthers' | 'showPoi' | 'showBikeLanes' | 'showSegments'
   >,
   layer: MapLayer
 ): boolean {
@@ -146,5 +155,6 @@ export function isLayerOn(
     others: prefs.showOthers,
     poi: prefs.showPoi,
     bikeLanes: prefs.showBikeLanes,
+    segments: prefs.showSegments,
   }[layer];
 }

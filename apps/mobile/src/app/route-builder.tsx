@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { getDocumentAsync } from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
@@ -31,7 +32,10 @@ import { useRouteStore } from '@/stores/routeStore';
 import type { ActivityType } from '@/types';
 import { Alert } from '@/utils/alert';
 import { formatDistance, formatElevation, toPolyline } from '@/utils/format';
+import { MAX_GPX_BYTES } from '@/utils/gpxParse';
+import { waypointsFromGpx } from '@/utils/gpxWaypoints';
 import { haptics } from '@/utils/haptics';
+import { logger } from '@/utils/logger';
 import { LOOP_DISTANCES } from '@/utils/loopRoutes';
 import type { RoutePoint } from '@/utils/route';
 import { fitPadding, routeBounds } from '@/utils/routeBounds';
@@ -74,6 +78,8 @@ const MARKER_LOOK: Record<
 const SAMPLE_STEP_M = 100;
 /** A drawn stroke becomes at most this many waypoints: enough for its shape, few enough to route quickly. */
 const MAX_DRAWN_POINTS = 24;
+/** A GPX track is thinned to this many waypoints: two routing requests' worth. */
+const MAX_IMPORTED_WAYPOINTS = 48;
 const ELEVATION_DELAY_MS = 700;
 /** A flat route's profile spans at least this many metres, so a kerb is not drawn as a hill. */
 const ELEVATION_MIN_RANGE_M = 30;
@@ -146,6 +152,36 @@ export default function RouteBuilderScreen() {
     }
     haptics.selection();
     setPoints((current) => [...current, ...drawn]);
+  };
+  const importGpx = async () => {
+    try {
+      const picked = await getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      const asset = picked.canceled ? undefined : picked.assets[0];
+      if (!asset) return;
+      if (!/\.gpx$/i.test(asset.name) || (asset.size ?? 0) > MAX_GPX_BYTES) {
+        Toast.info('Choose a GPX file under 8 MB', 2);
+        return;
+      }
+      const track = waypointsFromGpx(
+        await getPlatform().files.readText(asset.uri),
+        MAX_IMPORTED_WAYPOINTS
+      );
+      if (!track) {
+        Toast.info('That file has no track to load', 2);
+        return;
+      }
+      haptics.selection();
+      setPoints(track.points);
+      if (track.capped) {
+        Toast.info(
+          `The track had ${track.original} points; its shape is simplified to ${track.points.length} waypoints`,
+          3
+        );
+      }
+    } catch (error) {
+      logger.warn('[RouteBuilder] GPX import failed', error);
+      Toast.fail("Couldn't read that file", 2);
+    }
   };
   const [panelHeight, setPanelHeight] = useState(0);
   // Loop generator: pick a distance, get three loops from the start (or from here).
@@ -460,6 +496,14 @@ export default function RouteBuilderScreen() {
             onPress={() => setDrawing((on) => !on)}
           >
             {drawing ? 'Stop drawing' : 'Draw'}
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            size="small"
+            fullWidth={false}
+            onPress={() => void importGpx()}
+          >
+            Import GPX
           </AppButton>
           <AppButton
             variant="secondary"

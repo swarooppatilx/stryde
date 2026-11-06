@@ -25,9 +25,11 @@ import { BorderRadius, IconSize, Spacing, Touch } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useActivity } from '@/hooks/useActivity';
+import { useActivityResults } from '@/hooks/useActivityResults';
 import { useCollapsibleSheet } from '@/hooks/useCollapsibleSheet';
 import { useFitRoute } from '@/hooks/useFitRoute';
 import type { Activity } from '@/types';
+import { recordPins } from '@/utils/activityResults';
 import { ownerSplitPins, routeMarkers } from '@/utils/activityRouteMap';
 import { colorSegments, pointAlongRoute } from '@/utils/colorSegments';
 import { formatTimeOfDay, formatWeekdayDay } from '@/utils/dates';
@@ -76,6 +78,18 @@ export default function ActivitySummaryScreen() {
   const paceSegments = paceStops ? colorSegments(coordinates, paceStops) : null;
   const splitPins = ownerSplitPins(activity?.splits, coordinates, isOwner);
   const insets = useSafeAreaInsets();
+  const results = useActivityResults(activity, isOwner, unitSystem);
+  const resultPins = useMemo(
+    () =>
+      isOwner
+        ? recordPins(
+            results.records.map((r) => r.kind),
+            activity?.stream,
+            coordinates
+          )
+        : [],
+    [isOwner, results.records, activity?.stream, coordinates]
+  );
 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -165,6 +179,7 @@ export default function ActivitySummaryScreen() {
             markers={markers}
             paceSegments={paceSegments ?? undefined}
             splitMarkers={splitPins}
+            resultPins={resultPins}
             onMapReady={() => setMapReady(true)}
             initialBounds={initialBounds}
             initialZoom={14}
@@ -290,6 +305,7 @@ export default function ActivitySummaryScreen() {
             <ActivitySheetBody
               activity={activity}
               detail={detail}
+              results={results}
               onOpenComments={() => setCommentsOpen(true)}
               onShare={() => setShareOpen(true)}
               onFlyover={() => router.push(`/flyover?activityId=${activity.id}`)}

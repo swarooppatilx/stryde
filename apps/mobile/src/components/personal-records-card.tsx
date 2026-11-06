@@ -5,21 +5,10 @@ import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { formatDayYear } from '@/utils/dates';
-import { formatDistance, formatDuration, formatElevation, type UnitSystem } from '@/utils/format';
-import { type PersonalRecord, RECORD_LABEL } from '@/utils/personalRecords';
+import { formatDistance, formatDuration, type UnitSystem } from '@/utils/format';
+import { type PersonalRecord, RECORD_LABEL, recordValueText } from '@/utils/personalRecords';
 import { countOf } from '@/utils/plural';
 import type { WeekBucket } from '@/utils/trainingLog';
-
-function valueText(record: PersonalRecord, unitSystem: UnitSystem): string {
-  switch (record.kind) {
-    case 'longest-distance':
-      return formatDistance(record.value, unitSystem);
-    case 'biggest-climb':
-      return formatElevation(record.value, unitSystem);
-    default:
-      return formatDuration(record.value);
-  }
-}
 
 interface Props {
   records: readonly PersonalRecord[];
@@ -38,7 +27,7 @@ export function PersonalRecordsCard({ records, bestWeek, longestStreak = 0, unit
     <Card style={styles.card}>
       <ThemedText type="sectionTitle">Personal records</ThemedText>
       {records.map((record) => {
-        const value = valueText(record, unitSystem);
+        const value = recordValueText(record, unitSystem);
         const when = formatDayYear(record.at);
         // The next best times, as a quiet line: a record is more meaningful beside what it beat.
         const nextText = record.runnersUp?.map((r) => formatDuration(r.value)).join(', ');

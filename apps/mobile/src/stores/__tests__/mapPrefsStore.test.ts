@@ -131,6 +131,7 @@ describe('layerBadgeCount', () => {
 
   it('counts each overlay that is on, for the badge on the layers button', () => {
     expect(layerBadgeCount({ ...none, showHeatmap: true })).toBe(1);
+    expect(layerBadgeCount({ ...none, showSegments: true })).toBe(1);
     expect(layerBadgeCount({ ...none, showRoutes: true, showBikeLanes: true })).toBe(2);
     expect(
       layerBadgeCount({
@@ -151,6 +152,7 @@ describe('isLayerOn', () => {
       showOthers: true,
       showPoi: false,
       showBikeLanes: true,
+      showSegments: true,
     };
 
     expect(isLayerOn(prefs, 'routes')).toBe(true);
@@ -158,6 +160,7 @@ describe('isLayerOn', () => {
     expect(isLayerOn(prefs, 'others')).toBe(true);
     expect(isLayerOn(prefs, 'poi')).toBe(false);
     expect(isLayerOn(prefs, 'bikeLanes')).toBe(true);
+    expect(isLayerOn(prefs, 'segments')).toBe(true);
   });
 });
 

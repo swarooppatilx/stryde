@@ -4,7 +4,9 @@ import { ActivityActionRow } from '@/components/activity-action-row';
 import { ActivityChartPager } from '@/components/activity-chart-pager';
 import { ActivityDescription } from '@/components/activity-description';
 import { AnalysisCard } from '@/components/activity-detail/analysis-card';
+import { ResultsCard } from '@/components/activity-detail/results-card';
 import { ActivityHeartRateSection } from '@/components/activity-heart-rate-section';
+import { ActivityPaceZonesSection } from '@/components/activity-pace-zones-section';
 import { ActivityPhotos } from '@/components/activity-photos';
 import { ActivityPrivateDetails } from '@/components/activity-private-details';
 import { ActivityProofCard } from '@/components/activity-proof-card';
@@ -30,6 +32,7 @@ import { useGearStore } from '@/stores/gearStore';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Activity } from '@/types';
 import { activityHeadlineStats } from '@/utils/activityHeadline';
+import type { ActivityResults } from '@/utils/activityResults';
 import { explorerTxUrl } from '@/utils/chainProof';
 import { elevationWorthShowing } from '@/utils/elevationWorthShowing';
 import { formatArea, formatDuration } from '@/utils/format';
@@ -54,10 +57,11 @@ interface Props {
     | 'handleCancelEditDescription'
     | 'handleCopy'
     | 'handleDownload'
-    | 'handleExportGpx'
+    | 'handleExport'
     | 'handleDelete'
     | 'goHome'
   >;
+  results: ActivityResults;
   onOpenComments(): void;
   onShare(): void;
   onFlyover(): void;
@@ -69,6 +73,7 @@ interface Props {
 export function ActivitySheetBody({
   activity,
   detail,
+  results,
   onOpenComments,
   onShare,
   onFlyover,
@@ -80,8 +85,17 @@ export function ActivitySheetBody({
   const ownWeightKg = useProfileStore((s) => s.settings.weightKg);
   const { isOwner, coordinates, elevationData } = detail;
   const { routeSaved, toggleSavedRoute } = useSavedRouteToggle(activity);
-  const { bestEfforts, zoneTimes, similar, heldRecords, maxHr, restingHr, hasHeartRate } =
-    useActivityInsights(activity, isOwner);
+  const {
+    bestEfforts,
+    zoneTimes,
+    paceZones,
+    threshold,
+    similar,
+    heldRecords,
+    maxHr,
+    restingHr,
+    hasHeartRate,
+  } = useActivityInsights(activity, isOwner);
 
   const stats = activityHeadlineStats(activity, {
     elevationData,
@@ -128,6 +142,8 @@ export function ActivitySheetBody({
         </ThemedText>
       ) : null}
 
+      <ResultsCard results={results} />
+
       {bestEfforts.length > 0 && (
         <AnalysisCard title="Best efforts">
           <BestEfforts efforts={bestEfforts} unitSystem={unitSystem} />
@@ -159,6 +175,10 @@ export function ActivitySheetBody({
         hasHeartRate={hasHeartRate}
         isOwner={isOwner}
       />
+
+      {threshold && (
+        <ActivityPaceZonesSection zones={paceZones} threshold={threshold} unitSystem={unitSystem} />
+      )}
 
       {splits && (
         <AnalysisCard
@@ -212,7 +232,7 @@ export function ActivitySheetBody({
           onCopy={detail.handleCopy}
           onFlyover={onFlyover}
           onDownload={detail.handleDownload}
-          onExportGpx={detail.handleExportGpx}
+          onExport={detail.handleExport}
           onToggleSavedRoute={toggleSavedRoute}
           onDelete={detail.handleDelete}
         />

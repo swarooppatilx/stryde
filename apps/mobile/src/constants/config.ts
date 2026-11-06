@@ -10,6 +10,8 @@ export const ENV = {
   PRIVY_CLIENT_ID: process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID || '',
   SUBGRAPH_URL: process.env.EXPO_PUBLIC_SUBGRAPH_URL || '',
   API_URL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
+  // The URL above falls back to localhost, so this says whether the app was pointed at a real API.
+  API_CONFIGURED: Boolean(process.env.EXPO_PUBLIC_API_URL),
   API_KEY: process.env.EXPO_PUBLIC_API_KEY || '',
   CHAIN_MODE: (process.env.EXPO_PUBLIC_CHAIN_MODE || DEFAULT_CHAIN_MODE) as ChainMode,
   // Privy smart account (gasless, paymaster-sponsored) for on-chain writes. Remote modes only: local Anvil has no ERC-4337 infra. Set to 'false' to use the raw embedded wallet.
@@ -19,6 +21,8 @@ export const ENV = {
   WORLD_ENVIRONMENT: (process.env.EXPO_PUBLIC_WORLD_ENVIRONMENT || 'sandbox') as WorldIdEnvironment,
   // Public (pk.) token for the Mapbox maps SDK; without it the map shows its offline fallback.
   MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '',
+  // The website that hosts Support, Terms and Privacy; the About rows show only when it is set.
+  WEB_URL: process.env.EXPO_PUBLIC_WEB_URL || '',
 } as const;
 
 export function getLocalRpcUrl(): string {

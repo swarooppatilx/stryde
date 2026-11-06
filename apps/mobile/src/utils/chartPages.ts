@@ -2,7 +2,7 @@ import type { ActivityStream, ActivityType } from '@/types';
 import { plausibleStreamSpeeds } from './activityStream';
 import { nearestIndex } from './chartScrub';
 
-export type ChartPage = 'pace' | 'elevation' | 'heartRate';
+export type ChartPage = 'pace' | 'elevation' | 'heartRate' | 'power';
 
 export interface ElevationSeries {
   /** Metres above sea level. */
@@ -46,6 +46,9 @@ export function chartPages({
   }
   if (elevationSeries(stream, elevations)) pages.push('elevation');
   if (stream?.heartRate && stream.heartRate.bpm.length >= 2) pages.push('heartRate');
+  if (stream?.power && stream.power.w.length >= 2 && Math.max(...stream.power.w) > 0) {
+    pages.push('power');
+  }
   return pages;
 }
 
@@ -69,5 +72,14 @@ export function heartRateScrubTarget(
   index: number | null
 ): number | null {
   const seconds = index === null ? undefined : stream?.heartRate?.t[index];
+  return seconds === undefined || !stream ? null : nearestIndex(stream.t, seconds);
+}
+
+/** The stream point nearest in time to a power reading. */
+export function powerScrubTarget(
+  stream: ActivityStream | undefined,
+  index: number | null
+): number | null {
+  const seconds = index === null ? undefined : stream?.power?.t[index];
   return seconds === undefined || !stream ? null : nearestIndex(stream.t, seconds);
 }

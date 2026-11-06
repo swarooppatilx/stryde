@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
+import { GearParts } from '@/components/gear-parts';
 import { SegmentedChoice } from '@/components/segmented-choice';
 import { Tappable } from '@/components/tappable';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { GEAR_NAME_MAX } from '@/constants/limits';
-import { Spacing } from '@/constants/theme';
+import { Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useGoBack } from '@/hooks/useGoBack';
@@ -18,6 +19,7 @@ import { useGearStore } from '@/stores/gearStore';
 import type { GearKind } from '@/types';
 import { confirmRetire } from '@/utils/confirmRetire';
 import { formatDistance, METERS_PER_MILE } from '@/utils/format';
+import { gearAlertLevel } from '@/utils/gearComponents';
 import { gearMileage } from '@/utils/gearMileage';
 
 const KINDS: { value: GearKind; label: string }[] = [
@@ -78,37 +80,51 @@ export default function GearScreen() {
               activity.
             </ThemedText>
           )}
-          {active.map((g) => (
-            <View
-              key={g.id}
-              style={[
-                styles.row,
-                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-              ]}
-            >
-              <Ionicons
-                name={g.kind === 'bike' ? 'bicycle' : 'footsteps'}
-                size={22}
-                color={theme.textSecondary}
-              />
-              <View style={styles.rowText}>
-                <ThemedText type="headline">{g.name}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {formatDistance(gearMileage(g, activities), unitSystem)}
-                </ThemedText>
-              </View>
-              <Tappable
-                onPress={() => confirmRetire(g.name, () => retireGear(g.id))}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Retire ${g.name}`}
+          {active.map((g) => {
+            const alert = gearAlertLevel(g, activities);
+            return (
+              <View
+                key={g.id}
+                style={[
+                  styles.card,
+                  { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                ]}
               >
-                <ThemedText type="small" themeColor="textSecondary">
-                  Retire
-                </ThemedText>
-              </Tappable>
-            </View>
-          ))}
+                <View style={styles.row}>
+                  <Ionicons
+                    name={g.kind === 'bike' ? 'bicycle' : 'footsteps'}
+                    size={22}
+                    color={theme.textSecondary}
+                  />
+                  <View style={styles.rowText}>
+                    <ThemedText type="headline">{g.name}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {formatDistance(gearMileage(g, activities), unitSystem)}
+                    </ThemedText>
+                    {alert !== 'ok' && (
+                      <ThemedText
+                        type="small"
+                        style={{ color: alert === 'over' ? Brand.danger : theme.warningText }}
+                      >
+                        {alert === 'over' ? 'A part is past its limit' : 'A part is nearly worn'}
+                      </ThemedText>
+                    )}
+                  </View>
+                  <Tappable
+                    onPress={() => confirmRetire(g.name, () => retireGear(g.id))}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Retire ${g.name}`}
+                  >
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Retire
+                    </ThemedText>
+                  </Tappable>
+                </View>
+                <GearParts gear={g} />
+              </View>
+            );
+          })}
 
           <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.addLabel}>
             Add gear
@@ -147,14 +163,12 @@ const styles = StyleSheet.create({
   },
   spacer: { width: 24 },
   scroll: { padding: Spacing.four, gap: Spacing.three },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
+  card: {
     padding: Spacing.three,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   rowText: { flex: 1 },
   addLabel: { marginTop: Spacing.three },
 });

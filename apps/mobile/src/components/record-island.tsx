@@ -18,6 +18,8 @@ interface RecordIslandProps {
   sportLabel: string;
   /** Shown beside the sport, e.g. a weak GPS signal. */
   badge?: ReactNode;
+  /** Shown only while on a segment: its name and the time against your PR or the leader. */
+  segment?: { title: string; detail: string } | null;
   onLock(): void;
   onExpand(): void;
   onLayout(event: LayoutChangeEvent): void;
@@ -33,6 +35,7 @@ export function RecordIsland({
   sportIcon,
   sportLabel,
   badge,
+  segment,
   onLock,
   onExpand,
   onLayout,
@@ -98,6 +101,19 @@ export function RecordIsland({
           );
         })}
       </View>
+      {segment && (
+        <View
+          style={styles.segment}
+          accessible
+          accessibilityLabel={`Segment ${segment.title}. ${segment.detail}`}
+        >
+          <Ionicons name="flag" size={IconSize.inline} color={Brand.primary} />
+          <ThemedText type="caption" numberOfLines={1} style={styles.segmentName}>
+            {segment.title}
+          </ThemedText>
+          <ThemedText type="smallBold">{segment.detail}</ThemedText>
+        </View>
+      )}
       {children}
     </View>
   );
@@ -111,6 +127,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.three,
     gap: Spacing.two,
   },
+  segment: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  segmentName: { flex: 1, minWidth: 0 },
   header: { flexDirection: 'row', alignItems: 'center' },
   headerLeft: {
     flex: 1,

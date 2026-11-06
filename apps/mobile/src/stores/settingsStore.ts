@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { getPlatform } from '@/platform';
-import type { ActivityPrivacy, ActivityType, PrivacyZone } from '@/types';
+import type { ActivityPrivacy, ActivityType, HiddenStat, PrivacyZone } from '@/types';
 import type { AudioCueInterval } from '@/utils/audioCue';
 import {
   DEFAULT_LIVE_STAT_SLOTS,
@@ -13,6 +13,7 @@ import {
 } from '@/utils/liveStats';
 import type { MotionPreference } from '@/utils/motionPreference';
 import { sanitizePreferredSports } from '@/utils/preferredSports';
+import { sanitizeHiddenStats } from '@/utils/privacyDefaults';
 import type { StartTab } from '@/utils/startTab';
 import { asyncStorageAdapter, isoDateReviver } from '@/utils/storage';
 import type { WeekStartDay } from '@/utils/trainingLog';
@@ -71,6 +72,12 @@ interface SettingsState {
   accuracyMode: AccuracyMode;
   /** Leave the first and last stretch out of the route other people can see. */
   hideRouteEnds: boolean;
+  /** A new activity starts with its route map hidden from others; the save form can still change it. */
+  defaultHideRoute: boolean;
+  /** Figures a new activity starts with hidden from others. */
+  defaultHiddenStats: HiddenStat[];
+  /** A new activity starts muted from Home and club feeds. */
+  defaultMutedFromFeeds: boolean;
   /** Who can see a new activity unless the athlete picks otherwise when saving it. */
   defaultPrivacy: ActivityPrivacy;
   /** The tab the app opens on at launch. */
@@ -112,6 +119,9 @@ interface SettingsState {
   setAccuracyMode: (mode: AccuracyMode) => void;
   setHideRouteEnds: (enabled: boolean) => void;
   setDefaultPrivacy: (privacy: ActivityPrivacy) => void;
+  setDefaultHideRoute: (enabled: boolean) => void;
+  setDefaultHiddenStat: (stat: HiddenStat, hidden: boolean) => void;
+  setDefaultMutedFromFeeds: (enabled: boolean) => void;
   setStartTab: (tab: StartTab) => void;
   setWeekStartsOn: (day: WeekStartDay) => void;
   setMotion: (motion: MotionPreference) => void;
@@ -136,6 +146,9 @@ const INITIAL_STATE = {
   // 1 s fixes: coarser sampling made distance and pace noticeably worse on winding routes.
   accuracyMode: 'best' as AccuracyMode,
   hideRouteEnds: false,
+  defaultHideRoute: false,
+  defaultHiddenStats: [] as HiddenStat[],
+  defaultMutedFromFeeds: false,
   defaultPrivacy: 'everyone' as ActivityPrivacy,
   startTab: 'index' as StartTab,
   weekStartsOn: 0 as WeekStartDay,
@@ -164,6 +177,16 @@ export const useSettingsStore = create<SettingsState>()(
       setAccuracyMode: (mode) => set({ accuracyMode: mode }),
       setHideRouteEnds: (enabled) => set({ hideRouteEnds: enabled }),
       setDefaultPrivacy: (privacy) => set({ defaultPrivacy: privacy }),
+      setDefaultHideRoute: (enabled) => set({ defaultHideRoute: enabled }),
+      setDefaultHiddenStat: (stat, hidden) =>
+        set((state) => ({
+          defaultHiddenStats: sanitizeHiddenStats(
+            hidden
+              ? [...state.defaultHiddenStats, stat]
+              : state.defaultHiddenStats.filter((s) => s !== stat)
+          ),
+        })),
+      setDefaultMutedFromFeeds: (enabled) => set({ defaultMutedFromFeeds: enabled }),
       setStartTab: (tab) => set({ startTab: tab }),
       setWeekStartsOn: (day) => set({ weekStartsOn: day }),
       setMotion: (motion) => set({ motion }),
@@ -196,7 +219,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: '@stryde/settings',
-      version: 12,
+      version: 13,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as Record<string, unknown>;
@@ -246,6 +269,14 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version < 12) {
           state = { ...state, verboseTrackingLog: true };
+        }
+        if (version < 13) {
+          state = {
+            ...state,
+            defaultHideRoute: false,
+            defaultHiddenStats: [],
+            defaultMutedFromFeeds: false,
+          };
         }
         return state;
       },
