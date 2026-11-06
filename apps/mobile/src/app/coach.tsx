@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
 import { CoachPlanCard } from '@/components/coach-plan-card';
+import { CoachRequestsPanel } from '@/components/coach-requests-panel';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -207,6 +208,7 @@ export default function CoachScreen() {
           )}
 
           {!status?.banned && <CoachPlanCard auth={auth} />}
+          {!status?.banned && <CoachRequestsPanel auth={auth} />}
 
           {loadError && (
             <Card style={styles.card}>

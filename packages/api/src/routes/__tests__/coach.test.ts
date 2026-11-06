@@ -13,7 +13,7 @@ vi.mock('../../lib/relayer.js', () => ({
 import { CoachBudget } from '../../lib/coach.js';
 import { banHuman, humanSessionMessage } from '../../lib/humanPass.js';
 import { store } from '../../lib/store.js';
-import { coach, resetCoachBudget } from '../coach.js';
+import { coach, resetCoachBudget, resetCoachRequestLog } from '../coach.js';
 import { humanPass } from '../humanPass.js';
 
 const athlete = privateKeyToAccount(generatePrivateKey());
@@ -50,6 +50,10 @@ function routerReply(body: unknown, requestId = 'req_test', status = 200) {
 
 let headers: Record<string, string>;
 
+function get(path: string, as: Record<string, string> = headers) {
+  return coach.request(path, { method: 'GET', headers: as });
+}
+
 function post(path: string, body: unknown, as: Record<string, string> = headers) {
   return coach.request(path, { method: 'POST', headers: as, body: JSON.stringify(body) });
 }
@@ -59,6 +63,7 @@ describe('coach routes', () => {
 
   beforeEach(async () => {
     store.reset();
+    resetCoachRequestLog();
     headers = await sessionHeaders();
     process.env.ZEROG_API_KEY = 'sk-test';
     process.env.ZEROG_CHAT_MODEL = '0gm-1.0-35b-a3b';
@@ -236,6 +241,128 @@ describe('coach routes', () => {
     expect(res.status).toBe(200);
     const sent = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(JSON.stringify(sent.messages)).not.toContain('Facts:');
+  });
+
+  describe('GET /requests', () => {
+    type Log = { requests: { kind: string; calls: { requestId: string; trustMode: string }[] }[] };
+    const planReply = () =>
+      routerReply(
+        {
+          choices: [
+            {
+              message: {
+                content:
+                  '{"title":"Rest","type":"rest","effort":"rest","steps":[{"label":"Rest","detail":"Off"}]}',
+              },
+            },
+          ],
+          x_0g_trace: { request_id: 'trace_plan', tee_verified: true },
+        },
+        'gw, req_plan'
+      );
+
+    it("lists the athlete's own 0G request ids, newest first", async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () => planReply())
+      );
+      resetCoachBudget(new CoachBudget({ plan: 5, poster: 1, debrief: 1, review: 1 }));
+      await post('/plan', { history: [] });
+      await post('/plan', { history: [] });
+
+      const res = await get('/requests');
+      const body = (await res.json()) as Log;
+      expect(res.status).toBe(200);
+      expect(body.requests).toHaveLength(2);
+      expect(body.requests[0]).toMatchObject({
+        kind: 'plan',
+        calls: [{ requestId: 'trace_plan', trustMode: 'verified', teeVerified: true }],
+      });
+    });
+
+    it("never shows one athlete another athlete's requests", async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () => planReply())
+      );
+      await post('/plan', { history: [] });
+      const otherHeaders = await sessionHeaders(other);
+      expect(((await (await get('/requests', otherHeaders)).json()) as Log).requests).toEqual([]);
+      expect(((await (await get('/requests')).json()) as Log).requests).toHaveLength(1);
+    });
+
+    it('needs a session', async () => {
+      const res = await get('/requests', { 'content-type': 'application/json' });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: 'session_required' });
+    });
+
+    it('does not log a call that failed', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () => routerReply({ error: { message: 'no' } }, 'r', 402))
+      );
+      expect((await post('/plan', { history: [] })).status).toBe(402);
+      expect(((await (await get('/requests')).json()) as Log).requests).toEqual([]);
+    });
+
+    it('logs both calls of a plan that needed a retry, with the adjusted flag', async () => {
+      const heavy = {
+        week: { km: 20, minutes: 130, runs: 4 },
+        lastWeek: { km: 20, minutes: 130, runs: 4 },
+        longestKm14: 10,
+        daysSinceHard: 5,
+        hardDays7: 1,
+      };
+      const long = () =>
+        routerReply(
+          {
+            choices: [
+              {
+                message: {
+                  content:
+                    '{"title":"Run","type":"easy","distanceKm":9,"durationMin":54,"effort":"easy","steps":[{"label":"Run","detail":"9 km"}]}',
+                },
+              },
+            ],
+          },
+          'req_long'
+        );
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () => long())
+      );
+      await post('/plan', { history: [], facts: heavy });
+      const body = (await (await get('/requests')).json()) as {
+        requests: { adjusted: boolean; calls: unknown[] }[];
+      };
+      expect(body.requests[0]?.calls).toHaveLength(2);
+      expect(body.requests[0]?.adjusted).toBe(true);
+    });
+
+    it('logs reviews and posters under their own kind', async () => {
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith('/images/generations')) {
+          return routerReply({ data: [{ b64_json: 'AAAA' }], x_0g_trace: { request_id: 'img' } });
+        }
+        return routerReply({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"headline":"Solid","summary":"Good run.","improve":[{"focus":"Cadence","tip":"Quicker steps"}]}',
+              },
+            },
+          ],
+          x_0g_trace: { request_id: 'rev' },
+        });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      expect((await post('/review', { activity: RUN, history: [] })).status).toBe(200);
+      expect((await post('/poster', { activity: RUN })).status).toBe(200);
+      const kinds = ((await (await get('/requests')).json()) as Log).requests.map((r) => r.kind);
+      expect(kinds).toEqual(['poster', 'review']);
+    });
   });
 
   describe('plan safety rules', () => {

@@ -85,3 +85,13 @@ describe('shortRequestId', () => {
     expect(coach.shortRequestId(null)).toBe('no id');
   });
 });
+
+describe('request log', () => {
+  it('reads the log under the wallet session', async () => {
+    humanFetch.mockResolvedValue({ requests: [] });
+    expect(await coach.listCoachRequests(auth)).toEqual({ requests: [] });
+    expect(call()[0]).toBe(auth);
+    expect(call()[1]).toBe('/coach/requests');
+    expect(call()[2]).toBeUndefined();
+  });
+});

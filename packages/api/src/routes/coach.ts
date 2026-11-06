@@ -18,6 +18,7 @@ import {
   toVitals,
 } from '../lib/coach.js';
 import { parseFacts } from '../lib/coachFacts.js';
+import { CoachRequestLog } from '../lib/coachRequests.js';
 import { checkPlan } from '../lib/coachRules.js';
 import { isWalletBanned, resolveHumanSession } from '../lib/humanPass.js';
 import { logError } from '../lib/logError.js';
@@ -40,6 +41,13 @@ export function resetCoachBudget(next: CoachBudget = CoachBudget.fromEnv()): voi
   budget = next;
 }
 
+let requestLog = new CoachRequestLog();
+
+/** Tests start each case with an empty request log. */
+export function resetCoachRequestLog(): void {
+  requestLog = new CoachRequestLog();
+}
+
 const MAX_HISTORY = 14;
 // ~4 MB of audio as base64: comfortably over a 60 s voice note.
 const MAX_AUDIO_BASE64 = 5_600_000;
@@ -58,23 +66,27 @@ type Guarded =
   | { ok: true; wallet: string; body: Record<string, unknown> }
   | { ok: false; response: Response };
 
-async function guard(c: Context, feature: CoachFeature): Promise<Guarded> {
+/** The wallet the request proved it holds, or the 401 / 403 to answer with. */
+function sessionWallet(c: Context): { wallet: string } | { response: Response } {
   // The wallet is proven by the signed session, never taken from the body: otherwise anyone
   // holding the API key could spend another athlete's daily allowance.
   const wallet = resolveHumanSession(c.req.header('authorization'));
   if (!wallet) {
     c.header('WWW-Authenticate', 'Bearer error="invalid_token"');
     return {
-      ok: false,
       response: c.json({ error: 'Sign in with your wallet first', code: 'session_required' }, 401),
     };
   }
   if (isWalletBanned(wallet)) {
-    return {
-      ok: false,
-      response: c.json({ error: 'This athlete is suspended from Stryde.' }, 403),
-    };
+    return { response: c.json({ error: 'This athlete is suspended from Stryde.' }, 403) };
   }
+  return { wallet };
+}
+
+async function guard(c: Context, feature: CoachFeature): Promise<Guarded> {
+  const session = sessionWallet(c);
+  if ('response' in session) return { ok: false, response: session.response };
+  const { wallet } = session;
   if (!zeroGConfigured()) {
     return { ok: false, response: c.json({ error: 'The AI coach is not configured' }, 503) };
   }
@@ -109,6 +121,13 @@ function failure(c: Context, error: unknown, where: string) {
   }
   return c.json({ error: 'The coach could not finish that. Try again.' }, 502);
 }
+
+/** The caller's own 0G request log: request IDs, models, TEE result and cost. Never anyone else's. */
+coach.get('/requests', (c) => {
+  const session = sessionWallet(c);
+  if ('response' in session) return session.response;
+  return c.json({ requests: requestLog.list(session.wallet) });
+});
 
 coach.post('/plan', async (c) => {
   const g = await guard(c, 'plan');
@@ -179,6 +198,7 @@ coach.post('/plan', async (c) => {
     console.info(
       `[coach] plan ${g.wallet.slice(0, 8)} via ${first.receipt.model} req=${receipts.map((r) => r.requestId).join(',')}${adjusted.length ? ' adjusted' : ''}`
     );
+    requestLog.record(g.wallet, 'plan', receipts, { adjusted: adjusted.length > 0 });
     return c.json({
       plan,
       date: today,
@@ -229,6 +249,7 @@ coach.post('/review', async (c) => {
     console.info(
       `[coach] review ${g.wallet.slice(0, 8)} via ${receipt.model} req=${receipt.requestId}`
     );
+    requestLog.record(g.wallet, 'review', [receipt]);
     return c.json({
       review,
       zeroG: [receipt],
@@ -276,6 +297,7 @@ coach.post('/poster', async (c) => {
     console.info(
       `[coach] poster ${g.wallet.slice(0, 8)} style=${style} via ${image.receipt.model} req=${image.receipt.requestId}`
     );
+    requestLog.record(g.wallet, 'poster', receipts);
     return c.json({
       imageBase64: image.base64,
       mimeType: image.mimeType,
@@ -329,6 +351,7 @@ coach.post(
       console.info(
         `[coach] debrief ${g.wallet.slice(0, 8)} stt=${heard.receipt.requestId} note=${note.receipt.requestId}`
       );
+      requestLog.record(g.wallet, 'debrief', [heard.receipt, note.receipt]);
       return c.json({
         transcript: heard.text,
         debrief,

@@ -1,6 +1,7 @@
 import { getPlatform } from '@/platform';
 import { type HumanAuth, humanFetch } from '@/services/humanPassService';
 import type { CoachFacts } from '@/utils/coachFacts';
+import type { CoachRequestEntry } from '@/utils/coachRequests';
 import type { CoachRun, CoachVitals } from '@/utils/coachRun';
 
 /** One inference on 0G Private Computer, as the router billed it. */
@@ -147,6 +148,11 @@ export async function requestDebrief(
     body: JSON.stringify({ activity, audioBase64, mimeType: 'audio/m4a' }),
   });
   return { transcript: body.transcript, debrief: body.debrief, receipts: body.zeroG };
+}
+
+/** The athlete's own 0G request log: request IDs, models, TEE result and cost. */
+export function listCoachRequests(auth: HumanAuth) {
+  return humanFetch<{ requests: CoachRequestEntry[] }>(auth, '/coach/requests');
 }
 
 /** `req_8f21…c3d4`: enough of the request id to look it up, short enough for a caption. */
