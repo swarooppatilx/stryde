@@ -166,4 +166,17 @@ describe('HumanPresenceStore', () => {
       /another account/
     );
   });
+
+  it('refuses a Proof of Human that already stepped up another pass, even on a pass that has stepped up', () => {
+    const store = new HumanPresenceStore();
+    store.enroll({ wallet: WALLET, sessionId: SESSION, nullifier: '1', sybilScore: 8, now: 1 });
+    store.enroll({ wallet: OTHER, sessionId: 'session_b', nullifier: '2', sybilScore: 8, now: 1 });
+    store.recordStepUp({ wallet: WALLET, nullifier: '0x99', now: 2 });
+    store.recordStepUp({ wallet: OTHER, nullifier: '0x77', now: 2 });
+    expect(() => store.recordStepUp({ wallet: OTHER, nullifier: '0x99', now: 3 })).toThrow(
+      /another account/
+    );
+    // The same human may refresh their own pass.
+    expect(() => store.recordStepUp({ wallet: WALLET, nullifier: '0x99', now: 4 })).not.toThrow();
+  });
 });

@@ -150,6 +150,8 @@ interface Snapshot {
   tickets: PresenceTicket[];
   sessionNullifiers: string[];
   stepUpNullifiers: string[];
+  /** Which pass each Proof of Human nullifier stepped up; absent in snapshots saved before this was recorded. */
+  stepUpOwners?: Record<string, Address>;
 }
 
 /** Holds passes and tickets in memory, mirrored to a JSON file when one is given. */
@@ -158,7 +160,8 @@ export class HumanPresenceStore {
   private walletByNullifier = new Map<string, Address>();
   private tickets = new Map<string, PresenceTicket>();
   private sessionNullifiers = new Set<string>();
-  private stepUpNullifiers = new Set<string>();
+  /** Proof of Human nullifier -> the pass it stepped up; null when saved before owners were recorded. */
+  private stepUpNullifiers = new Map<string, Address | null>();
 
   constructor(private readonly file: string | null = null) {
     if (file) this.load(file);
@@ -264,13 +267,17 @@ export class HumanPresenceStore {
     const pass = this.getPass(input.wallet);
     if (!pass) throw new PresenceError('no_pass', 'Get your Athlete Pass first.');
     const key = toDecimal(input.nullifier);
-    if (this.stepUpNullifiers.has(key) && !pass.steppedUpAt) {
+    const owner = this.stepUpNullifiers.get(key);
+    // An owner from before owners were recorded can only be told apart by the pass having stepped up.
+    const legacy = owner === null && !pass.steppedUpAt;
+    const taken = legacy || (owner !== undefined && owner !== null && owner !== pass.wallet);
+    if (taken) {
       throw new PresenceError(
         'step_up_taken',
         'This Proof of Human already vouches for another account.'
       );
     }
-    this.stepUpNullifiers.add(key);
+    this.stepUpNullifiers.set(key, pass.wallet);
     pass.steppedUpAt = input.now;
     this.save();
     return pass;
@@ -291,7 +298,9 @@ export class HumanPresenceStore {
       this.tickets.set(ticketKey(ticket.wallet, ticket.activityHash), ticket);
     }
     for (const n of snapshot.sessionNullifiers ?? []) this.sessionNullifiers.add(n);
-    for (const n of snapshot.stepUpNullifiers ?? []) this.stepUpNullifiers.add(n);
+    for (const n of snapshot.stepUpNullifiers ?? []) {
+      this.stepUpNullifiers.set(n, snapshot.stepUpOwners?.[n] ?? null);
+    }
   }
 
   private save() {
@@ -300,7 +309,10 @@ export class HumanPresenceStore {
       passes: [...this.passes.values()],
       tickets: [...this.tickets.values()],
       sessionNullifiers: [...this.sessionNullifiers],
-      stepUpNullifiers: [...this.stepUpNullifiers],
+      stepUpNullifiers: [...this.stepUpNullifiers.keys()],
+      stepUpOwners: Object.fromEntries(
+        [...this.stepUpNullifiers].filter((entry): entry is [string, Address] => entry[1] !== null)
+      ),
     };
     try {
       mkdirSync(dirname(this.file), { recursive: true });
