@@ -8032,6 +8032,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-battery@npm:~57.0.3":
+  version: 57.0.3
+  resolution: "expo-battery@npm:57.0.3"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+  checksum: 10c0/a84d82ff5bb7ef2d33c76a51caca2f6c3e5ef8ddcd332ad6b92e53dd3486a6f2c27d2c8bc7da5d9d953a78e0bdee4cd1f7f15ac6867d4f47e1e5a5cec8632dc5
+  languageName: node
+  linkType: hard
+
 "expo-blur@npm:57.0.2":
   version: 57.0.2
   resolution: "expo-blur@npm:57.0.2"
@@ -12215,6 +12225,7 @@ __metadata:
     expo: "npm:~57.0.20"
     expo-apple-authentication: "npm:~57.0.1"
     expo-application: "npm:^57.0.2"
+    expo-battery: "npm:~57.0.3"
     expo-blur: "npm:57.0.2"
     expo-build-properties: "npm:~57.0.17"
     expo-clipboard: "npm:~57.0.1"
@@ -12248,6 +12259,7 @@ __metadata:
     react: "catalog:"
     react-dom: "catalog:"
     react-native: "npm:0.86.3"
+    react-native-ble-plx: "npm:3.5.1"
     react-native-gesture-handler: "npm:~2.32.0"
     react-native-get-random-values: "npm:~1.11.0"
     react-native-health-connect: "npm:4.1.3"
@@ -13652,6 +13664,16 @@ __metadata:
   version: 19.2.8
   resolution: "react-is@npm:19.2.8"
   checksum: 10c0/ed5322c84efe035c8fc814b1614ff5ca7fb8c2872a7c045197daf99f9b1bd68f32a2c79ffcbcfcff2fc5d93924ff9f9447400898f5b1534e6302bb0736a257f0
+  languageName: node
+  linkType: hard
+
+"react-native-ble-plx@npm:3.5.1":
+  version: 3.5.1
+  resolution: "react-native-ble-plx@npm:3.5.1"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/a49f50e0d76cede43836d82c422e022eb2f9f4895416c5a739eaecce122d50950e3f93030c02c4a9c10bd9962735e3927c19ec6b75f878296cc98937b56a31c1
   languageName: node
   linkType: hard
 
