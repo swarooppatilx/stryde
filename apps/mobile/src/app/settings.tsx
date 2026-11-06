@@ -155,6 +155,17 @@ export default function SettingsListScreen() {
           }
         />
         <SettingsRow
+          icon="bug-outline"
+          title="Verbose tracking log"
+          extra={
+            <Switch
+              checked={settings.verboseTrackingLog}
+              onChange={settings.setVerboseTrackingLog}
+              color={theme.brand.primary}
+            />
+          }
+        />
+        <SettingsRow
           icon="lock-closed-outline"
           title="Private route archive"
           extra={

@@ -32,6 +32,10 @@ export interface ClassifyOptions {
   consecutiveTeleports: number;
   /** The accepted fix before `previous`, which gives the speed the athlete was already going. */
   beforePrevious?: Location;
+  /** Overrides MIN_STEP_M, for tracks that are filtered before they are stored. */
+  minStepM?: number;
+  /** Overrides MIN_FIX_INTERVAL_MS, likewise. */
+  minIntervalMs?: number;
 }
 
 /**
@@ -43,7 +47,13 @@ export interface ClassifyOptions {
 export function classifyFix(
   fix: Location,
   previous: Location | undefined,
-  { maxSpeedMs, consecutiveTeleports, beforePrevious }: ClassifyOptions
+  {
+    maxSpeedMs,
+    consecutiveTeleports,
+    beforePrevious,
+    minStepM = MIN_STEP_M,
+    minIntervalMs = MIN_FIX_INTERVAL_MS,
+  }: ClassifyOptions
 ): FixClass {
   if (fix.timestamp < MIN_PLAUSIBLE_FIX_TIME_MS) return 'ignore-clock';
   if (fix.accuracy > MAX_FIX_ACCURACY_M) return 'ignore-accuracy';
@@ -58,7 +68,7 @@ export function classifyFix(
     fix.latitude,
     fix.longitude
   );
-  if (meters < MIN_STEP_M || seconds * 1000 < MIN_FIX_INTERVAL_MS) return 'ignore-jitter';
+  if (meters < minStepM || seconds * 1000 < minIntervalMs) return 'ignore-jitter';
 
   const implied = meters / seconds;
   const tooFast = implied > maxSpeedMs;

@@ -35,6 +35,7 @@ import { isTooShort, MIN_GPS_DISTANCE_M } from '@/utils/minimumRun';
 import { LIVE_SPEED_STALE_MS, recentMovement } from '@/utils/recentMovement';
 import { downsampleRoute, type RoutePoint } from '@/utils/route';
 import { computeSplits } from '@/utils/splits';
+import { isTrackTraceOn, trackTrace } from '@/utils/trackTrace';
 import { ensureForegroundLocation } from './locationPermission';
 import { territoryService } from './territoryService';
 import { getTimeToIndexed } from './timeToIndexed';
@@ -159,7 +160,17 @@ export interface TrackingSessionDeps {
   clock: Clock;
   /** Told once at the finish how many fixes the recording ignored, by reason. */
   recordRejections?: (counts: FixRejections) => void;
+  /**
+   * Read the background recorder's fixes while recording, not only after it: phones often give the foreground watcher
+   * a fix every 3 s while the background service gets one a second.
+   */
+  liveBackground?: boolean;
 }
+
+/** Fixes wait this long (ms) so both sources' fixes can be put in time order before the track sees them. */
+const REORDER_MS = 2500;
+/** Two fixes this close in time (ms) are the same reading delivered twice. */
+const SAME_FIX_MS = 300;
 
 const IDLE_SNAPSHOT: SessionSnapshot = {
   status: 'idle',
@@ -233,6 +244,11 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
   let stepSamples: StepSample[] = [];
   /** How many tracker locations are already in `route` (route itself gets thinned). */
   let knownCount = 0;
+  /** Fixes waiting to enter the track in time order, with the pedometer total when each was taken. */
+  let pending: { fix: Location; steps?: number }[] = [];
+  /** Newest fix handed to the tracker from the queue. */
+  let released = 0;
+  let pulling = false;
 
   let snapshot = IDLE_SNAPSHOT;
   let liveSplits: { finished: number; list: Split[] } = { finished: 0, list: [] };
@@ -370,16 +386,95 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     stepSamples = [];
     liveSplits = { finished: 0, list: [] };
     spokenHalves = 0;
+    pending = [];
+    released = 0;
   }
 
+  const merging = () => deps.liveBackground === true && !backgroundOff;
+
+  /** The pedometer total at a past moment, from the per-tick samples; undefined before the first. */
+  function stepsAt(timestamp: number): number | undefined {
+    for (let i = stepSamples.length - 1; i >= 0; i--) {
+      const sample = stepSamples[i] as StepSample;
+      if (sample.t <= timestamp) return sample.steps;
+    }
+    return undefined;
+  }
+
+  function enqueue(fix: Location, steps?: number): void {
+    if (fix.timestamp <= released) return;
+    const twin = pending.findIndex((p) => Math.abs(p.fix.timestamp - fix.timestamp) < SAME_FIX_MS);
+    if (twin >= 0) {
+      const kept = pending[twin] as { fix: Location; steps?: number };
+      if (fix.accuracy < kept.fix.accuracy) pending[twin] = { fix, steps: kept.steps ?? steps };
+      return;
+    }
+    pending.push({ fix, steps });
+  }
+
+  /** Hands the tracker every queued fix taken at or before `cutoff`, oldest first. */
+  function release(cutoff: number): boolean {
+    if (pending.length === 0) return false;
+    pending.sort((a, b) => a.fix.timestamp - b.fix.timestamp);
+    let count = 0;
+    while (
+      count < pending.length &&
+      (pending[count] as { fix: Location }).fix.timestamp <= cutoff
+    ) {
+      const { fix, steps } = pending[count] as { fix: Location; steps?: number };
+      tracking.addLocation(fix, steps);
+      released = fix.timestamp;
+      count++;
+    }
+    pending = pending.slice(count);
+    return count > 0;
+  }
+
+  /** Moves what the background recorder buffered into the queue. */
+  async function pullBackground(): Promise<void> {
+    if (pulling || !merging() || status === 'idle') return;
+    pulling = true;
+    try {
+      const buffered = await background.peek();
+      if (buffered.length === 0) return;
+      await background.clear();
+      for (const fix of buffered) enqueue(fix, stepsAt(fix.timestamp));
+    } catch (error) {
+      logger.warn('[TrackingSession] Reading background fixes failed', error);
+    } finally {
+      pulling = false;
+    }
+  }
+
+  /**
+   * Fixes only extend the track every few meters, so the distance alone climbs in 3-5 m jumps. The steps taken since
+   * the last point fill the gap until the next fix measures it; the figure never steps back while recording.
+   */
   function measure(): void {
-    distance = options?.useGyroscope ? tracking.getInterpolatedDistance() : tracking.getDistance();
+    const tracked = options?.useGyroscope
+      ? tracking.getInterpolatedDistance()
+      : tracking.getDistance();
+    const stepping =
+      status === 'tracking' && options !== null && MOTION_PAUSE_SPORTS.has(options.activityType);
+    const live = stepping ? tracked + tracking.getInterpolatedStepDistance() : tracked;
+    distance = status === 'idle' ? live : Math.max(distance, live);
     duration = tracking.getDuration();
   }
 
   /** Adds locations the tracker accepted since the last check to the route, polygon and start marker. */
   function absorbNewLocations(): boolean {
     const kept = tracking.getLocations();
+    const first = kept[0];
+    // The tracker swaps a single starting fix for a sharper one; redraw the start from it.
+    if (kept.length === 1 && knownCount === 1 && first) {
+      const start: RoutePoint = [first.longitude, first.latitude];
+      const drawn = route[0];
+      if (drawn && (drawn[0] !== start[0] || drawn[1] !== start[1])) {
+        route = [start];
+        startLocation = start;
+        return true;
+      }
+    }
     if (kept.length <= knownCount) {
       knownCount = kept.length;
       return false;
@@ -387,7 +482,6 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     const added = kept.slice(knownCount).map((p): RoutePoint => [p.longitude, p.latitude]);
     route = downsampleRoute([...route, ...added]);
     knownCount = kept.length;
-    const first = kept[0];
     if (first) startLocation ??= [first.longitude, first.latitude];
     polygon = territory.getEnclosedPolygon(kept);
     return true;
@@ -485,7 +579,12 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
   }
 
   function onFix(fix: Location): void {
-    tracking.addLocation(fix);
+    if (merging()) {
+      enqueue(fix, motionRunning ? deps.motion.getStepCount() : undefined);
+      release(deps.clock.now() - REORDER_MS);
+    } else {
+      tracking.addLocation(fix);
+    }
     lastFix = fix;
     syncStatusFromTracker();
     absorbNewLocations();
@@ -496,11 +595,16 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
 
   async function drainBackground(): Promise<void> {
     const buffered = await background.peek();
-    if (buffered.length === 0) return;
-    for (const point of [...buffered].sort((a, b) => a.timestamp - b.timestamp)) {
-      tracking.addLocation(point);
+    if (buffered.length === 0 && pending.length === 0) return;
+    if (deps.liveBackground) {
+      for (const fix of buffered) enqueue(fix, stepsAt(fix.timestamp));
+      release(Number.POSITIVE_INFINITY);
+    } else {
+      for (const point of [...buffered].sort((a, b) => a.timestamp - b.timestamp)) {
+        tracking.addLocation(point);
+      }
     }
-    await background.clear();
+    if (buffered.length > 0) await background.clear();
     syncStatusFromTracker();
     absorbNewLocations();
   }
@@ -593,6 +697,13 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         applyMotion();
         measure();
         emit();
+        trackTrace('start', {
+          sport: startOptions.activityType,
+          mode: startOptions.accuracyMode,
+          intervalMs: startOptions.timeIntervalMs,
+          assist: startOptions.useGyroscope,
+          autoPause: startOptions.autoPause,
+        });
         return { ok: true };
       } finally {
         starting = false;
@@ -612,6 +723,8 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
 
     async pause() {
       haptics.impactMedium();
+      release(Number.POSITIVE_INFINITY);
+      absorbNewLocations();
       await tracking.pauseTracking();
       stopWatching();
       background
@@ -689,6 +802,17 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       };
 
       const finishedSport = options?.activityType;
+      const rejected = tracking.getRejections();
+      trackTrace('finish', {
+        dist: distance,
+        gpsOnly: tracking.getDistance(),
+        durationMs: duration,
+        fixes: locations.length,
+        stepPoints: tracking.getAllLocations().length - locations.length,
+        rejAcc: rejected.accuracy,
+        rejJitter: rejected.duplicate,
+        rejJump: rejected.speed + rejected.acceleration,
+      });
       announceAction('finish');
       const result = await tracking.stopTracking();
       resetView();
@@ -721,6 +845,16 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     tick() {
       if (status === 'idle') return;
       const before = { status, distance, duration };
+      if (merging()) {
+        if (release(deps.clock.now() - REORDER_MS)) absorbNewLocations();
+        void pullBackground().then(() => {
+          if (!release(deps.clock.now() - REORDER_MS)) return;
+          syncStatusFromTracker();
+          absorbNewLocations();
+          measure();
+          emit();
+        });
+      }
       if (status === 'tracking') tracking.checkSignalLoss();
       syncStatusFromTracker();
       if (status === 'tracking' && options?.useGyroscope) {
@@ -740,6 +874,17 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         stepSamples.push({ t: Date.now(), steps: deps.motion.getStepCount() });
       }
       measure();
+      if (isTrackTraceOn()) {
+        trackTrace('tick', {
+          t: duration,
+          status,
+          dist: distance,
+          stepAhead: tracking.getInterpolatedStepDistance(),
+          steps: motionRunning ? deps.motion.getStepCount() : null,
+          fixes: tracking.getLocations().length,
+          sinceFix: lastFix ? deps.clock.now() - lastFix.timestamp : null,
+        });
+      }
       const changed =
         status !== before.status || distance !== before.distance || duration !== before.duration;
       if (changed || (status === 'tracking' && options?.useGyroscope)) emit();
@@ -767,6 +912,7 @@ export const trackingSession: TrackingSession = lazyService((platform) =>
     screenAwake: platform.screenAwake,
     ensureLocationPermission: ensureForegroundLocation,
     clock: platform.clock,
+    liveBackground: true,
     recordRejections: (counts) => getTimeToIndexed().log.record('record.rejections', { counts }),
   })
 );

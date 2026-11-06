@@ -94,6 +94,9 @@ interface SettingsState {
   privateRoutes: boolean;
   /** Read heart rate/steps from Health Connect or HealthKit after each activity. */
   healthData: boolean;
+  /** Log every GPS fix, step count and pause decision while recording, for diagnosing tracking. */
+  verboseTrackingLog: boolean;
+  setVerboseTrackingLog: (enabled: boolean) => void;
   setLiveBeacon: (enabled: boolean) => void;
   setPrivateRoutes: (enabled: boolean) => void;
   setHealthData: (enabled: boolean) => void;
@@ -140,6 +143,7 @@ const INITIAL_STATE = {
   liveBeacon: false,
   privateRoutes: false,
   healthData: false,
+  verboseTrackingLog: true,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -181,12 +185,13 @@ export const useSettingsStore = create<SettingsState>()(
       setLiveBeacon: (enabled) => set({ liveBeacon: enabled }),
       setPrivateRoutes: (enabled) => set({ privateRoutes: enabled }),
       setHealthData: (enabled) => set({ healthData: enabled }),
+      setVerboseTrackingLog: (enabled) => set({ verboseTrackingLog: enabled }),
       // Keeps `hasOnboarded`: it is not a preference, and clearing it would send a returning user back through the first-run carousel.
       reset: () => set({ ...INITIAL_STATE, hasOnboarded: get().hasOnboarded }),
     }),
     {
       name: '@stryde/settings',
-      version: 11,
+      version: 12,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as Record<string, unknown>;
@@ -233,6 +238,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version < 11) {
           state = { ...state, liveBeacon: false, privateRoutes: false, healthData: false };
+        }
+        if (version < 12) {
+          state = { ...state, verboseTrackingLog: true };
         }
         return state;
       },

@@ -647,3 +647,110 @@ describe('TrackingService rejection telemetry', () => {
     expect(service.getRejections().accuracy).toBe(0);
   });
 });
+
+describe('TrackingService on a walk', () => {
+  /** A walk north at `speed` m/s with a fix each second and two steps per second on the pedometer. */
+  function walk(seconds: number, speed = 1.3, fromS = 0) {
+    for (let s = fromS; s < fromS + seconds; s++) {
+      platform.motion.steps = s * 2;
+      feed(loc(s * 1000, LAT + latOffset(s * speed), LNG));
+    }
+  }
+
+  beforeEach(async () => {
+    service.setUseGyroscope(true);
+    service.setMaxSpeed(10);
+    await service.stopTracking();
+    await service.startTracking('walk');
+  });
+
+  it('adds no step-estimated points while fixes keep coming', () => {
+    walk(60);
+    platform.motion.steps += 2;
+    platform.clock.advance(500);
+
+    expect(service.generateInterpolatedPoint()).toBeNull();
+  });
+
+  it('keeps the distance at walking pace with the step assist on', () => {
+    walk(120);
+    for (let i = 0; i < 3; i++) {
+      const point = service.generateInterpolatedPoint();
+      if (point) service.addInterpolatedLocation(point);
+    }
+
+    const perSecond = service.getInterpolatedDistance() / 119;
+    expect(perSecond).toBeGreaterThan(1.1);
+    expect(perSecond).toBeLessThan(1.5);
+  });
+
+  it('fills a GPS gap with the steps taken since the last fix, in the direction of travel', () => {
+    walk(60);
+    const lastFix = at(service.getLocations(), -1);
+    platform.motion.steps += 10;
+    platform.clock.advance(9_000);
+
+    const point = service.generateInterpolatedPoint();
+    expect(point).not.toBeNull();
+    const moved = haversineDistance(
+      lastFix.latitude,
+      lastFix.longitude,
+      point!.latitude,
+      point!.longitude
+    );
+    // Ten steps at the calibrated ~0.65 m, not the whole walk's running total of steps.
+    expect(moved).toBeGreaterThan(4);
+    expect(moved).toBeLessThan(10);
+    expect(point!.latitude).toBeGreaterThan(lastFix.latitude);
+  });
+
+  it('adds no step-estimated points indoors, where fixes wander inside their error circles', () => {
+    for (let s = 0; s < 30; s++) {
+      platform.motion.steps = s * 2;
+      const wobble = s % 2 === 0 ? 4 : -4;
+      feed({ ...loc(s * 1000, LAT + latOffset(wobble), LNG), accuracy: 20 });
+    }
+    platform.motion.steps += 10;
+    platform.clock.advance(9_000);
+
+    expect(service.generateInterpolatedPoint()).toBeNull();
+  });
+
+  it('swaps a rough first fix for a sharper one nearby instead of counting the gap as distance', () => {
+    feed({ ...loc(0, LAT, LNG), accuracy: 28 });
+    feed({ ...loc(3_000, LAT + latOffset(20), LNG), accuracy: 8 });
+
+    expect(service.getLocations()).toHaveLength(1);
+    expect(service.getLocations()[0]?.accuracy).toBe(8);
+    expect(service.getDistance()).toBe(0);
+  });
+
+  it('counts the steps since the last fix, no faster than the sport allows', () => {
+    walk(30);
+    platform.clock.advance(2_000);
+    const before = service.getInterpolatedStepDistance();
+    platform.motion.steps += 4;
+    const fourSteps = service.getInterpolatedStepDistance() - before;
+    expect(fourSteps).toBeGreaterThan(2);
+    expect(fourSteps).toBeLessThan(4);
+
+    platform.motion.steps += 200;
+    const sinceFixS = (platform.clock.now() - at(service.getLocations(), -1).timestamp) / 1000;
+    expect(service.getInterpolatedStepDistance()).toBeCloseTo(sinceFixS * (10 / 3.6), 5);
+  });
+
+  it('does not pause a slow walk that is still taking steps', () => {
+    walk(30, 0.9);
+    expect(service.getIsAutoPaused()).toBe(false);
+  });
+
+  it('does not motion-pause a walker holding the phone steady while the pedometer counts steps', () => {
+    walk(15);
+    for (let t = 0; t < 10_000; t += 50) {
+      platform.clock.advance(50);
+      platform.motion.steps += t % 500 === 0 ? 1 : 0;
+      service.addAccelerationSample(1.001);
+    }
+    expect(service.getIsAutoPaused()).toBe(false);
+  });
+});
