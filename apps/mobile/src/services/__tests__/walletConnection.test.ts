@@ -155,6 +155,18 @@ describe('connectRemoteWallet with an identity already chosen', () => {
     expect(provider.getProvider).not.toHaveBeenCalled();
   });
 
+  it('keeps the real failure as the cause so it can be diagnosed', async () => {
+    const error = await connectRemoteWallet({
+      chain: sepolia,
+      embedded: embedded(),
+      getSmartClient: failing,
+      lockedKind: 'smart',
+      sleep: noWait,
+    }).catch((e: unknown) => e);
+
+    expect((error as Error).cause).toMatchObject({ message: 'not ready' });
+  });
+
   it('connects the smart wallet as usual when it works', async () => {
     const connection = await connectRemoteWallet({
       chain: sepolia,

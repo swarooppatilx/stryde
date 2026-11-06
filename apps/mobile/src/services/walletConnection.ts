@@ -21,8 +21,10 @@ export interface WalletConnection {
 
 /** The user's gas-free wallet couldn't be reached; the user is not switched to a different address. */
 export class SmartWalletUnavailableError extends Error {
-  constructor() {
-    super("Your gas-free wallet isn't available right now. Check your connection and retry.");
+  constructor(cause?: unknown) {
+    super("Your gas-free wallet isn't available right now. Check your connection and retry.", {
+      cause,
+    });
     this.name = 'SmartWalletUnavailableError';
   }
 }
@@ -73,7 +75,7 @@ export async function connectRemoteWallet(options: ConnectOptions): Promise<Wall
         kind: 'smart',
       };
     } catch (error) {
-      if (lockedKind === 'smart') throw new SmartWalletUnavailableError();
+      if (lockedKind === 'smart') throw new SmartWalletUnavailableError(error);
       onFallback?.(error);
     }
   }
