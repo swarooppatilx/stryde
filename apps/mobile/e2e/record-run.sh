@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end smoke test of the core workflow on a real Android device:
-#   arm a scripted run -> record it -> finish -> save -> the activity and its reward are on the chain.
+#   arm a scripted run -> record it -> finish -> save -> the activity is on the chain. Without an Athlete
+#   Pass, the reward stays held until World ID verification.
 #
 # This is the top of the test pyramid: slow (about two minutes), few, and about one thing that must never
 # break. Everything below it (units, integration with fakes, anvil suites) runs without a phone.
@@ -50,7 +51,7 @@ tap() {
   "${ADB[@]}" shell uiautomator dump /sdcard/e2e.xml >/dev/null 2>&1 || true
   local xml bounds
   xml="$("${ADB[@]}" shell cat /sdcard/e2e.xml)"
-  bounds="$(printf '%s' "$xml" | grep -o "\(text\|content-desc\)=\"$1\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" | head -1 | grep -o '[0-9]\+' | tail -4 | tr '\n' ' ')"
+  bounds="$(printf '%s' "$xml" | sed 's/></>\n</g' | awk -v label="$1" 'index($0, "clickable=\"true\"") && (index($0, "text=\"" label "\"") || index($0, "content-desc=\"" label "\"")) { print; exit }' | grep -o 'bounds="[^"]*"' | grep -o '[0-9]\+' | tail -4 | tr '\n' ' ')"
   set -- $bounds
   [ -n "${1:-}" ] || return 1
   "${ADB[@]}" shell input tap $((($1 + $3) / 2)) $((($2 + $4) / 2))
@@ -79,7 +80,14 @@ tap_rel() {
   sleep 2
 }
 
-open() { "${ADB[@]}" shell am start -a android.intent.action.VIEW -d "$1" >/dev/null 2>&1; sleep 3; }
+open() {
+  "${ADB[@]}" shell am start -a android.intent.action.VIEW -d "$1" >/dev/null 2>&1
+  case "$1" in
+    *dev-tools*) wait_for "Developer tools" 20 || true ;;
+    *record*) wait_for "Start Run" 20 || true ;;
+    *) sleep 3 ;;
+  esac
+}
 
 activities() { cast call "$ACTIVITY_REGISTRY" 'getActivityCount(address)(uint256)' "$ATHLETE" --rpc-url "$RPC" | awk '{print $1}'; }
 strd() { cast call "$MOVE_TO_EARN_TOKEN" 'balanceOf(address)(uint256)' "$ATHLETE" --rpc-url "$RPC" | awk '{print $1}'; }
@@ -111,22 +119,33 @@ sleep "$RUN_SECONDS"
 
 step "Finish"
 # The Pause button sits bottom-left of the live screen (see tap_rel for why this one is by position).
-tap_rel 0.39 0.94
-wait_for "Finish activity" 10 || fail "pausing did not show the Finish control"
+tap_rel 0.4 0.95
+if ! wait_for "Finish activity" 5; then
+  # A live stats transition can swallow the first coordinate tap; once paused, UiAutomator can see Finish.
+  tap_rel 0.4 0.95
+  wait_for "Finish activity" 10 || fail "pausing did not show the Finish control"
+fi
 tap "Finish activity" || fail "no Finish control once paused"
-wait_for "Save Activity" 15 || fail "the Save screen did not open"
+wait_for "Save activity" 15 || fail "the Save screen did not open"
 
 step "Save"
-tap "Save" || fail "no Save button"
-# A run that closes a loop asks for World ID before it claims territory. That modal hides the page behind
-# it from the accessibility tree, so it is dismissed first (declining is a normal answer).
+tap "Save activity" || fail "no Save button"
+# Wait for the save flow to reach a stable finish-line or summary screen. The chain contribution can land
+# before the screen transition completes, so activity count alone is too early to tap the held-reward action.
+REWARD_HELD=0
 deadline=$((SECONDS + 90))
-until has "ACTIVITY SAVED" || has "Verify to claim territory"; do
-  [ $SECONDS -lt $deadline ] || fail "the activity was not reported saved"
+while [ $SECONDS -lt "$deadline" ] && ! has "ACTIVITY SAVED" && ! has "Verify to claim territory" && ! has "Get your Athlete Pass"; do
   sleep 2
 done
-if has "Verify to claim territory"; then tap "Not now" || fail "could not dismiss the World ID prompt"; fi
-wait_for "ACTIVITY SAVED" 10 || fail "the activity was not reported saved"
+if has "Get your Athlete Pass"; then
+  REWARD_HELD=1
+  # The finish-line map can keep UiAutomator busy, so fall back to the visible held-reward button position.
+  tap "Not now, keep the reward held" || tap_rel 0.5 0.81
+elif has "Verify to claim territory"; then
+  tap "Not now" || fail "could not dismiss the territory verification prompt"
+fi
+wait_for "ACTIVITY SAVED" 15 || fail "the activity was not reported saved"
+if has "Reward waiting for your Athlete Pass"; then REWARD_HELD=1; fi
 
 step "The chain agrees"
 sleep 5
@@ -134,12 +153,19 @@ AFTER_ACTIVITIES="$(activities)"
 AFTER_STRD="$(strd)"
 echo "athlete now has $AFTER_ACTIVITIES activities, $AFTER_STRD wei STRD"
 [ "$AFTER_ACTIVITIES" -eq $((BEFORE_ACTIVITIES + 1)) ] || fail "expected exactly one new activity on-chain ($BEFORE_ACTIVITIES -> $AFTER_ACTIVITIES)"
-python3 - "$BEFORE_STRD" "$AFTER_STRD" <<'PY' || fail "no STRD reward arrived"
-import sys
-sys.exit(0 if int(sys.argv[2]) > int(sys.argv[1]) else 1)
-PY
+if [ "$AFTER_STRD" -eq "$BEFORE_STRD" ]; then
+  [ "$REWARD_HELD" -eq 1 ] || fail "the balance did not change and no held-reward state was shown"
+elif [ "$AFTER_STRD" -gt "$BEFORE_STRD" ]; then
+  [ "$REWARD_HELD" -eq 0 ] || fail "the UI held a reward that was already minted"
+else
+  fail "the STRD balance decreased"
+fi
 
 "${ADB[@]}" exec-out screencap -p >"$OUT/saved.png"
 echo
-echo "PASS: recorded, finished and saved a run; one activity and its reward are on-chain."
+if [ "$REWARD_HELD" -eq 1 ]; then
+  echo "PASS: recorded and saved a run on-chain; its reward is held until Athlete Pass verification."
+else
+  echo "PASS: recorded and saved a run; one activity and its reward are on-chain."
+fi
 echo "screenshot: $OUT/saved.png"
