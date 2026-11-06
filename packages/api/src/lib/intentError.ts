@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 
-export type IntentErrorStatus = 400 | 401 | 403 | 429;
+export type IntentErrorStatus = 400 | 401 | 403 | 404 | 429;
 
 /** Every code a signed-intent service can fail with; each service uses a subset. */
 export type IntentErrorCode =
@@ -8,6 +8,7 @@ export type IntentErrorCode =
   | 'expired'
   | 'bad_signature'
   | 'forbidden'
+  | 'not_found'
   | 'rate_limited'
   | 'self_follow'
   | 'self_report';
@@ -19,6 +20,7 @@ const STATUS_BY_CODE: Record<IntentErrorCode, IntentErrorStatus> = {
   self_report: 400,
   bad_signature: 401,
   forbidden: 403,
+  not_found: 404,
   rate_limited: 429,
 };
 

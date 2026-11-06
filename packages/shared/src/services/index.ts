@@ -2,6 +2,8 @@ export * as achievement from './achievement';
 export * as activity from './activity';
 export * as challenge from './challenge';
 export * as client from './client';
+export * as clubIntent from './clubIntent';
+export * as clubs from './clubs';
 export * as commentLikeIntent from './commentLikeIntent';
 export * as commentLikes from './commentLikes';
 export * as ens from './ens';

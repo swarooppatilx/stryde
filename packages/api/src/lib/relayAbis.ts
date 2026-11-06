@@ -209,6 +209,42 @@ export const challengeRegistryAbi = [
   ...ACCESS_ERRORS,
 ] as const;
 
+/** Read only: the club service checks who owns a club and who belongs to it. */
+export const groupRegistryAbi = [
+  {
+    type: 'function',
+    name: 'getGroup',
+    stateMutability: 'view',
+    inputs: [{ name: 'groupId', type: 'uint256' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'owner', type: 'address' },
+          { name: 'name', type: 'string' },
+          { name: 'location', type: 'string' },
+          { name: 'description', type: 'string' },
+          { name: 'sportType', type: 'uint8' },
+          { name: 'memberCount', type: 'uint256' },
+          { name: 'createdAt', type: 'uint256' },
+          { name: 'active', type: 'bool' },
+        ],
+      },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'isMember',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'groupId', type: 'uint256' },
+      { name: 'user', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const;
+
 export const RELAY_ABIS = {
   achievementRegistry: achievementRegistryAbi,
   moveToEarnToken: moveToEarnTokenAbi,
@@ -217,4 +253,5 @@ export const RELAY_ABIS = {
   profileRegistry: profileRegistryAbi,
   territoryRegistry: territoryRegistryAbi,
   challengeRegistry: challengeRegistryAbi,
+  groupRegistry: groupRegistryAbi,
 } as const;

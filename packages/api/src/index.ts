@@ -7,6 +7,7 @@ import { ConfigError } from './lib/relayErrors.js';
 import { apiKeyGate } from './middleware/apiKey.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { activities } from './routes/activities.js';
+import { clubs } from './routes/clubs.js';
 import { health } from './routes/health.js';
 import { indexRoutes } from './routes/indexRoutes.js';
 import { ipfs } from './routes/ipfs.js';
@@ -59,6 +60,7 @@ const ROUTE_GROUPS = [
   { path: '/ipfs', limit: 30, gated: true },
   { path: '/activities', limit: 30, gated: true },
   { path: '/social', limit: 30, gated: true },
+  { path: '/clubs', limit: 30, gated: true },
   { path: '/index', limit: 60, gated: true },
   { path: '/push', limit: 30, gated: true },
   // A route being drawn sends one request per tapped point.
@@ -79,6 +81,7 @@ app.route('/activities', activities);
 app.route('/ipfs', ipfs);
 app.route('/social', social);
 app.route('/index', indexRoutes);
+app.route('/clubs', clubs);
 app.route('/push', push);
 app.route('/world', world);
 app.route('/relay', relay);
