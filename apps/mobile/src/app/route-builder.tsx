@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionSheet, type SheetAction } from '@/components/action-sheet';
 import { AppButton } from '@/components/button';
 import { ChipRow } from '@/components/filter-chips';
+import type { MapCamera } from '@/components/map-camera';
 import { type MapMarker, MapRoute } from '@/components/map-route';
 import { ScrubChart } from '@/components/scrub-chart';
 import { Tappable } from '@/components/tappable';
@@ -32,6 +33,7 @@ import { formatDistance, formatElevation, toPolyline } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { LOOP_DISTANCES } from '@/utils/loopRoutes';
 import type { RoutePoint } from '@/utils/route';
+import { fitPadding, routeBounds } from '@/utils/routeBounds';
 import {
   addWaypoint,
   clearWaypoints,
@@ -126,6 +128,8 @@ export default function RouteBuilderScreen() {
   const [sport, setSport] = useState<ActivityType>(params.sport ?? 'run');
   const [snap, setSnap] = useState(true);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  const cameraRef = useRef<MapCamera>(null);
+  const [panelHeight, setPanelHeight] = useState(0);
   // Loop generator: pick a distance, get three loops from the start (or from here).
   const [looping, setLooping] = useState(false);
   const [loopTarget, setLoopTarget] = useState<number>(
@@ -233,6 +237,14 @@ export default function RouteBuilderScreen() {
     haptics.selection();
     setSnap(true);
     setPoints(loop.waypoints);
+    // Show the whole loop in the part of the map the panel leaves visible.
+    const bounds = routeBounds(loop.line);
+    if (bounds) {
+      cameraRef.current?.fitBounds(bounds, {
+        padding: fitPadding({ sheetHeight: panelHeight, topInset: insets.top + 90 }),
+        duration: 600,
+      });
+    }
   };
 
   // Tapping a point offers to move, end at or remove it; "move" takes the next tap on the map.
@@ -479,6 +491,7 @@ export default function RouteBuilderScreen() {
     <ThemedView type="background" style={styles.container}>
       {center && (
         <MapRoute
+          cameraRef={cameraRef}
           coordinates={line.length > 1 ? line : undefined}
           markers={markers}
           initialCenter={center}
@@ -535,6 +548,7 @@ export default function RouteBuilderScreen() {
         </Tappable>
       </View>
       <View
+        onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}
         style={[
           styles.panel,
           theme.shadows.sheet,
@@ -574,22 +588,24 @@ export default function RouteBuilderScreen() {
           )}
         </View>
 
-        {profile ? (
-          <ScrubChart
-            title="Elevation"
-            values={profile.values}
-            times={profile.times}
-            formatValue={(v) => formatElevation(v, unitSystem)}
-            summary={`${formatElevation(profile.gain, unitSystem)} up, ${formatElevation(profile.loss, unitSystem)} down`}
-            onScrubChange={setScrubIndex}
-            minRange={ELEVATION_MIN_RANGE_M}
-            accessibilityLabel={`Elevation along the route, ${formatElevation(profile.gain, unitSystem)} up and ${formatElevation(profile.loss, unitSystem)} down. Drag across it to see the spot on the map.`}
-          />
-        ) : (
-          <ThemedText type="small" themeColor="textSecondary" accessibilityLiveRegion="polite">
-            {elevationNote}
-          </ThemedText>
-        )}
+        {/* While choosing a loop the chart would push the loop itself off the map. */}
+        {!looping &&
+          (profile ? (
+            <ScrubChart
+              title="Elevation"
+              values={profile.values}
+              times={profile.times}
+              formatValue={(v) => formatElevation(v, unitSystem)}
+              summary={`${formatElevation(profile.gain, unitSystem)} up, ${formatElevation(profile.loss, unitSystem)} down`}
+              onScrubChange={setScrubIndex}
+              minRange={ELEVATION_MIN_RANGE_M}
+              accessibilityLabel={`Elevation along the route, ${formatElevation(profile.gain, unitSystem)} up and ${formatElevation(profile.loss, unitSystem)} down. Drag across it to see the spot on the map.`}
+            />
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary" accessibilityLiveRegion="polite">
+              {elevationNote}
+            </ThemedText>
+          ))}
 
         {panelBody()}
       </View>
