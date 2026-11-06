@@ -148,6 +148,7 @@ function RootLayoutNav({ onSlowInitRetry }: { onSlowInitRetry: () => void }) {
         <Stack.Screen name="athletes/[id]" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="recording-settings" />
+        <Stack.Screen name="sensors" />
         <Stack.Screen name="preferences" />
         <Stack.Screen name="privacy-safety" />
         <Stack.Screen name="notifications" />

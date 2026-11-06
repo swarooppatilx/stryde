@@ -1,4 +1,5 @@
 import type { MapStylePref } from '@/stores/mapPrefsStore';
+import { sensorsSubtitle } from '@/utils/sensorLive';
 
 export const MAP_STYLE_LABELS: Record<MapStylePref, string> = {
   auto: 'Automatic',
@@ -24,18 +25,19 @@ export interface FlyoutRow {
   available: boolean;
 }
 
-export const COMING_LATER = 'Coming later';
-
 /** The options flyout: each row says what it is set to now. */
 export function flyoutRows({
   trackLaps,
   mapStyle,
   liveShare,
+  sensors = { connected: 0, paired: 0 },
 }: {
   trackLaps: boolean;
   mapStyle: MapStylePref;
   /** Whether the live beacon is on; null when it cannot work here, which leaves the row out. */
   liveShare: boolean | null;
+  /** How many Bluetooth sensors are connected and how many are paired. */
+  sensors?: { connected: number; paired: number };
 }): FlyoutRow[] {
   const share: FlyoutRow[] =
     liveShare === null
@@ -58,6 +60,6 @@ export function flyoutRows({
     },
     { id: 'layers', title: 'Map layers', subtitle: MAP_STYLE_LABELS[mapStyle], available: true },
     ...share,
-    { id: 'sensor', title: 'Add a sensor', subtitle: COMING_LATER, available: false },
+    { id: 'sensor', title: 'Add a sensor', subtitle: sensorsSubtitle(sensors), available: true },
   ];
 }

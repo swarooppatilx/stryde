@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { AppState } from 'react-native';
 import { useShallow } from 'zustand/shallow';
 import { type SessionOptions, trackingSession } from '@/services/trackingSession';
-import { ACCURACY_MODE_CONFIG, useSettingsStore } from '@/stores/settingsStore';
+import { type PairedSensor, useSensorStore } from '@/stores/sensorStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { ActivityType } from '@/types';
 import { autoPauseFor } from '@/utils/autoPause';
 import { METERS_PER_MILE } from '@/utils/format';
 import { logger } from '@/utils/logger';
 import { setTrackTrace } from '@/utils/trackTrace';
 import { useUnitSystem } from './use-unit-system';
+import { useBatteryProfile } from './useBatteryProfile';
 
 const TICK_MS = 1000;
 
@@ -18,7 +20,6 @@ export function useTrackingSession() {
     useGyroscopeAssist,
     autoPause,
     autoPauseOnFoot,
-    accuracyMode,
     audioCueInterval,
     announceActions,
     keepScreenOn,
@@ -30,12 +31,20 @@ export function useTrackingSession() {
       useGyroscopeAssist: s.useGyroscopeAssist,
       autoPause: s.autoPause,
       autoPauseOnFoot: s.autoPauseOnFoot,
-      accuracyMode: s.accuracyMode,
       audioCueInterval: s.audioCueInterval,
       announceActions: s.announceActions,
       keepScreenOn: s.keepScreenOn,
       useAppleWatch: s.useAppleWatch,
     }))
+  );
+
+  const gps = useBatteryProfile();
+
+  const paired = useSensorStore((s) => s.paired);
+  const autoConnect = useSensorStore((s) => s.autoConnect);
+  const sensors = useMemo(
+    () => (autoConnect ? Object.values(paired).filter((p): p is PairedSensor => p !== null) : []),
+    [autoConnect, paired]
   );
 
   // Stable identities: the session's methods are fresh bound functions on every
@@ -48,8 +57,8 @@ export function useTrackingSession() {
     (activityType: ActivityType, activityLabel: string): SessionOptions => ({
       activityType,
       activityLabel,
-      accuracyMode,
-      timeIntervalMs: ACCURACY_MODE_CONFIG[accuracyMode].timeInterval,
+      accuracyMode: gps.accuracyMode,
+      timeIntervalMs: gps.timeIntervalMs,
       useGyroscope: useGyroscopeAssist,
       autoPause: autoPauseFor(activityType, { autoPause, autoPauseOnFoot }),
       splitMeters: unitSystem === 'imperial' ? METERS_PER_MILE : 1000,
@@ -58,9 +67,11 @@ export function useTrackingSession() {
       keepScreenOn,
       unitSystem,
       useWatch: useAppleWatch,
+      sensors,
     }),
     [
-      accuracyMode,
+      gps.accuracyMode,
+      gps.timeIntervalMs,
       useGyroscopeAssist,
       autoPause,
       autoPauseOnFoot,
@@ -69,6 +80,7 @@ export function useTrackingSession() {
       keepScreenOn,
       unitSystem,
       useAppleWatch,
+      sensors,
     ]
   );
 

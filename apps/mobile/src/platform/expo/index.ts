@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { systemClock } from '@/platform/clock';
 import type { Platform } from '@/platform/ports';
 import { expoBackgroundLocation } from './backgroundLocation';
+import { expoBattery } from './battery';
+import { expoBleSensors } from './ble';
 import {
   expoClipboard,
   expoConnectivity,
@@ -42,5 +44,7 @@ export function createExpoPlatform(): Platform {
     watch: expoWatchLink,
     readiness: expoDeviceReadiness,
     push: expoPushNotifications,
+    battery: expoBattery,
+    ble: expoBleSensors,
   };
 }

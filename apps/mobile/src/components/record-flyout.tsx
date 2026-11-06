@@ -13,7 +13,7 @@ interface RecordFlyoutProps {
   onToggleLaps(on: boolean): void;
   liveShare: boolean;
   onToggleShare(on: boolean): void;
-  onOpen(id: Exclude<FlyoutRowId, 'laps' | 'share' | 'sensor'>): void;
+  onOpen(id: Exclude<FlyoutRowId, 'laps' | 'share'>): void;
 }
 
 /** The options a drag up from the handle reveals; each row says what it is set to. */
@@ -56,7 +56,7 @@ export function RecordFlyout({
             </View>
           );
         }
-        if (row.id === 'settings' || row.id === 'layers') {
+        if (row.id === 'settings' || row.id === 'layers' || row.id === 'sensor') {
           const id = row.id;
           return (
             <Tappable
@@ -71,16 +71,7 @@ export function RecordFlyout({
             </Tappable>
           );
         }
-        return (
-          <View
-            key={row.id}
-            style={style}
-            accessible
-            accessibilityLabel={`${row.title}. ${row.subtitle}`}
-          >
-            {text}
-          </View>
-        );
+        return null;
       })}
     </View>
   );

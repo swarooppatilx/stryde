@@ -1,5 +1,7 @@
 import { installPlatform, type Platform, resetPlatform } from '@/platform/index';
+import { FakeBleSensors } from './ble';
 import {
+  FakeBattery,
   FakeClock,
   FakeConnectivity,
   FakeDeviceReadiness,
@@ -19,6 +21,7 @@ import {
 import { FakeBackgroundLocation, FakeGeocoder, FakeLocationSource } from './location';
 import { FakeWatchLink } from './watch';
 
+export * from './ble';
 export * from './device';
 export * from './location';
 export * from './tracks';
@@ -45,6 +48,8 @@ export interface FakePlatform extends Platform {
   watch: FakeWatchLink;
   readiness: FakeDeviceReadiness;
   push: FakePushNotifications;
+  battery: FakeBattery;
+  ble: FakeBleSensors;
 }
 
 export function createFakePlatform(overrides: Partial<FakePlatform> = {}): FakePlatform {
@@ -68,6 +73,8 @@ export function createFakePlatform(overrides: Partial<FakePlatform> = {}): FakeP
     watch: new FakeWatchLink(),
     readiness: new FakeDeviceReadiness(),
     push: new FakePushNotifications(),
+    battery: new FakeBattery(),
+    ble: new FakeBleSensors(),
     ...overrides,
   };
 }

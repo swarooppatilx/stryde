@@ -70,6 +70,8 @@ interface SettingsState {
   announceActions: boolean;
   /** Trade-off between GPS fix quality and battery life while tracking. */
   accuracyMode: AccuracyMode;
+  /** Step the GPS down a notch in battery saver or on a nearly flat battery. */
+  adjustGpsInBatterySaver: boolean;
   /** Leave the first and last stretch out of the route other people can see. */
   hideRouteEnds: boolean;
   /** A new activity starts with its route map hidden from others; the save form can still change it. */
@@ -117,6 +119,7 @@ interface SettingsState {
   setKeepScreenOn: (enabled: boolean) => void;
   setUseAppleWatch: (enabled: boolean) => void;
   setAccuracyMode: (mode: AccuracyMode) => void;
+  setAdjustGpsInBatterySaver: (enabled: boolean) => void;
   setHideRouteEnds: (enabled: boolean) => void;
   setDefaultPrivacy: (privacy: ActivityPrivacy) => void;
   setDefaultHideRoute: (enabled: boolean) => void;
@@ -145,6 +148,7 @@ const INITIAL_STATE = {
   useAppleWatch: true,
   // 1 s fixes: coarser sampling made distance and pace noticeably worse on winding routes.
   accuracyMode: 'best' as AccuracyMode,
+  adjustGpsInBatterySaver: true,
   hideRouteEnds: false,
   defaultHideRoute: false,
   defaultHiddenStats: [] as HiddenStat[],
@@ -175,6 +179,7 @@ export const useSettingsStore = create<SettingsState>()(
       setKeepScreenOn: (enabled) => set({ keepScreenOn: enabled }),
       setUseAppleWatch: (enabled) => set({ useAppleWatch: enabled }),
       setAccuracyMode: (mode) => set({ accuracyMode: mode }),
+      setAdjustGpsInBatterySaver: (enabled) => set({ adjustGpsInBatterySaver: enabled }),
       setHideRouteEnds: (enabled) => set({ hideRouteEnds: enabled }),
       setDefaultPrivacy: (privacy) => set({ defaultPrivacy: privacy }),
       setDefaultHideRoute: (enabled) => set({ defaultHideRoute: enabled }),
@@ -219,7 +224,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: '@stryde/settings',
-      version: 13,
+      version: 14,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as Record<string, unknown>;
@@ -277,6 +282,9 @@ export const useSettingsStore = create<SettingsState>()(
             defaultHiddenStats: [],
             defaultMutedFromFeeds: false,
           };
+        }
+        if (version < 14) {
+          state = { ...state, adjustGpsInBatterySaver: true };
         }
         return state;
       },

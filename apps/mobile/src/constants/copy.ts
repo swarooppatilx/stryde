@@ -122,6 +122,19 @@ export const START_GATE_COPY = {
   noSignalContinue: 'Continue',
   noSignalWait: 'Wait',
   close: 'OK',
+  batterySaverTitle: 'Battery saver is on',
+  batterySaverBody: 'Battery saver is on. It can make your route less exact. Continue anyway?',
+  batterySaverContinue: 'Continue',
+  batterySaverSettings: 'Open phone settings',
+} as const;
+
+/** Shown when the GPS is set gentler than the athlete chose, because the battery is low. */
+export const LOW_POWER_COPY = {
+  batterySaver: (seconds: number) => `Saving battery: GPS updates every ${seconds} s`,
+  lowBattery: (seconds: number) => `Battery is low: GPS updates every ${seconds} s`,
+  settingLabel: 'Adjust GPS in battery saver',
+  settingBrief:
+    'Updates the GPS less often when battery saver is on or the battery is nearly flat.',
 } as const;
 
 /** The sport list sheet opened from the record screen. */
@@ -306,4 +319,55 @@ export const STAGE_TOAST_COPY = {
   done: 'Counted',
   reportSent: 'Report sent',
   rejected: 'That change was not accepted',
+} as const;
+
+/** Copy for the Sensors screen and the notices while recording with Bluetooth sensors. */
+export const SENSORS_COPY = {
+  title: 'Sensors',
+  intro:
+    'Connect a heart rate strap, power meter or speed and cadence sensor. Sensors connect while Stryde is open on the Record screen.',
+  yours: 'Your sensors',
+  settings: 'Settings',
+  nearby: 'Nearby',
+  searching: 'Looking for sensors',
+  nothingFound: 'Nothing found yet. Put on the strap or turn the pedals to wake your sensor.',
+  scanFailed: "Couldn't search for sensors. Check Bluetooth and try again.",
+  connect: 'Connect',
+  disconnect: 'Disconnect',
+  forget: 'Forget',
+  waitingForReading: 'Waiting for a reading',
+  autoConnect: 'Connect when I start recording',
+  autoConnectNote: 'Your paired sensors connect on their own when a recording starts.',
+  wheelSize: 'Wheel size',
+  wheelSizeNote:
+    'Turns wheel turns into speed. Measure round your tyre, or use the size printed on it.',
+  status: {
+    connected: 'Connected',
+    connecting: 'Connecting',
+    reconnecting: 'Reconnecting',
+    lost: 'Not connected',
+    idle: 'Not connected',
+  },
+  off: {
+    title: 'Bluetooth is off',
+    body: 'Turn on Bluetooth to find heart rate straps, power meters and speed and cadence sensors.',
+  },
+  denied: {
+    title: 'Stryde needs access to nearby devices',
+    body: 'Allow it in your phone settings to find and connect to sensors.',
+    ask: 'Allow access',
+    openSettings: 'Open phone settings',
+  },
+  unsupported: {
+    title: 'No sensors on this phone',
+    body: "This phone can't connect to Bluetooth sensors.",
+  },
+  lostNotice: {
+    heartRate: 'Heart rate sensor lost. Trying to reconnect.',
+    power: 'Power sensor lost. Trying to reconnect.',
+    speedCadence: 'Speed and cadence sensor lost. Trying to reconnect.',
+  },
+  strip: {
+    lost: 'Sensor lost. Recording continues.',
+  },
 } as const;

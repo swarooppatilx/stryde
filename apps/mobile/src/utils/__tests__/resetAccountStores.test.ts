@@ -11,6 +11,7 @@ const { useRouteStore } = await import('@/stores/routeStore');
 const { useBlockStore } = await import('@/stores/blockStore');
 const { useHealthStore } = await import('@/stores/healthStore');
 const { useMapPrefsStore } = await import('@/stores/mapPrefsStore');
+const { useSensorStore } = await import('@/stores/sensorStore');
 const { useRecordUiStore } = await import('@/stores/recordUiStore');
 const { useRecentSearchStore } = await import('@/stores/recentSearchStore');
 const { useNotificationPrefsStore, isEnabled } = await import('@/stores/notificationPrefsStore');
@@ -29,6 +30,7 @@ describe('resetAccountStores', () => {
     useHealthStore.getState().write({ watermark: 123, imported: ['w1'] });
     useMapPrefsStore.getState().setLayer('routes', true);
     useRecordUiStore.getState().setTrackLaps(false);
+    useSensorStore.getState().pair('heartRate', { id: 'strap', name: 'Strap' }, 1);
     useRecentSearchStore.getState().remember({ kind: 'user', id: '0xabc', label: 'A' });
     useNotificationPrefsStore.getState().setEnabled('kudos', false);
 
@@ -42,6 +44,7 @@ describe('resetAccountStores', () => {
     expect(useHealthStore.getState()).toMatchObject({ watermark: null, imported: [] });
     expect(useMapPrefsStore.getState().showRoutes).toBe(false);
     expect(useRecordUiStore.getState().trackLaps).toBe(true);
+    expect(useSensorStore.getState().paired.heartRate).toBeNull();
     expect(useRecentSearchStore.getState().recents).toEqual([]);
     expect(isEnabled('kudos')).toBe(true);
   });
