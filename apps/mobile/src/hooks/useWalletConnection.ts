@@ -66,16 +66,26 @@ export function useWalletConnection(mode: ChainMode = 'ethereum-sepolia'): Walle
       require('@/services/localDevWallet') as typeof import('@/services/localDevWallet');
     const { PERSONAS } =
       require('@/backends/auth/personas') as typeof import('@/backends/auth/personas');
-    const slot = Math.max(
-      0,
-      PERSONAS.findIndex((p) => `dev:${p.id}` === localPersonaId)
-    );
+    const personaIndex = PERSONAS.findIndex((p) => `dev:${p.id}` === localPersonaId);
+    const slot = Math.max(0, personaIndex);
+    const persona = personaIndex >= 0 ? PERSONAS[personaIndex] : undefined;
     const local = createLocalDevWallet(getLocalRpcUrl(), slot);
     setWallet(local.wallet);
     setAddress(local.address);
     setActiveWallet(local.wallet, local.address);
     setCurrentUserId(local.address);
     setIsLoading(false);
+    if (persona?.profile) {
+      const username = persona.profile.username;
+      services.profile
+        .isRegistered(local.address)
+        .then((registered) => {
+          if (!registered) return services.profile.register(local.wallet, username);
+        })
+        .catch((err) =>
+          logger.warn('[useWalletConnection] Dev persona auto-register skipped:', err)
+        );
+    }
   }, [mode, localPersonaId]);
 
   // On logout forget the last user's wallet and identity, or the write queue keeps signing as the previous account.

@@ -33,7 +33,7 @@ if lsof -i ":$ANVIL_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
 fi
 
 echo "=== Anvil on port $ANVIL_PORT ==="
-anvil --port "$ANVIL_PORT" --silent &
+anvil --host 0.0.0.0 --port "$ANVIL_PORT" --silent &
 PIDS+=("$!")
 for _ in $(seq 1 30); do
   cast block-number --rpc-url "$ANVIL_RPC" >/dev/null 2>&1 && break
@@ -68,5 +68,5 @@ if [ "${NO_METRO:-0}" = "1" ]; then
 else
   echo "=== Metro on port $METRO_PORT ==="
   cd "$REPO_ROOT/apps/mobile"
-  EXPO_PUBLIC_API_URL="http://127.0.0.1:$API_PORT" $YARN expo start --dev-client --port "$METRO_PORT"
+  EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://127.0.0.1:$API_PORT}" $YARN expo start --dev-client --port "$METRO_PORT"
 fi
