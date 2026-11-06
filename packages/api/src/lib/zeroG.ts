@@ -165,6 +165,9 @@ export async function chat(
         messages,
         max_tokens: options.maxTokens ?? 600,
         temperature: options.temperature ?? 0.7,
+        // The router's model reasons by default and the reasoning counts against max_tokens, so a
+        // short budget can end with an empty answer; it is also ~6x slower.
+        chat_template_kwargs: { enable_thinking: false },
       }),
     },
     model

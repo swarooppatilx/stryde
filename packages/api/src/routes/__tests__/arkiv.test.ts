@@ -107,7 +107,10 @@ describe('arkiv route archives', () => {
   it('never writes an encrypted reference as-is: private routes store it sealed', async () => {
     const res = await match(true);
     const body = await res.json();
-    expect(swarm.uploadToSwarm).toHaveBeenCalledWith(expect.any(String), { encrypt: true });
+    expect(swarm.uploadToSwarm).toHaveBeenCalledWith(expect.any(String), {
+      encrypt: true,
+      name: expect.stringMatching(/^stryde-run-\d{12}\.gpx$/),
+    });
     expect(fitness.createRouteArchive).toHaveBeenCalledWith(
       expect.objectContaining({ swarmRef: SEALED_REF, encrypted: true })
     );

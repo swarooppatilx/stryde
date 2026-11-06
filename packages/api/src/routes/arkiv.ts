@@ -111,8 +111,10 @@ async function archiveRoute(input: {
   let swarmRef: string;
   let swarmLink: string | null;
   try {
+    const startedAt = new Date(input.track[0]?.timestamp ?? Date.now());
     const reference = await uploadToSwarm(toGpx(input.name, input.track), {
       encrypt: input.encrypted,
+      name: `stryde-run-${startedAt.toISOString().slice(0, 16).replace(/[-:T]/g, '')}.gpx`,
     });
     swarmRef = input.encrypted ? sealReference(reference, input.athlete) : reference;
     swarmLink = input.encrypted ? null : swarmGatewayLink(reference);

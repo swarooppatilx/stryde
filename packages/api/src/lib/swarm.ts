@@ -25,17 +25,22 @@ export function swarmGatewayLink(reference: string): string {
     /\/$/,
     ''
   );
-  return `${gateway}/bytes/${reference}`;
+  return `${gateway}/bzz/${reference}/`;
 }
 
+/**
+ * Uploads one named file (`/bzz`), so gateways serve it with its filename and type instead of
+ * an anonymous `.bin`.
+ */
 export async function uploadToSwarm(
   content: string,
-  options: { encrypt: boolean; contentType?: string }
+  options: { encrypt: boolean; contentType?: string; name?: string }
 ): Promise<string> {
   const batchId = process.env.SWARM_POSTAGE_BATCH_ID;
   if (!batchId) throw new Error('[swarm] Missing env var: SWARM_POSTAGE_BATCH_ID');
 
-  const response = await fetch(`${beeUrl()}/bytes`, {
+  const name = encodeURIComponent(options.name ?? 'route.gpx');
+  const response = await fetch(`${beeUrl()}/bzz?name=${name}`, {
     method: 'POST',
     headers: {
       'content-type': options.contentType ?? 'application/gpx+xml',
@@ -56,10 +61,13 @@ export async function uploadToSwarm(
   return body.reference;
 }
 
+/** Reads a `/bzz` file reference, falling back to `/bytes` for routes uploaded before files were named. */
 export async function downloadFromSwarm(reference: string): Promise<string> {
-  const response = await fetch(`${beeUrl()}/bytes/${reference}`);
-  if (!response.ok) throw new Error(`[swarm] Download failed (${response.status})`);
-  return response.text();
+  const file = await fetch(`${beeUrl()}/bzz/${reference}/`);
+  if (file.ok) return file.text();
+  const raw = await fetch(`${beeUrl()}/bytes/${reference}`);
+  if (!raw.ok) throw new Error(`[swarm] Download failed (${file.status}, ${raw.status})`);
+  return raw.text();
 }
 
 function athleteKey(athlete: string): Buffer {
