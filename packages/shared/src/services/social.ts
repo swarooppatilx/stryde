@@ -1,7 +1,8 @@
-import type { WalletClient } from 'viem';
+import type { AbiEvent, WalletClient } from 'viem';
 import { decodeEventLog, keccak256, toBytes, zeroAddress } from 'viem';
-import { getContracts, getPublicClient } from './client';
+import { getActiveConfig, getContracts, getPublicClient } from './client';
 import { fetchJsonFromIpfs, uploadJsonToIpfs } from './ipfs';
+import { scanLogWindows } from './logScan';
 import { getCommentsFromSubgraph, getKudosFromSubgraph } from './subgraph';
 import { writeAndConfirm } from './tx';
 
@@ -152,27 +153,23 @@ async function fetchSocialLogsFromChain(): Promise<{
   }
 
   const latest = await client.getBlockNumber();
-  const fromBlock = latest > LOOKBACK_BLOCKS ? latest - LOOKBACK_BLOCKS : 0n;
+  // Not before the deployment: the contract does not exist earlier, and public nodes answer
+  // "pruned history unavailable" for old ranges, which failed the whole sync.
+  const lookbackStart = latest > LOOKBACK_BLOCKS ? latest - LOOKBACK_BLOCKS : 0n;
+  const { deployBlock } = getActiveConfig();
+  const fromBlock = lookbackStart > deployBlock ? lookbackStart : deployBlock;
 
+  // The lookback is 250k blocks; public Sepolia RPCs refuse spans over 50k, so scan in windows.
+  const scan = <E extends AbiEvent>(event: E) =>
+    scanLogWindows(
+      (start, end) =>
+        client.getLogs({ address: socialAddr, event, fromBlock: start, toBlock: end }),
+      { fromBlock, latest }
+    );
   const [givenLogs, revokedLogs, commentLogs] = await Promise.all([
-    client.getLogs({
-      address: socialAddr,
-      event: KUDO_GIVEN_EVENT,
-      fromBlock,
-      toBlock: 'latest',
-    }),
-    client.getLogs({
-      address: socialAddr,
-      event: KUDO_REVOKED_EVENT,
-      fromBlock,
-      toBlock: 'latest',
-    }),
-    client.getLogs({
-      address: socialAddr,
-      event: COMMENT_ADDED_EVENT,
-      fromBlock,
-      toBlock: 'latest',
-    }),
+    scan(KUDO_GIVEN_EVENT),
+    scan(KUDO_REVOKED_EVENT),
+    scan(COMMENT_ADDED_EVENT),
   ]);
 
   const kudos = replayKudos([

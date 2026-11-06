@@ -119,3 +119,46 @@ describe('computeCommentId', () => {
     );
   });
 });
+
+describe('syncSocialFromChain without a subgraph', () => {
+  it('scans the lookback in windows the public RPC accepts, not one 250k-block request', async () => {
+    const head = (await import('../client')).getActiveConfig().deployBlock + 400_000n;
+    const getLogs = vi.fn(async (_args: { fromBlock: bigint; toBlock: bigint | 'latest' }) => []);
+    const client = await import('../client');
+    vi.spyOn(client, 'getPublicClient').mockReturnValue({
+      readContract,
+      getBlockNumber: vi.fn(async () => head),
+      getLogs,
+    } as never);
+    const { syncSocialFromChain } = await import('../social');
+
+    await syncSocialFromChain();
+
+    expect(getLogs.mock.calls.length).toBeGreaterThan(3);
+    for (const [args] of getLogs.mock.calls) {
+      const to = args.toBlock === 'latest' ? head : args.toBlock;
+      expect(to - args.fromBlock + 1n).toBeLessThanOrEqual(50_000n);
+    }
+    vi.restoreAllMocks();
+  });
+
+  it('never starts before the deployment, where the contract does not exist and nodes have pruned history', async () => {
+    const { getActiveConfig } = await import('../client');
+    const deployBlock = getActiveConfig().deployBlock;
+    const head = deployBlock + 1_000n;
+    const getLogs = vi.fn(async (_args: { fromBlock: bigint; toBlock: bigint | 'latest' }) => []);
+    const client = await import('../client');
+    vi.spyOn(client, 'getPublicClient').mockReturnValue({
+      readContract,
+      getBlockNumber: vi.fn(async () => head),
+      getLogs,
+    } as never);
+    const { syncSocialFromChain } = await import('../social');
+
+    await syncSocialFromChain();
+
+    for (const [args] of getLogs.mock.calls)
+      expect(args.fromBlock).toBeGreaterThanOrEqual(deployBlock);
+    vi.restoreAllMocks();
+  });
+});
