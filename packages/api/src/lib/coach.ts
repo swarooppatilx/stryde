@@ -14,7 +14,16 @@ export interface RunSummary {
   /** The athlete's own words from a voice debrief, already summarised. */
   debrief?: string;
   effort?: number;
+  /** How hard it was, as the phone read it from the debrief, marks and heart rate. */
+  signal?: RunSignal;
+  feel?: RunFeel;
+  avgHr?: number;
 }
+
+export const RUN_SIGNALS = ['easy', 'moderate', 'hard'] as const;
+export const RUN_FEELS = ['great', 'good', 'ok', 'bad', 'terrible'] as const;
+export type RunSignal = (typeof RUN_SIGNALS)[number];
+export type RunFeel = (typeof RUN_FEELS)[number];
 
 export interface WorkoutStep {
   label: string;
@@ -85,6 +94,9 @@ export function describeRun(run: RunSummary): string {
   ];
   if (run.elevationGainM) parts.push(`+${Math.round(run.elevationGainM)} m`);
   if (run.effort) parts.push(`effort ${run.effort}/10`);
+  if (run.signal) parts.push(`${run.signal} session`);
+  if (run.feel) parts.push(`felt ${run.feel}`);
+  if (run.avgHr) parts.push(`avg HR ${run.avgHr}`);
   if (run.debrief) parts.push(`athlete said: "${run.debrief.slice(0, 200)}"`);
   return parts.join(' · ');
 }
@@ -598,6 +610,9 @@ export function toRunSummary(value: unknown): RunSummary | null {
   }
   const elevation = Number(v.elevationGainM);
   const effort = Number(v.effort);
+  const signal = RUN_SIGNALS.find((x) => x === v.signal);
+  const feel = RUN_FEELS.find((x) => x === v.feel);
+  const avgHr = num(v.avgHr, 30, 250);
   return {
     activityType: str(v.activityType, 20) || 'run',
     distanceM,
@@ -608,6 +623,9 @@ export function toRunSummary(value: unknown): RunSummary | null {
     ...(str(v.place, 80) ? { place: str(v.place, 80) } : {}),
     ...(str(v.debrief, 400) ? { debrief: str(v.debrief, 400) } : {}),
     ...(Number.isInteger(effort) && effort >= 1 && effort <= 10 ? { effort } : {}),
+    ...(signal ? { signal } : {}),
+    ...(feel ? { feel } : {}),
+    ...(avgHr === undefined ? {} : { avgHr: Math.round(avgHr) }),
   };
 }
 

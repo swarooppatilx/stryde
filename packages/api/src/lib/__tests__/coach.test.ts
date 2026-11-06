@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CoachBudget,
+  describeRun,
   describeVitals,
   extractJson,
   parseDebrief,
@@ -147,6 +148,37 @@ describe('toRunSummary', () => {
     expect(toRunSummary({ ...RUN, durationS: 0 })).toBeNull();
     expect(toRunSummary({ ...RUN, startedAt: 'yesterday' })).toBeNull();
     expect(toRunSummary(null)).toBeNull();
+  });
+
+  it('keeps a valid signal, feel and average heart rate', () => {
+    expect(toRunSummary({ ...RUN, signal: 'hard', feel: 'bad', avgHr: 151.6 })).toEqual({
+      ...RUN,
+      signal: 'hard',
+      feel: 'bad',
+      avgHr: 152,
+    });
+  });
+
+  it('drops a signal or feel outside the enums and an implausible heart rate', () => {
+    expect(toRunSummary({ ...RUN, signal: 'brutal', feel: 'tough', avgHr: 400 })).toEqual(RUN);
+    expect(toRunSummary({ ...RUN, signal: 7, feel: null, avgHr: 10 })).toEqual(RUN);
+    expect(toRunSummary({ ...RUN, avgHr: '150' })).toEqual({ ...RUN, avgHr: 150 });
+  });
+});
+
+describe('describeRun', () => {
+  it('prints the signal, feel and heart rate when known', () => {
+    const line = describeRun({ ...RUN, signal: 'hard', feel: 'bad', avgHr: 160 });
+    expect(line).toContain('hard session');
+    expect(line).toContain('felt bad');
+    expect(line).toContain('avg HR 160');
+  });
+
+  it('prints nothing extra for a bare run', () => {
+    const line = describeRun(RUN);
+    expect(line).not.toContain('session');
+    expect(line).not.toContain('felt');
+    expect(line).not.toContain('HR');
   });
 });
 
