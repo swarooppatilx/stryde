@@ -620,7 +620,7 @@ describe('coach routes', () => {
     expect(body.debrief).toMatchObject({ effort: 7, feel: 'tough' });
     expect(body.zeroG.map((r) => r.requestId)).toEqual(['req_stt', 'req_note']);
     expect((fetchMock.mock.calls[0] as [string])[0]).toBe(
-      'https://router-api.0g.ai/v1/audio/transcriptions'
+      'https://router-api.0g.ai/v1/audio/transcriptions?verify_tee=true'
     );
   });
 
