@@ -9249,6 +9249,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"framer-motion@npm:14.9.1":
+  version: 14.9.1
+  resolution: "framer-motion@npm:14.9.1"
+  dependencies:
+    motion-dom: "npm:14.9.1"
+    motion-utils: "npm:14.7.0"
+    tslib: "npm:^2.4.0"
+  peerDependencies:
+    react: ^18.0.0 || ^19.0.0
+    react-dom: ^18.0.0 || ^19.0.0
+    remix: ^3.1.0
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-dom:
+      optional: true
+    remix:
+      optional: true
+  checksum: 10c0/c5782a0db74b4e692e363dcc5b636b07d738a522fcb8e461c42aecf312941398644a3c4027f705e8f49c2b54081ecf402a2e9b4790eea9219c3a127f2b1dcb9a
+  languageName: node
+  linkType: hard
+
 "fresh@npm:^2.0.0":
   version: 2.0.0
   resolution: "fresh@npm:2.0.0"
@@ -12506,6 +12528,43 @@ __metadata:
     zustand: "npm:^5.0.15"
   languageName: unknown
   linkType: soft
+
+"motion-dom@npm:14.9.1":
+  version: 14.9.1
+  resolution: "motion-dom@npm:14.9.1"
+  dependencies:
+    motion-utils: "npm:14.7.0"
+  checksum: 10c0/dc5f640e1e51f7d3753b20fa48816f58a0c54f778d8dd9f721f86e9de38c6f2c872290ff7bf7189333b0929f0ebbfa6fdd90c0896ab1a6eb9df568f119a16165
+  languageName: node
+  linkType: hard
+
+"motion-utils@npm:14.7.0":
+  version: 14.7.0
+  resolution: "motion-utils@npm:14.7.0"
+  checksum: 10c0/99f4fff3c164998a053ae698f171858735631d4da980d27de67817899a708b2d6ba7246a8fb007b1d883dfd90ee06cfaa1dcfb55abb00511c8e169eb0bd14769
+  languageName: node
+  linkType: hard
+
+"motion@npm:^14.9.1":
+  version: 14.9.1
+  resolution: "motion@npm:14.9.1"
+  dependencies:
+    framer-motion: "npm:14.9.1"
+    tslib: "npm:^2.4.0"
+  peerDependencies:
+    react: ^18.0.0 || ^19.0.0
+    react-dom: ^18.0.0 || ^19.0.0
+    remix: ^3.1.0
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-dom:
+      optional: true
+    remix:
+      optional: true
+  checksum: 10c0/ac1bd4b0415e1d8f209608fc10a194e4e70b5b29777878881c170e0f3183d350ca7ac644f3fdac578155e5532a9bd8ddf133980083de450c6b4f7a8f853b8ee1
+  languageName: node
+  linkType: hard
 
 "ms@npm:2.0.0":
   version: 2.0.0
@@ -16765,6 +16824,7 @@ __metadata:
     "@types/react-dom": "npm:19.2.5"
     lucide-react: "npm:^1.42.0"
     maplibre-gl: "npm:^5.24.0"
+    motion: "npm:^14.9.1"
     next: "npm:16.3.4"
     react: "catalog:"
     react-dom: "catalog:"
