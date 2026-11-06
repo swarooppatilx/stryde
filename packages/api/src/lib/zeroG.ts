@@ -332,9 +332,11 @@ export async function chat(
           max_tokens: options.maxTokens ?? 600,
           temperature: options.temperature ?? 0.7,
           verify_tee: verifyTee(),
-          // 0gm-1.0 and GLM-5 think by default and the thinking counts against max_tokens.
-          // `low` keeps it short; `enable_thinking: false` leaked it into the answer.
-          reasoning_effort: 'low',
+          // The router's models think by default and the thinking counts against max_tokens, so a
+          // short budget can end with an empty answer. Checked live: on 0gm-1.0 `reasoning_effort:
+          // 'low'` still used the whole budget thinking, while `enable_thinking: false` answers in a
+          // few dozen tokens. Anything that still leaks is removed by stripThinking below.
+          chat_template_kwargs: { enable_thinking: false },
         }),
       },
       model,

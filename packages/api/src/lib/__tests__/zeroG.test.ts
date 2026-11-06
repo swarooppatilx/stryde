@@ -136,7 +136,7 @@ describe('chat: request and receipt', () => {
     process.env.ZEROG_CHAT_MODEL = 'glm-5.3';
   });
 
-  it('sends the key, trust floor, low reasoning and TEE verification', async () => {
+  it('sends the key, trust floor, thinking off and TEE verification', async () => {
     fetchMock.mockResolvedValue(chatOk('hi'));
     await chat([{ role: 'user', content: 'hello' }], { maxTokens: 100 });
     expect(urls()).toEqual([`${BASE}/chat/completions`]);
@@ -146,7 +146,7 @@ describe('chat: request and receipt', () => {
     });
     expect(sentBody(0)).toMatchObject({
       model: 'glm-5.3',
-      reasoning_effort: 'low',
+      chat_template_kwargs: { enable_thinking: false },
       verify_tee: true,
       max_tokens: 100,
     });
