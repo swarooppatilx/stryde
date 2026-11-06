@@ -202,7 +202,7 @@ export default function VerifyScreen() {
                 Verification failed
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {getParsedError(error)}
+                {worldErrorText(error)}
               </ThemedText>
               <ThemedText type="caption" themeColor="textSecondary">
                 {VERIFY_RETRY_HINT}
@@ -258,6 +258,15 @@ function PassRow({ label, value }: { label: string; value: string }) {
       <ThemedText type="smallBold">{value}</ThemedText>
     </View>
   );
+}
+
+/**
+ * The check's own messages are written for people (see worldIdService); anything else (a raw network or
+ * server error) goes through the usual cleaner. A plain `{code, message}` object would otherwise always
+ * read "Something went wrong".
+ */
+function worldErrorText(error: { code: string; message: string }): string {
+  return error.code === 'unknown' ? getParsedError(new Error(error.message)) : error.message;
 }
 
 const VERIFY_RETRY_HINT =
