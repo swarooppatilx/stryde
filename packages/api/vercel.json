@@ -3,6 +3,6 @@
   "installCommand": "cd ../.. && yarn install",
   "crons": [
     { "path": "/api/maintenance/renew-arkiv", "schedule": "0 3 * * *" },
-    { "path": "/api/maintenance/notify-events", "schedule": "*/5 * * * *" }
+    { "path": "/api/maintenance/notify-events", "schedule": "0 4 * * *" }
   ]
 }
