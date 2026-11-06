@@ -2,8 +2,10 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { contractAddress, getRelayChainConfig } from './chainConfig.js';
 import { checkRewardGate } from './humanPresence.js';
 import { expectedIssuer, getIdentityProvider } from './identityProvider.js';
+import { logError } from './logError.js';
 import { lookupRecordedActivity } from './recordedActivity.js';
 import { RELAY_ABIS } from './relayAbis.js';
+import { RetryLaterError } from './relayErrors.js';
 import { getRelayerPublicClient, getRelayerWallet } from './relayer.js';
 import { type Approval, type ApprovalStatus, store } from './store.js';
 import {
@@ -90,7 +92,12 @@ async function resolveActivityReward(wallet: `0x${string}`, activityId: bigint) 
   if (rewarded)
     throw new HumanPassError('already_rewarded', 'This activity was already rewarded.', 409);
 
-  const recorded = await lookupRecordedActivity(activityHash);
+  const recorded = await lookupRecordedActivity(activityHash).catch((error) => {
+    // A flaky RPC is worth a retry: say so instead of failing with a bare 500.
+    if (!(error instanceof RetryLaterError)) throw error;
+    logError('[human] Recorded activity lookup failed', error);
+    throw new HumanPassError('chain_unavailable', error.message, 503);
+  });
   if (!recorded) {
     throw new HumanPassError(
       'not_indexed',

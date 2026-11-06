@@ -240,6 +240,18 @@ describe('Human Pass approvals', () => {
       });
     });
 
+    it('answers 503 when the chain read should be retried', async () => {
+      await runApproval(WALLET_A, 'link_human', human('human-a'));
+      const { RetryLaterError } = await import('../relayErrors.js');
+      vi.mocked(lookupRecordedActivity).mockRejectedValueOnce(
+        new RetryLaterError(new Error('lagging node'))
+      );
+      await expect(claim({ activityId: 7 })).rejects.toMatchObject({
+        code: 'chain_unavailable',
+        status: 503,
+      });
+    });
+
     it("refuses another athlete's activity before prompting World ID", async () => {
       await runApproval(WALLET_A, 'link_human', human('human-a'));
       vi.mocked(lookupRecordedActivity).mockResolvedValueOnce({ owner: WALLET_B, distance: 1200n });
