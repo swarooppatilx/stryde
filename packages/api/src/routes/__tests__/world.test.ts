@@ -266,6 +266,36 @@ describe('polling a session', () => {
     expect(result.status).toBe('pending');
     expect(mockWallet.writeContract).not.toHaveBeenCalled();
   });
+
+  it('settles a confirmed proof once when two polls overlap', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    pollStatus.current = { type: 'confirmed', result: enrollment(`0x${'ab'.repeat(32)}`) };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return new Response('{"success":true}');
+      })
+    );
+    const world = await loadWorld({ skip: false });
+    const session = await world.request('/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signal: WALLET }),
+    });
+    const { sessionId } = (await session.json()) as { sessionId: string };
+
+    const polls = await Promise.all(
+      [1, 2].map(async () => {
+        const res = await world.request(`/session/${sessionId}/poll`, { method: 'POST' });
+        return (await res.json()) as { status: string };
+      })
+    );
+
+    expect(polls.map((p) => p.status).sort()).toEqual(['confirmed', 'pending']);
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('POST /verify', () => {

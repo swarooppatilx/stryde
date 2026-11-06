@@ -79,6 +79,8 @@ interface SessionEntry {
   wallet: Address;
   /** The run a Finish-Line check vouches for; its hash is the proof's signal. */
   activityHash?: `0x${string}`;
+  /** Set once a poll has taken the confirmed proof, so an overlapping poll cannot settle it twice. */
+  settling?: boolean;
 }
 
 const DECIMAL_RE = /^[0-9]+$/;
@@ -491,6 +493,10 @@ async function pollSession(sessionId: string): Promise<PollResult> {
 
     return { status: 'failed', kind, error, message: worldErrorMessage(error, kind) };
   }
+
+  // Verifying and settling take several awaits; a second poll arriving meanwhile must not repeat them.
+  if (entry.settling) return { status: 'pending', kind };
+  entry.settling = true;
 
   if (SKIP_REMOTE_VERIFY) {
     console.warn('[world] Skipping remote verify (WORLD_SKIP_REMOTE_VERIFY=true)');
