@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/button';
 import { Card } from '@/components/card';
+import { CoachPlanCard } from '@/components/coach-plan-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -191,6 +192,8 @@ export default function CoachScreen() {
               </ThemedText>
             </Card>
           )}
+
+          {!status?.banned && <CoachPlanCard wallet={address} />}
 
           {loadError && (
             <Card style={styles.card}>

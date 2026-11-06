@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { ChainSyncRetry } from '@/components/chain-sync-retry';
+import { CoachReviewCard } from '@/components/coach-run-card';
 import { PostSaveHero } from '@/components/post-save-hero';
 import { RewardHoldBanner } from '@/components/reward-hold-banner';
 import { OffscreenShareImage } from '@/components/share-route-image';
@@ -80,6 +81,7 @@ export default function PostUploadScreen() {
             records={heldRecords}
           />
           <RewardHoldBanner activity={activity} />
+          {isOwner && !activity.mocked && <CoachReviewCard activity={activity} />}
           {chainRetry.canRetry && (
             <ChainSyncRetry busy={chainRetry.busy} onRetry={chainRetry.retry} />
           )}
