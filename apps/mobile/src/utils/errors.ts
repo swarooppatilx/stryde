@@ -94,6 +94,8 @@ export const FRIENDLY_MESSAGES: Record<string, string> = {
   UsernameTooLong: 'That username is too long (32 characters at most).',
   AlreadyVerified: 'This account is already verified.',
   NotAuthorizedVerifier: "You're not authorized to verify accounts.",
+  // MoveToEarnToken
+  RewardRateTooHigh: 'That reward rate is above the allowed maximum.',
   // Roles
   NotRecorder: "You're not authorized to record contributions.",
   AccessControlUnauthorizedAccount: "You're not authorized to perform this action.",
