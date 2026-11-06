@@ -129,19 +129,3 @@ jobs:
       # The relay routes (settlement, rewards) against the same chain: the rules the contracts enforce,
       # checked end to end instead of against mocks of viem.
       - run: yarn workspace @repo/api test:anvil
-
-  substreams:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/substreams
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: bufbuild/buf-setup-action@v1
-      # The generated protobuf code is not committed; buf rebuilds it from proto/.
-      - run: buf generate proto --template buf.gen.yaml
-      - run: cargo test --locked
-      - run: cargo build --locked --release --target wasm32-unknown-unknown

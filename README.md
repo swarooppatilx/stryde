@@ -170,7 +170,6 @@ Chain `11155111` — all contracts verified on [Etherscan](https://sepolia.ether
 Indexed contracts (9), all onchain data served through one composed query layer:
 
 - **Subgraph** — [v0.6.0](https://api.studio.thegraph.com/query/1760059/stryde/v0.6.0), deployed from [Subgraph Studio](https://thegraph.com/studio/subgraph/stryde) (deployment `QmNXiBgu4ATRRP361W2vbrx1VZj`).
-- **Substreams** — [`stryde_substreams` v0.2.0](https://substreams.dev/packages/stryde_substreams/v0.2.0), network `netw.eth.streamingfast.io:443`.
 
 ---
 
