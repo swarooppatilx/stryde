@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  fallback,
   http,
   type PublicClient,
   type WalletClient,
@@ -50,6 +51,12 @@ const rpcTransport = (url: string) =>
         retryDelay: 1000,
       });
 
+/** Reads go through the backups too; writes stay on the one configured RPC. */
+const readTransport = (config: { rpcUrl: string; fallbackRpcUrls?: readonly string[] }) =>
+  config.fallbackRpcUrls?.length
+    ? fallback([config.rpcUrl, ...config.fallbackRpcUrls].map(rpcTransport))
+    : rpcTransport(config.rpcUrl);
+
 const warnedZeroAddressModes = new Set<ChainMode>();
 
 // Keyed on mode + rpcUrl (not just mode) so a runtime RPC override — e.g.
@@ -91,7 +98,7 @@ export function getPublicClient(): PublicClient {
 
   const client = createPublicClient({
     chain: config.chain,
-    transport: rpcTransport(config.rpcUrl),
+    transport: readTransport(config),
     batch: { multicall: true },
   }) as PublicClient;
   cachedPublicClient = { key, client };
