@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { flyoverDurationMs, flyoverFrames, flyoverZoom, lineLength } from '@/utils/activityFlyover';
+import {
+  elevationAtShare,
+  flyoverDurationMs,
+  flyoverFrames,
+  flyoverZoom,
+  gradeAt,
+  lineLength,
+} from '@/utils/activityFlyover';
 import type { RoutePoint } from '@/utils/route';
 
 // A 1 km stretch east, then 1 km north.
@@ -53,5 +60,25 @@ describe('sizing', () => {
     expect(flyoverDurationMs(2000, 1)).toBe(15_000);
     expect(flyoverDurationMs(100_000, 1)).toBe(45_000);
     expect(flyoverDurationMs(10_000, 2)).toBe(15_000);
+  });
+});
+
+describe('elevation along the flyover', () => {
+  it('reads height part way along by blending neighbouring samples', () => {
+    expect(elevationAtShare([100, 200], 0.5)).toBe(150);
+    expect(elevationAtShare([], 0.5)).toBeNull();
+  });
+
+  it('measures the slope around a point', () => {
+    // 1 km rising 50 m evenly: 5%.
+    const profile = [0, 10, 20, 30, 40, 50];
+    expect(gradeAt(profile, 1000, 500)).toBeCloseTo(5, 5);
+    expect(gradeAt([10, 10], 1000, 500)).toBe(0);
+  });
+
+  it('gives each frame its distance along the route', () => {
+    const frames = flyoverFrames(ELL, 5);
+    expect(frames[0]?.distanceM).toBe(0);
+    expect(frames.at(-1)?.distanceM).toBeCloseTo(lineLength(ELL), 0);
   });
 });

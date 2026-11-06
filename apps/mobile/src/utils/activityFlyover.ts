@@ -8,6 +8,8 @@ export interface FlyoverFrame {
   bearing: number;
   /** The last route point already passed, for drawing the line so far. */
   index: number;
+  /** Metres along the route at this frame. */
+  distanceM: number;
 }
 
 const RAD = Math.PI / 180;
@@ -72,7 +74,7 @@ export function flyoverFrames(
     const next: number =
       bearing === null ? target : (bearing + turn(bearing, target) * smoothing + 360) % 360;
     bearing = next;
-    frames.push({ center: here.point, bearing: next, index: here.index });
+    frames.push({ center: here.point, bearing: next, index: here.index, distanceM: d });
   }
   return frames;
 }
@@ -100,4 +102,32 @@ export function flyoverZoom(totalM: number): number {
 export function flyoverDurationMs(totalM: number, speed: number): number {
   const base = Math.min(45_000, Math.max(15_000, (totalM / 1000) * 3000));
   return base / Math.max(speed, 0.25);
+}
+
+/** Height at a share (0–1) of the way along, from an elevation profile sampled evenly along the route. */
+export function elevationAtShare(elevations: readonly number[], share: number): number | null {
+  if (elevations.length === 0) return null;
+  const pos = Math.min(1, Math.max(0, share)) * (elevations.length - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.min(elevations.length - 1, lo + 1);
+  const t = pos - lo;
+  return (elevations[lo] as number) * (1 - t) + (elevations[hi] as number) * t;
+}
+
+/** Slope in percent around `distanceM`, measured over `windowM` so GPS-scale bumps don't spike it. */
+export function gradeAt(
+  elevations: readonly number[],
+  totalM: number,
+  distanceM: number,
+  windowM = 80
+): number | null {
+  if (elevations.length < 2 || totalM <= 0) return null;
+  const half = Math.min(windowM / 2, totalM / 2);
+  const from = Math.max(0, distanceM - half);
+  const to = Math.min(totalM, distanceM + half);
+  if (to - from < 1) return null;
+  const rise =
+    (elevationAtShare(elevations, to / totalM) as number) -
+    (elevationAtShare(elevations, from / totalM) as number);
+  return (rise / (to - from)) * 100;
 }

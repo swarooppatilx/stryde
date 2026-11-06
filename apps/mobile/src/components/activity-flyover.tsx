@@ -9,9 +9,19 @@ import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { TERRAIN_PITCH } from '@/constants/mapboxStyle';
 import { Palette } from '@/constants/palette';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { flyoverDurationMs, flyoverFrames, flyoverZoom, lineLength } from '@/utils/activityFlyover';
+import { useUnitSystem } from '@/hooks/use-unit-system';
+import type { ActivityType } from '@/types';
+import {
+  elevationAtShare,
+  flyoverDurationMs,
+  flyoverFrames,
+  flyoverZoom,
+  gradeAt,
+  lineLength,
+} from '@/utils/activityFlyover';
+import { formatDistance, formatElevation, formatPaceOrSpeed, showsSpeed } from '@/utils/format';
 import type { RoutePoint } from '@/utils/route';
 
 const FRAME_COUNT = 160;
@@ -29,11 +39,27 @@ interface ActivityFlyoverProps {
   visible: boolean;
   coordinates: readonly RoutePoint[];
   title?: string;
+  /** Ground height sampled evenly along the route, for elevation and gradient during the replay. */
+  elevations?: readonly number[];
+  /** Sport and moving time, for the average pace (or speed, for a ride). */
+  activityType?: ActivityType;
+  movingTimeMs?: number;
+  /** The activity's recorded distance; the average uses it so it matches the activity page. */
+  distanceM?: number;
   onClose(): void;
 }
 
 /** The activity replayed as a 3D flight over the terrain, the line drawing itself behind you. */
-export function ActivityFlyover({ visible, coordinates, title, onClose }: ActivityFlyoverProps) {
+export function ActivityFlyover({
+  visible,
+  coordinates,
+  title,
+  elevations,
+  activityType,
+  movingTimeMs,
+  distanceM,
+  onClose,
+}: ActivityFlyoverProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const cameraRef = useRef<MapCamera>(null);
@@ -96,6 +122,43 @@ export function ActivityFlyover({ visible, coordinates, title, onClose }: Activi
     [coordinates, current]
   );
   const finished = frame >= frames.length - 1;
+  const unitSystem = useUnitSystem();
+  const [showStats, setShowStats] = useState(true);
+  const doneM = current?.distanceM ?? 0;
+  const share = total > 0 ? doneM / total : 0;
+  const elevationNow = elevations?.length ? elevationAtShare(elevations, share) : null;
+  const gradeNow = elevations?.length ? gradeAt(elevations, total, doneM) : null;
+  const average =
+    activityType && movingTimeMs
+      ? formatPaceOrSpeed(activityType, distanceM ?? total, movingTimeMs, unitSystem)
+      : null;
+  const stats: Array<{ label: string; value: string }> = [
+    {
+      label: 'Distance',
+      value: `${formatDistance(doneM, unitSystem)} / ${formatDistance(total, unitSystem)}`,
+    },
+  ];
+  if (elevationNow !== null) {
+    stats.push({ label: 'Elevation', value: formatElevation(elevationNow, unitSystem) });
+  }
+  if (gradeNow !== null) stats.push({ label: 'Gradient', value: `${gradeNow.toFixed(1)}%` });
+  if (average && activityType) {
+    stats.push({ label: showsSpeed(activityType) ? 'Avg speed' : 'Avg pace', value: average });
+  }
+  /** Brings the camera back over the current spot after the athlete has moved the map. */
+  const recenter = () => {
+    const at = frames[frame];
+    if (at) {
+      cameraRef.current?.easeTo({
+        center: at.center,
+        bearing: at.bearing,
+        pitch: FLYOVER_PITCH,
+        zoom,
+        duration: 500,
+      });
+    }
+  };
+
   const restart = () => {
     setFrame(0);
     const first = frames[0];
@@ -167,6 +230,25 @@ export function ActivityFlyover({ visible, coordinates, title, onClose }: Activi
           ) : null}
         </View>
 
+        {showStats && (
+          <View
+            style={[styles.stats, { top: insets.top + Spacing.three + 60 }]}
+            pointerEvents="none"
+            accessibilityLiveRegion="polite"
+          >
+            {stats.map((stat) => (
+              <View key={stat.label}>
+                <ThemedText type="caption" style={styles.statLabel}>
+                  {stat.label}
+                </ThemedText>
+                <ThemedText type="smallBold" style={styles.statValue}>
+                  {stat.value}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
+        )}
+
         <View
           style={[
             styles.controls,
@@ -215,6 +297,36 @@ export function ActivityFlyover({ visible, coordinates, title, onClose }: Activi
               onChange={setSpeed}
               contentStyle={styles.speeds}
             />
+          </View>
+          <View style={styles.row}>
+            <Tappable
+              onPress={() => setShowStats((s) => !s)}
+              style={styles.toggle}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: showStats }}
+              accessibilityLabel="Show statistics"
+            >
+              <Ionicons
+                name="stats-chart-outline"
+                size={18}
+                color={showStats ? theme.brand.primary : theme.textSecondary}
+              />
+              <ThemedText
+                type="smallBold"
+                style={{ color: showStats ? theme.brand.primary : theme.textSecondary }}
+              >
+                Stats
+              </ThemedText>
+            </Tappable>
+            <Tappable
+              onPress={recenter}
+              style={styles.toggle}
+              accessibilityRole="button"
+              accessibilityLabel="Re-center the camera on the route"
+            >
+              <Ionicons name="locate-outline" size={18} color={theme.text} />
+              <ThemedText type="smallBold">Re-center</ThemedText>
+            </Tappable>
           </View>
         </View>
       </View>
@@ -266,5 +378,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   restart: { padding: Spacing.two },
+  toggle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, padding: Spacing.two },
+  stats: {
+    position: 'absolute',
+    left: Spacing.three,
+    gap: Spacing.one,
+    padding: Spacing.three,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: tint(Palette.black, 0.55),
+  },
+  statLabel: { color: Palette.white, opacity: 0.75 },
+  statValue: { color: Palette.white },
   speeds: { paddingHorizontal: 0 },
 });

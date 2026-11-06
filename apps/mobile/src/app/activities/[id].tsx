@@ -223,6 +223,10 @@ export default function ActivitySummaryScreen() {
           visible={flyoverOpen}
           coordinates={coordinates}
           title={activity.name}
+          elevations={detail.elevationData?.elevations}
+          activityType={activity.activityType}
+          movingTimeMs={activity.duration}
+          distanceM={activity.distance}
           onClose={() => setFlyoverOpen(false)}
         />
 
