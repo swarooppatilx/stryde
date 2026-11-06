@@ -5,6 +5,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionSheet, type SheetAction } from '@/components/action-sheet';
 import { AppButton } from '@/components/button';
+import { DrawOverlay } from '@/components/draw-overlay';
 import { ChipRow } from '@/components/filter-chips';
 import type { MapCamera } from '@/components/map-camera';
 import { type MapMarker, MapRoute } from '@/components/map-route';
@@ -46,6 +47,7 @@ import {
   undoWaypoint,
 } from '@/utils/routeBuilder';
 import { routeProfile } from '@/utils/routeProfile';
+import { simplifyToCount } from '@/utils/simplifyPath';
 import { Toast } from '@/utils/toast';
 
 const SPORTS: Array<{ value: ActivityType; label: string }> = [
@@ -70,6 +72,8 @@ const MARKER_LOOK: Record<
   via: (brand) => ({ color: brand.primary, icon: 'ellipse' }),
 };
 const SAMPLE_STEP_M = 100;
+/** A drawn stroke becomes at most this many waypoints: enough for its shape, few enough to route quickly. */
+const MAX_DRAWN_POINTS = 24;
 const ELEVATION_DELAY_MS = 700;
 /** A flat route's profile spans at least this many metres, so a kerb is not drawn as a hill. */
 const ELEVATION_MIN_RANGE_M = 30;
@@ -129,6 +133,20 @@ export default function RouteBuilderScreen() {
   const [snap, setSnap] = useState(true);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const cameraRef = useRef<MapCamera>(null);
+  // Draw mode: one finger traces the route over the map; the stroke becomes waypoints.
+  const [drawing, setDrawing] = useState(false);
+  const addStroke = async (stroke: Array<[number, number]>) => {
+    setDrawing(false);
+    const kept = simplifyToCount(stroke, MAX_DRAWN_POINTS, 6);
+    const coords = await Promise.all(kept.map((p) => cameraRef.current?.coordinateAt(p) ?? null));
+    const drawn = coords.filter((c): c is [number, number] => c !== null);
+    if (drawn.length < 2) {
+      Toast.info("Couldn't read that drawing; try again", 2);
+      return;
+    }
+    haptics.selection();
+    setPoints((current) => [...current, ...drawn]);
+  };
   const [panelHeight, setPanelHeight] = useState(0);
   // Loop generator: pick a distance, get three loops from the start (or from here).
   const [looping, setLooping] = useState(false);
@@ -347,6 +365,7 @@ export default function RouteBuilderScreen() {
   })();
 
   const hint = (() => {
+    if (drawing) return 'Draw your route with one finger.';
     if (movingIndex !== null) return 'Tap the map where this point should go.';
     if (points.length === 0) return 'Tap the map to set your start.';
     if (points.length === 1) return 'Tap again to add the next point. Drag a point to move it.';
@@ -435,6 +454,14 @@ export default function RouteBuilderScreen() {
           contentContainerStyle={styles.tools}
         >
           <AppButton
+            variant={drawing ? 'primary' : 'secondary'}
+            size="small"
+            fullWidth={false}
+            onPress={() => setDrawing((on) => !on)}
+          >
+            {drawing ? 'Stop drawing' : 'Draw'}
+          </AppButton>
+          <AppButton
             variant="secondary"
             size="small"
             fullWidth={false}
@@ -513,6 +540,7 @@ export default function RouteBuilderScreen() {
           compassTopOffset={insets.top + MapChrome.edge + 56}
         />
       )}
+      {drawing && <DrawOverlay onStroke={(stroke) => void addStroke(stroke)} />}
       <View style={[styles.top, { top: insets.top + MapChrome.edge }]}>
         <Tappable
           onPress={confirmLeave}

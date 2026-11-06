@@ -22,6 +22,7 @@ import {
   type CameraRef,
   createMapCamera,
   type MapCamera,
+  type MapViewLike,
   toMapboxPadding,
 } from '@/components/map-camera';
 import { MapErrorBoundary, MapPin, MapRouteFallback } from '@/components/map-route-fallback';
@@ -330,7 +331,11 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   // A tapped annotation stays "selected" natively and would not report a second tap: rebuild
   // the annotations after each one.
   const [markerTaps, setMarkerTaps] = useState(0);
-  useImperativeHandle(cameraRef, () => createMapCamera(nativeCameraRef), []);
+  useImperativeHandle(
+    cameraRef,
+    () => createMapCamera(nativeCameraRef, mapViewRef as React.RefObject<MapViewLike | null>),
+    []
+  );
 
   // A live route grows by one point per fix; only a longer line or a new last point is new geometry.
   const routeLength = coordinates?.length ?? 0;

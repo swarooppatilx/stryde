@@ -29,6 +29,13 @@ export interface MapCamera {
   easeTo(options: CameraMoveOptions): void;
   zoomTo(zoom: number, options?: { duration?: number }): void;
   fitBounds(bounds: Bounds, options?: { padding?: CameraPadding; duration?: number }): void;
+  /** The map position under a point of the map view (in points from its top-left), or null. */
+  coordinateAt(point: [number, number]): Promise<[number, number] | null>;
+}
+
+/** The part of the map view the camera needs for screen-to-map conversion. */
+export interface MapViewLike {
+  getCoordinateFromView(point: [number, number]): Promise<number[]>;
 }
 
 export function toMapboxPadding(padding: CameraPadding): NonNullable<CameraStop['padding']> {
@@ -79,8 +86,21 @@ export function boundsStop(
 }
 
 /** Wraps a Mapbox camera ref; calls before the native camera exists are dropped. */
-export function createMapCamera(ref: RefObject<CameraRef | null>): MapCamera {
+export function createMapCamera(
+  ref: RefObject<CameraRef | null>,
+  viewRef?: RefObject<MapViewLike | null>
+): MapCamera {
   return {
+    async coordinateAt(point) {
+      const view = viewRef?.current;
+      if (!view) return null;
+      try {
+        const [lng, lat] = await view.getCoordinateFromView(point);
+        return typeof lng === 'number' && typeof lat === 'number' ? [lng, lat] : null;
+      } catch {
+        return null;
+      }
+    },
     easeTo: (options) => ref.current?.setCamera(toCameraStop(options)),
     zoomTo: (zoom, options) =>
       ref.current?.setCamera(toCameraStop({ zoom, duration: options?.duration })),
