@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { AppButton } from '@/components/button';
 import { Segmented } from '@/components/form-controls';
@@ -6,7 +6,9 @@ import { ThemedText } from '@/components/themed-text';
 import { REPLAY_ROUTES, REPLAY_SPEEDS } from '@/constants/replayRoutes';
 import { Spacing } from '@/constants/theme';
 import { useNow } from '@/hooks/useNow';
+import { getPlatform } from '@/platform';
 import { getDevLocation } from '@/platform/devLocation';
+import { anchorRoute, type RoutePoint } from '@/utils/anchorRoute';
 import { formatDistance } from '@/utils/format';
 
 /** Walk a scripted route so a whole recording can be driven from a desk. */
@@ -17,7 +19,23 @@ export function ReplayPanel() {
   // Re-read the replay's progress every second while this panel is open.
   useNow(1000);
 
+  // Routes are drawn in Pune; start them where the phone is instead, when it knows.
+  const [anchor, setAnchor] = useState<RoutePoint | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getPlatform()
+      .location.getLastKnown()
+      .then((fix) => {
+        if (!cancelled && fix) setAnchor({ latitude: fix.latitude, longitude: fix.longitude });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const route = REPLAY_ROUTES.find((r) => r.id === routeId) ?? REPLAY_ROUTES[0];
+  const points = anchorRoute(route.points, anchor);
   const progress = location?.progress();
 
   if (!location) {
@@ -48,12 +66,12 @@ export function ReplayPanel() {
     }
     return (
       <>
-        <AppButton onPress={() => location.armReplay(route.points, { speedMps: speed })}>
+        <AppButton onPress={() => location.armReplay(points, { speedMps: speed })}>
           Arm for next recording
         </AppButton>
         <AppButton
           variant="secondary"
-          onPress={() => location.startReplay(route.points, { speedMps: speed })}
+          onPress={() => location.startReplay(points, { speedMps: speed })}
         >
           Start now
         </AppButton>

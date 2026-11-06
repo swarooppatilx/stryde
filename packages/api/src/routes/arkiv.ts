@@ -396,9 +396,7 @@ async function sendGpx(c: Context, ref: string, athlete: string, asJson: boolean
   }
   try {
     const gpx = await downloadFromSwarm(reference);
-    return asJson
-      ? c.json({ gpx })
-      : c.body(gpx, 200, { 'content-type': 'application/gpx+xml' });
+    return asJson ? c.json({ gpx }) : c.body(gpx, 200, { 'content-type': 'application/gpx+xml' });
   } catch {
     return c.json({ error: 'Route is unavailable on Swarm' }, 502);
   }

@@ -1,5 +1,7 @@
 import type { Activity } from '@/types';
+import { type DebriefReading, type EffortSignal, effortSignal } from '@/utils/effortSignal';
 import { timeInZones, type ZoneFloors } from '@/utils/heartRateZones';
+import { friendlyError } from './friendlyError';
 
 /** What the coach is told about one activity. */
 export interface CoachRun {
@@ -11,14 +13,36 @@ export interface CoachRun {
   name?: string;
   debrief?: string;
   effort?: number;
+  /** How hard it was, read from the debrief, the athlete's marks or the heart-rate zones. */
+  signal?: EffortSignal;
+  /** How the athlete said it felt: the debrief's wording, else the mark on the activity. */
+  feel?: CoachFeel;
+  avgHr?: number;
 }
 
-export interface CoachNote {
+export type CoachFeel = 'great' | 'good' | 'ok' | 'bad' | 'terrible';
+
+export interface CoachNote extends Partial<DebriefReading> {
   summary: string;
   effort: number | null;
 }
 
-export function toCoachRun(activity: Activity, note?: CoachNote): CoachRun {
+function feelOf(activity: Activity, note?: CoachNote): CoachFeel | undefined {
+  if (note?.feel === 'tough') return 'bad';
+  return note?.feel ?? activity.feel ?? undefined;
+}
+
+export function toCoachRun(
+  activity: Activity,
+  note?: CoachNote,
+  profile: HeartRateProfile = {}
+): CoachRun {
+  const signal = effortSignal(
+    activity,
+    note ? { effort: note.effort, feel: note.feel ?? null } : null,
+    profile
+  );
+  const feel = feelOf(activity, note);
   const started = activity.stream?.startedAt ?? activity.createdAt;
   return {
     activityType: activity.activityType,
@@ -29,6 +53,9 @@ export function toCoachRun(activity: Activity, note?: CoachNote): CoachRun {
     ...(activity.name ? { name: activity.name } : {}),
     ...(note?.summary ? { debrief: note.summary } : {}),
     ...(note?.effort ? { effort: note.effort } : {}),
+    ...(signal ? { signal } : {}),
+    ...(feel ? { feel } : {}),
+    ...(activity.heartRate ? { avgHr: Math.round(activity.heartRate.avg) } : {}),
   };
 }
 
@@ -140,16 +167,20 @@ export function toCoachVitals(activity: Activity, profile: HeartRateProfile = {}
 const HISTORY_DAYS = 14;
 const HISTORY_MAX = 14;
 
-/** The last two weeks of real activities, newest first, each with its debrief when there is one. */
+/** The last two weeks of real, non-commute activities, newest first, each with its debrief when there is one. */
 export function recentHistory(
   activities: readonly Activity[],
   notes: Readonly<Record<string, CoachNote>>,
-  now: number
+  now: number,
+  profile: HeartRateProfile = {}
 ): CoachRun[] {
   const since = now - HISTORY_DAYS * 24 * 60 * 60 * 1000;
   return activities
-    .filter((a) => !a.mocked && new Date(a.stream?.startedAt ?? a.createdAt).getTime() >= since)
-    .map((a) => toCoachRun(a, notes[a.id]))
+    .filter(
+      (a) =>
+        !a.mocked && !a.isCommute && new Date(a.stream?.startedAt ?? a.createdAt).getTime() >= since
+    )
+    .map((a) => toCoachRun(a, notes[a.id], profile))
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .slice(0, HISTORY_MAX);
 }
@@ -160,4 +191,13 @@ export function localDay(now: Date): string {
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/** A message fit to show for a failed coach call. */
+export function coachErrorMessage(error: unknown): string {
+  return friendlyError(
+    error,
+    'Something went wrong. Try again.',
+    "The coach can't be reached right now. Check your connection and try again."
+  );
 }
