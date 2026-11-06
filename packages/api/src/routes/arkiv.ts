@@ -24,8 +24,10 @@ import {
   toGpx,
 } from '../lib/fitness/index.js';
 import { isWalletBanned } from '../lib/humanPass.js';
+import { getPush } from '../lib/pushRuntime.js';
 import { RELAY_ABIS } from '../lib/relayAbis.js';
 import { getRelayerPublicClient } from '../lib/relayer.js';
+import { watchEffort } from '../lib/segmentEffortNews.js';
 import { store } from '../lib/store.js';
 import {
   downloadFromSwarm,
@@ -38,6 +40,18 @@ import {
 } from '../lib/swarm.js';
 
 export const arkiv = new Hono();
+
+const effortNewsDeps = {
+  board: async (segmentKey: string, verifiedOnly: boolean) =>
+    (await segmentLeaderboard(segmentKey, { verifiedOnly })).map((e) => ({
+      athlete: e.athlete,
+      elapsedSec: e.elapsedSec,
+    })),
+  notify: (
+    to: `0x${string}`,
+    message: Parameters<ReturnType<typeof getPush>['sender']['notify']>[1]
+  ) => getPush().sender.notify(to, message),
+};
 
 const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -262,6 +276,7 @@ arkiv.post(
     for (const segment of candidates.values()) {
       const match = matchSegmentEffort(track, segment);
       if (!match) continue;
+      const announce = await watchEffort(effortNewsDeps, { athlete, verifiedHuman, segment });
       const created = await createEffort({
         segmentKey: segment.key,
         athlete,
@@ -275,6 +290,9 @@ arkiv.post(
         recordedAt: match.startedAt,
         swarmRef,
       });
+      await announce(match.elapsedSec).catch((error) =>
+        console.warn('[arkiv] Segment news push failed:', error)
+      );
       efforts.push({
         ...created,
         segmentKey: segment.key,

@@ -31,6 +31,11 @@ function memoryStore(): PushTokenStore & { records: PushTokenRecord[] } {
       const i = records.findIndex((r) => r.entityKey === entityKey);
       if (i >= 0) records.splice(i, 1);
     },
+    async removeAllFor(owner) {
+      const gone = records.filter((r) => r.owner === owner);
+      for (const record of gone) records.splice(records.indexOf(record), 1);
+      return gone.length;
+    },
   };
 }
 

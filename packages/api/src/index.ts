@@ -6,6 +6,7 @@ import { logError } from './lib/logError.js';
 import { ConfigError } from './lib/relayErrors.js';
 import { apiKeyGate } from './middleware/apiKey.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { account } from './routes/account.js';
 import { activities } from './routes/activities.js';
 import { agent } from './routes/agent.js';
 import { arkiv } from './routes/arkiv.js';
@@ -74,6 +75,8 @@ const ROUTE_GROUPS = [
   { path: '/clubs', limit: 30, gated: true },
   { path: '/index', limit: 60, gated: true },
   { path: '/push', limit: 30, gated: true },
+  // Deleting an account is rare and removes records one by one, so the budget is small.
+  { path: '/account', limit: 5, gated: true },
   // A verification polls every 2s for up to 3 minutes, so it needs well over 30 a minute.
   { path: '/world', limit: 120, gated: true },
   { path: '/arkiv', limit: 60, gated: true },
@@ -104,6 +107,7 @@ app.route('/social', social);
 app.route('/index', indexRoutes);
 app.route('/clubs', clubs);
 app.route('/push', push);
+app.route('/account', account);
 app.route('/world', world);
 app.route('/relay', relay);
 app.route('/maintenance', maintenance);

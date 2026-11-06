@@ -47,6 +47,8 @@ export interface CommentLikeStore {
   }): Promise<CommentLikeRecord>;
   remove(entityKey: string): Promise<void>;
   likers(commentId: Bytes32): Promise<CommentLikePage>;
+  /** Deletes every record this wallet liked with, and says how many went (account deletion). */
+  removeAllFor(liker: Address): Promise<number>;
 }
 
 export interface CommentLikeServiceDeps {

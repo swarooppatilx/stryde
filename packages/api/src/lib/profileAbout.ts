@@ -46,6 +46,8 @@ export interface AboutStore {
   }): Promise<AboutRecord>;
   remove(entityKey: string): Promise<void>;
   many(authors: Address[]): Promise<AboutRecord[]>;
+  /** Deletes every record this wallet wrote, and says how many went (account deletion). */
+  removeAllFor(author: Address): Promise<number>;
 }
 
 export interface AboutServiceDeps {

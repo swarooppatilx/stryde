@@ -75,6 +75,7 @@ export function createArkivAboutStore(
     },
 
     remove: (entityKey) => entities.remove(entityKey),
+    removeAllFor: (author) => entities.removeAll([eq('author', addr(author))]),
     many: (authors) => (authors.length === 0 ? Promise.resolve([]) : fetchFor(authors)),
   };
 }

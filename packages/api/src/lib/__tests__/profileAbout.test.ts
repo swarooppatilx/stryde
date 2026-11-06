@@ -33,6 +33,11 @@ function memoryStore(): AboutStore & { records: AboutRecord[]; log: string[] } {
       const index = records.findIndex((r) => r.entityKey === entityKey);
       if (index >= 0) records.splice(index, 1);
     },
+    async removeAllFor(author) {
+      const gone = records.filter((r) => r.author === author);
+      for (const record of gone) records.splice(records.indexOf(record), 1);
+      return gone.length;
+    },
     async many(authors) {
       return records.filter((r) => authors.includes(r.author));
     },

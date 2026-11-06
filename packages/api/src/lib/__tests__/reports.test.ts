@@ -18,6 +18,11 @@ function memoryStore(): ReportStore & { records: ReportRecord[]; notes: string[]
   return {
     records,
     notes,
+    async removeAllFor(reporter) {
+      const gone = records.filter((r) => r.reporter === reporter);
+      for (const record of gone) records.splice(records.indexOf(record), 1);
+      return gone.length;
+    },
     async find(reporter, targetKind, targetId) {
       return (
         records.find(

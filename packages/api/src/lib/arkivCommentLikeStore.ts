@@ -77,5 +77,6 @@ export function createArkivCommentLikeStore(
 
     remove: (entityKey) => entities.remove(entityKey),
     likers: (commentId) => page(forComment(commentId)),
+    removeAllFor: (liker) => entities.removeAll([eq('liker', addr(liker))]),
   };
 }

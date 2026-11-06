@@ -65,6 +65,8 @@ export interface PostStore {
   /** The newest posts by any of these authors, newest first. */
   recent(authors: Address[], limit: number): Promise<PostRecord[]>;
   countSince(author: Address, since: number): Promise<number>;
+  /** Deletes every record this wallet wrote, and says how many went (account deletion). */
+  removeAllFor(author: Address): Promise<number>;
 }
 
 export interface PostServiceDeps {

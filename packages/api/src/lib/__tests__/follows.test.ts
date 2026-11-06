@@ -31,6 +31,11 @@ function memoryStore(): FollowStore & { records: FollowRecord[]; writes: number 
       const index = records.findIndex((r) => r.entityKey === entityKey);
       if (index >= 0) records.splice(index, 1);
     },
+    async removeAllFor(address: string) {
+      const gone = records.filter((r) => r.follower === address || r.followee === address);
+      for (const record of gone) records.splice(records.indexOf(record), 1);
+      return gone.length;
+    },
     async following(follower: string) {
       return { entries: records.filter((r) => r.follower === follower), truncated: false };
     },

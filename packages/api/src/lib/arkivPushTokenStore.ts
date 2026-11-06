@@ -71,5 +71,6 @@ export function createArkivPushTokenStore(
     },
 
     remove: (entityKey) => entities.remove(entityKey),
+    removeAllFor: (owner) => entities.removeAll([eq('owner', addr(owner))]),
   };
 }

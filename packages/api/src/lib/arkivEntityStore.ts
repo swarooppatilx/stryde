@@ -12,6 +12,8 @@ export type ArkivWalletClient = ReturnType<typeof createArkivWalletClient>;
 export const PAGE_LIMIT = 200;
 /** The most rows the node returns in one request. */
 const NODE_PAGE_LIMIT = 100;
+/** Bounds `removeAll`, so a node that keeps returning rows cannot hold a request open forever. */
+const MAX_REMOVE_ROUNDS = 20;
 /**
  * Social records live this long; renewal is handled elsewhere. Rabdi refuses lifetimes beyond about
  * 182.5 days (7,884,000 blocks), so this is the longest round number under it.
@@ -190,6 +192,23 @@ export function createEntityStore(
 
     async remove(entityKey: string) {
       await walletClient.deleteEntity({ entityKey: entityKey as Address });
+    },
+
+    /**
+     * Deletes every entity matching `filters` and says how many went. One at a time, since the signer's
+     * writes are ordered; a read that did not hold them all is repeated until nothing matches.
+     */
+    async removeAll(filters: Filter[], batch = PAGE_LIMIT) {
+      let removed = 0;
+      for (let round = 0; round < MAX_REMOVE_ROUNDS; round++) {
+        const { entities: found, truncated } = await read(filters, batch, false);
+        for (const entity of found) {
+          await walletClient.deleteEntity({ entityKey: entity.key as Address });
+          removed += 1;
+        }
+        if (!truncated) break;
+      }
+      return removed;
     },
   };
 }
