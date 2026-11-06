@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name           = 'StrydeWatch'
+  s.name           = 'StrydeWatchLink'
   s.version        = '1.0.0'
   s.summary        = 'Links a Stryde recording to the Stryde Apple Watch app.'
   s.description    = 'Starts the watch workout, receives its mirrored session and streams readings to JS.'

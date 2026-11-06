@@ -51,6 +51,7 @@ export function AppleWatchSettings() {
       <List>
         <List.Item
           thumb={<ListIcon name="watch-outline" />}
+          onPress={status === 'needs-permission' ? () => void connect() : refresh}
           extra={
             status === 'ready' ? (
               <AppSwitch checked={enabled} onChange={setEnabled} label="Record with Apple Watch" />
