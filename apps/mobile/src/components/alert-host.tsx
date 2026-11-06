@@ -7,6 +7,7 @@ import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 import { type AlertButton, useAlertStore } from '@/stores/alertStore';
+import { alertButtonColor } from '@/utils/alertColors';
 import { haptics } from '@/utils/haptics';
 
 /** Mounted once at the app root; renders the active `@/utils/alert` dialog as a themed modal card. */
@@ -32,12 +33,6 @@ export function AlertHost() {
     button.onPress?.();
   };
 
-  const textColorFor = (style: AlertButton['style']) => {
-    if (style === 'destructive') return theme.brand.danger;
-    if (style === 'cancel') return theme.textSecondary;
-    return theme.brand.primary;
-  };
-
   return (
     <Modal
       visible={visible}
@@ -53,7 +48,13 @@ export function AlertHost() {
           onPress={dismiss}
           accessibilityLabel="Dismiss dialog"
         />
-        <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+        <ThemedView
+          style={[
+            styles.card,
+            // The dark card is one step off the dimmed page; the hairline keeps its edge readable.
+            { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+          ]}
+        >
           <ThemedText type="sectionTitle" style={styles.title}>
             {title}
           </ThemedText>
@@ -93,7 +94,7 @@ export function AlertHost() {
                   type="default"
                   style={[
                     styles.buttonText,
-                    { color: textColorFor(button.style) },
+                    { color: alertButtonColor(button.style, theme) },
                     (!button.style || button.style === 'default') && styles.buttonTextEmphasis,
                   ]}
                 >
@@ -121,6 +122,7 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     borderRadius: BorderRadius.lg,
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.three + Spacing.one,
     paddingHorizontal: Spacing.three,
   },
