@@ -1,5 +1,5 @@
 import { services, setChainMode, setIpfsConfig } from '@repo/shared';
-import { ENV, getChainMode } from '@/constants/config';
+import { ENV, getChainMode, getCurrentUserId } from '@/constants/config';
 import { DEV_TOOLS } from '@/constants/devTools';
 import { startRelayQueue } from '@/services/relayQueue';
 import { getActiveProfileId } from './activeProfile';
@@ -42,9 +42,10 @@ export function configureBackends(): void {
       dev: DEV_TOOLS.enabled,
       // The require keeps the stand-in out of release bundles.
       sandboxFetch: () =>
-        (
-          require('./sandbox/sandboxApi') as typeof import('./sandbox/sandboxApi')
-        ).createSandboxApi().fetch,
+        (require('./sandbox/sandboxApi') as typeof import('./sandbox/sandboxApi')).createSandboxApi(
+          undefined,
+          sandboxClubDeps()
+        ).fetch,
     })
   );
   startRelayQueue();
@@ -67,4 +68,28 @@ export function reapplySandboxSeed(): void {
   if (DEV_TOOLS.enabled && PROFILES[getActiveProfileId()].fakeChain) {
     (require('./sandbox/applySeed') as typeof import('./sandbox/applySeed')).applySeed();
   }
+}
+
+/**
+ * Who owns each club and who belongs, for the Sandbox's stand-in club API: the seeded members, plus
+ * the signed-in athlete when they have joined on this device.
+ */
+function sandboxClubDeps() {
+  const { useCommunityStore } =
+    require('@/stores/communityStore') as typeof import('@/stores/communityStore');
+  const { seededClubMembers } =
+    require('./sandbox/sandboxClubs') as typeof import('./sandbox/sandboxClubs');
+  return {
+    owner: (clubId: string) =>
+      useCommunityStore.getState().clubs.find((c) => c.id === clubId)?.owner ?? null,
+    isMember: (clubId: string, member: string) => {
+      const state = useCommunityStore.getState();
+      const owner = state.clubs.find((c) => c.id === clubId)?.owner?.toLowerCase();
+      return (
+        owner === member ||
+        seededClubMembers(clubId).includes(member) ||
+        (state.joinedClubIds.includes(clubId) && member === getCurrentUserId()?.toLowerCase())
+      );
+    },
+  };
 }

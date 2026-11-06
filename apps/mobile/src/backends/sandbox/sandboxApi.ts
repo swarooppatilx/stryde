@@ -4,6 +4,8 @@
  * under test cannot tell the difference, but it keeps everything in memory and does not check
  * signatures. Dev builds only.
  */
+import { createSandboxClubs, type SandboxClubDeps } from './sandboxClubs';
+
 interface StoredPost {
   id: string;
   author: string;
@@ -20,7 +22,15 @@ const refuse = (status: number, code: string, error: string) => json(status, { e
 
 const lower = (value: unknown) => String(value ?? '').toLowerCase();
 
-export function createSandboxApi(now: () => number = () => Math.floor(Date.now() / 1000)) {
+export function createSandboxApi(
+  now: () => number = () => Math.floor(Date.now() / 1000),
+  clubDeps?: Omit<SandboxClubDeps, 'now'>
+) {
+  const clubs = createSandboxClubs({
+    now,
+    owner: clubDeps?.owner ?? (() => null),
+    isMember: clubDeps?.isMember ?? (() => true),
+  });
   const follows = new Map<string, number>(); // `${follower}>${followee}` -> followedAt
   const about = new Map<string, { bio: string; location: string }>();
   const commentLikes = new Map<string, string[]>(); // commentId -> likers, in the order they liked
@@ -163,6 +173,23 @@ export function createSandboxApi(now: () => number = () => Math.floor(Date.now()
     const method = (init?.method ?? 'GET').toUpperCase();
     if (method === 'POST' && url.pathname.includes('/api/relay/')) return confirmRelay();
     if (method === 'POST' && url.pathname.endsWith('/api/ipfs/upload')) return pin(init);
+    if (url.pathname.includes('/api/clubs/')) {
+      let body: Record<string, unknown> | null = null;
+      if (method === 'POST') {
+        try {
+          body = JSON.parse(String(init?.body ?? ''));
+        } catch {
+          return json(400, { error: 'Invalid JSON body' });
+        }
+      }
+      const answer = clubs.handle(
+        url.pathname.replace(/^.*\/api\/clubs\//, ''),
+        method,
+        url.searchParams,
+        body
+      );
+      if (answer) return json(answer.status, answer.body);
+    }
     const route = url.pathname.replace(/^.*\/api\/social\//, '');
 
     if (method === 'POST') {

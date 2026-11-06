@@ -75,3 +75,12 @@ export function mergeCommunitySeed(current: CommunitySlice, seed: CommunitySeed)
     events: [...current.events, ...missing(current.events, seed.events)],
   };
 }
+
+/** Dhanya's developer wallet (the second local dev account), an admin of the running club. */
+export const SANDBOX_DHANYA = '0x70997970c51812dc3a010c7d01b50e0d17dc79c8';
+
+/** Who belongs to each seeded club, owner first; the Sandbox has no chain to list them. */
+export const SANDBOX_CLUB_MEMBERS: Readonly<Record<string, readonly string[]>> = {
+  '9001': [hex(1), hex(4), hex(3), SANDBOX_DHANYA],
+  '9002': [hex(2), hex(3)],
+};
