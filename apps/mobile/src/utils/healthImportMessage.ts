@@ -1,24 +1,24 @@
-import { t as defaultT, type TFunction } from '@/i18n';
 import type { HealthImportResult } from '@/services/healthImport';
+import { countOf } from '@/utils/plural';
 
 /** What to tell the athlete after an import, in plain words. */
-export function describeImport(result: HealthImportResult, t: TFunction = defaultT): string {
+export function describeImport(result: HealthImportResult): string {
   switch (result.status) {
     case 'unavailable':
-      return t('healthImport.resultUnavailable');
+      return 'Health Connect is not available on this phone.';
     case 'update-required':
-      return t('healthImport.resultUpdate');
+      return 'Update Health Connect from the Play Store, then try again.';
     case 'no-access':
-      return t('healthImport.resultNoAccess');
+      return 'Allow Stryde to read your workouts first.';
     case 'done': {
       const { imported, skipped, failed } = result;
       const parts = [
         imported === 0
-          ? t('healthImport.resultNone')
-          : t('healthImport.resultImported', { count: imported }),
+          ? 'No new workouts.'
+          : `Imported ${countOf(imported, 'workout', 'workouts')}.`,
       ];
-      if (skipped > 0) parts.push(t('healthImport.resultSkipped', { count: skipped }));
-      if (failed > 0) parts.push(t('healthImport.resultFailed', { count: failed }));
+      if (skipped > 0) parts.push(`${skipped} already in Stryde.`);
+      if (failed > 0) parts.push(`${failed} could not be saved; try again.`);
       return parts.join(' ');
     }
   }

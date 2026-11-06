@@ -16,14 +16,9 @@ function flatten(node: object, prefix = ''): Record<string, string> {
 const placeholders = (text: string) => [...text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
 
 /** Surfaces that name the token on purpose; see the protected-surfaces note in constants/copy.ts. */
-const BANNED_WORD_EXEMPT = new Set([
-  'settings.cashOut',
-  'account.walletAddress',
-  'account.strdBalance',
-  'healthImport.intro',
-]);
+const BANNED_WORD_EXEMPT = new Set(['settings.cashOut']);
 
-const LATIN_ONLY = new Set(['summary.gps', 'settings.accountSubtitle', 'account.worldVerified']);
+const LATIN_ONLY = new Set(['summary.gps', 'settings.accountSubtitle']);
 
 const flatEn = flatten(en);
 const flatHi = flatten(hi);

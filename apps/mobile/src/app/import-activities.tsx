@@ -11,14 +11,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useActivityFileImport } from '@/hooks/useActivityFileImport';
 import { useGoBack } from '@/hooks/useGoBack';
-import { useT } from '@/i18n';
 import { formatDateTime } from '@/utils/dates';
 import { formatDistance } from '@/utils/format';
-import { describeFileImport } from '@/utils/importMessage';
+import { describeFileImport, IMPORT_COPY } from '@/utils/importMessage';
 
 /** Bring in activities saved as GPX, TCX or FIT files: choose them, review the list, keep what you want. */
 export default function ImportActivitiesScreen() {
-  const t = useT();
   const goBack = useGoBack();
   const theme = useTheme();
   const unitSystem = useUnitSystem();
@@ -33,20 +31,17 @@ export default function ImportActivitiesScreen() {
             onPress={goBack}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel={t('healthImport.back')}
+            accessibilityLabel="Back"
           >
             <Ionicons name="chevron-back" size={24} color={theme.text} />
           </Tappable>
-          <ThemedText type="sectionTitle">{t('importFiles.title')}</ThemedText>
+          <ThemedText type="sectionTitle">{IMPORT_COPY.title}</ThemedText>
           <View style={styles.spacer} />
         </View>
         <ScrollView contentContainerStyle={styles.scroll}>
-          <ThemedText themeColor="textSecondary">{t('importFiles.intro')}</ThemedText>
+          <ThemedText themeColor="textSecondary">{IMPORT_COPY.intro}</ThemedText>
           <ThemedText type="caption" themeColor="textSecondary">
-            {t('importFiles.formatsAndPrivacy', {
-              formats: t('importFiles.formats'),
-              privacy: t('importFiles.privacy'),
-            })}
+            {IMPORT_COPY.formats}. {IMPORT_COPY.privacy}
           </ThemedText>
 
           <AppButton
@@ -55,7 +50,7 @@ export default function ImportActivitiesScreen() {
             disabled={importing}
             onPress={() => void pick()}
           >
-            {items.length > 0 || result ? t('importFiles.chooseMore') : t('importFiles.choose')}
+            {items.length > 0 || result ? IMPORT_COPY.chooseMore : IMPORT_COPY.choose}
           </AppButton>
 
           {errors.map((message) => (
@@ -66,7 +61,7 @@ export default function ImportActivitiesScreen() {
 
           {items.map((item) => {
             const when = formatDateTime(item.input.startedAt ?? 0);
-            const name = item.input.title || sportLabel(item.input.activityType, t);
+            const name = item.input.title || sportLabel(item.input.activityType);
             return (
               <Tappable
                 key={item.id}
@@ -94,12 +89,12 @@ export default function ImportActivitiesScreen() {
                     {name}
                   </ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
-                    {sportLabel(item.input.activityType, t)} · {when} ·{' '}
+                    {sportLabel(item.input.activityType)} · {when} ·{' '}
                     {formatDistance(item.input.distance, unitSystem)}
                   </ThemedText>
                   {item.duplicate && (
                     <ThemedText type="caption" themeColor="warningText">
-                      {t('importFiles.duplicate')}
+                      {IMPORT_COPY.duplicate}
                     </ThemedText>
                   )}
                 </View>
@@ -118,13 +113,11 @@ export default function ImportActivitiesScreen() {
               disabled={selectedCount === 0}
               onPress={() => void importSelected()}
             >
-              {importing
-                ? t('importFiles.importing')
-                : t('importFiles.importCount', { count: selectedCount })}
+              {importing ? IMPORT_COPY.importing : `Import ${selectedCount}`}
             </AppButton>
           )}
 
-          {result && <ThemedText type="smallBold">{describeFileImport(result, t)}</ThemedText>}
+          {result && <ThemedText type="smallBold">{describeFileImport(result)}</ThemedText>}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>

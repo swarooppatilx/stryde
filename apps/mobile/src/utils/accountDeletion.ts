@@ -1,5 +1,4 @@
 import type { services } from '@repo/shared';
-import { t as defaultT, type TFunction, type TKey } from '@/i18n';
 
 type Counts = services.account.AccountDeleteCounts;
 
@@ -22,24 +21,23 @@ export const deletionCopy = {
     'The server refused the request. Nothing was removed. Try again later or contact support.',
 } as const;
 
-const LABELS: ReadonlyArray<readonly [keyof Counts, TKey]> = [
-  ['follows', 'deleteAccount.follows'],
-  ['posts', 'deleteAccount.posts'],
-  ['about', 'deleteAccount.about'],
-  ['commentLikes', 'deleteAccount.commentLikes'],
-  ['reports', 'deleteAccount.reports'],
-  ['pushTokens', 'deleteAccount.pushTokens'],
-  ['beacons', 'deleteAccount.beacons'],
+const LABELS: ReadonlyArray<readonly [keyof Counts, string, string]> = [
+  ['follows', 'follow', 'follows'],
+  ['posts', 'post', 'posts'],
+  ['about', 'profile text', 'profile texts'],
+  ['commentLikes', 'comment like', 'comment likes'],
+  ['reports', 'report', 'reports'],
+  ['pushTokens', 'notification device', 'notification devices'],
+  ['beacons', 'live position', 'live positions'],
 ];
 
 /** What the server removed, in plain words; only the kinds that had something. */
-export function removedSummary(counts: Counts, t: TFunction = defaultT): string {
-  const parts = LABELS.filter(([kind]) => counts[kind] > 0).map(([kind, key]) =>
-    t(key, { count: counts[kind] })
+export function removedSummary(counts: Counts): string {
+  const parts = LABELS.filter(([kind]) => counts[kind] > 0).map(
+    ([kind, one, many]) => `${counts[kind]} ${counts[kind] === 1 ? one : many}`
   );
+  if (parts.length === 0) return 'The server held no records for your account.';
   const last = parts.pop();
-  if (last === undefined) return t('deleteAccount.noRecords');
-  const list =
-    parts.length === 0 ? last : t('deleteAccount.listAnd', { list: parts.join(', '), last });
-  return t('deleteAccount.removed', { list });
+  const list = parts.length === 0 ? last : `${parts.join(', ')} and ${last}`;
+  return `${list} removed from the server.`;
 }

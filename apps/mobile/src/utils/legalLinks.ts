@@ -1,5 +1,3 @@
-import { t as defaultT, type TFunction } from '@/i18n';
-
 export interface LegalLink {
   title: string;
   subtitle: string;
@@ -10,32 +8,27 @@ export interface LegalLink {
 const ROWS = [
   {
     path: 'support',
-    title: 'about.support',
-    subtitle: 'about.supportHint',
+    title: 'Support',
+    subtitle: 'Get help with Stryde',
     icon: 'help-buoy-outline',
   },
   {
     path: 'terms',
-    title: 'about.terms',
-    subtitle: 'about.termsHint',
+    title: 'Terms',
+    subtitle: 'The rules for using Stryde',
     icon: 'document-text-outline',
   },
   {
     path: 'privacy',
-    title: 'about.privacy',
-    subtitle: 'about.privacyHint',
+    title: 'Privacy',
+    subtitle: 'What Stryde collects and why',
     icon: 'shield-checkmark-outline',
   },
 ] as const;
 
 /** The Support, Terms and Privacy rows; none when the web address is not set, so no dead links show. */
-export function legalLinks(webUrl: string, t: TFunction = defaultT): LegalLink[] {
+export function legalLinks(webUrl: string): LegalLink[] {
   const base = webUrl.trim().replace(/\/+$/, '');
   if (!/^https?:\/\//i.test(base)) return [];
-  return ROWS.map(({ path, title, subtitle, icon }) => ({
-    title: t(title),
-    subtitle: t(subtitle),
-    icon,
-    url: `${base}/${path}`,
-  }));
+  return ROWS.map(({ path, ...row }) => ({ ...row, url: `${base}/${path}` }));
 }

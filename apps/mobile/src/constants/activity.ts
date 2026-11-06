@@ -1,6 +1,5 @@
 import type { Ionicons } from '@expo/vector-icons';
 
-import { t as defaultT, type TFunction } from '@/i18n';
 import type {
   ActivityEffort,
   ActivityFeel,
@@ -89,8 +88,8 @@ export function getSportIcon(type: ActivityType | undefined): keyof typeof Ionic
   return (type && SPORT_ICONS[type]) || 'walk';
 }
 
-export function getSportLabel(type: ActivityType | undefined, t: TFunction = defaultT): string {
-  return t(type && type in SPORT_ICONS ? `sport.${type}` : 'sport.other');
+export function getSportLabel(type: ActivityType | undefined): string {
+  return SPORT_TYPES.find((s) => s.type === type)?.label ?? 'Activity';
 }
 
 /** Who can see an activity, as the shared segmented choice lists it. */

@@ -3,13 +3,13 @@ import { useRouter } from 'expo-router';
 import { SettingsRow, SettingsSection } from '@/components/settings-row';
 import { SettingsScreen } from '@/components/settings-screen';
 import { ThemedText } from '@/components/themed-text';
+import { COPY } from '@/constants/copy';
 import { DEV_TOOLS } from '@/constants/devTools';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useBalances } from '@/hooks/useBalances';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
-import { type TFunction, useT } from '@/i18n';
 import { getPlatform } from '@/platform';
 import { shortAddress } from '@/utils/address';
 import { formatEthAmount, formatTokenAmount } from '@/utils/eth';
@@ -18,7 +18,6 @@ import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
 
 export default function AccountScreen() {
-  const t = useT();
   const router = useRouter();
   const { user } = useAuth();
   const { isVerified } = useWorldVerification();
@@ -32,10 +31,10 @@ export default function AccountScreen() {
     try {
       await getPlatform().clipboard.copyText(address);
       haptics.success();
-      Toast.success(t('account.addressCopied'), 1);
+      Toast.success('Address copied', 1);
     } catch (error) {
       logger.warn('[Account] Copying the address failed', error);
-      Toast.fail(t('account.copyFailed'), 1);
+      Toast.fail('Could not copy the address', 1);
     }
   };
 
@@ -43,91 +42,69 @@ export default function AccountScreen() {
     <>
       <SettingsRow
         icon="person-circle-outline"
-        title={t('account.walletAddress')}
-        subtitle={t('account.tapToCopy', { address: shortAddress(address) })}
+        title="Wallet address"
+        subtitle={`${shortAddress(address)} · Tap to copy`}
         onPress={() => void copyAddress()}
       />
       {DEV_TOOLS.enabled ? (
         <SettingsRow
           icon="globe-outline"
-          title={t('account.network')}
+          title="Network (dev)"
           subtitle={services.client.getActiveConfig().chain.name}
         />
       ) : null}
       <SettingsRow
         icon="cash-outline"
-        title={t('account.challengeFunds')}
+        title="Challenge funds"
         subtitle={balanceWei === null ? '—' : formatEthAmount(balanceWei)}
       />
       <SettingsRow
         icon="disc-outline"
-        title={t('account.strdBalance')}
+        title="STRD balance"
         subtitle={strdWei === null ? '—' : formatTokenAmount(strdWei, 'STRD')}
       />
     </>
   ) : (
-    <UnavailableRows
-      failed={walletError !== null && walletError !== undefined}
-      retry={retry}
-      t={t}
-    />
+    <UnavailableRows failed={walletError !== null && walletError !== undefined} retry={retry} />
   );
 
   return (
-    <SettingsScreen title={t('account.title')}>
-      <SettingsSection title={t('account.sectionSignIn')}>
-        <SettingsRow
-          icon="mail-outline"
-          title={t('account.email')}
-          subtitle={email ?? t('account.emailNotSet')}
-        />
+    <SettingsScreen title="Account">
+      <SettingsSection title="Sign-in">
+        <SettingsRow icon="mail-outline" title="Email" subtitle={email ?? 'Not set'} />
         <SettingsRow
           icon="shield-checkmark-outline"
-          title={isVerified ? t('account.worldVerified') : t('account.worldVerify')}
-          subtitle={isVerified ? t('account.worldVerifiedHint') : t('account.worldNotVerifiedHint')}
+          title={isVerified ? 'World ID' : 'Verify with World ID'}
+          subtitle={
+            isVerified
+              ? 'Verified · you are counted as one person on the leaderboard.'
+              : 'Not verified · counts you as one person on the leaderboard and gives your score a small bonus.'
+          }
           onPress={() => router.push('/verify')}
         />
       </SettingsSection>
 
-      <SettingsSection title={t('account.sectionDetails')}>{details}</SettingsSection>
+      <SettingsSection title="Details">{details}</SettingsSection>
       {address && walletKind ? (
         <ThemedText type="caption" themeColor="textSecondary" style={{ marginTop: -Spacing.one }}>
-          {walletKind === 'smart' ? t('account.savingFree') : t('account.ownFees')}
+          {walletKind === 'smart' ? COPY.accountSavingFree : COPY.accountOwnFees}
         </ThemedText>
       ) : null}
     </SettingsScreen>
   );
 }
 
-function UnavailableRows({
-  failed,
-  retry,
-  t,
-}: {
-  failed: boolean;
-  retry: () => void;
-  t: TFunction;
-}) {
+function UnavailableRows({ failed, retry }: { failed: boolean; retry: () => void }) {
   if (!failed) {
-    return (
-      <SettingsRow
-        icon="person-circle-outline"
-        title={t('account.accountId')}
-        subtitle={t('account.loading')}
-      />
-    );
+    return <SettingsRow icon="person-circle-outline" title="Account ID" subtitle="Loading" />;
   }
   return (
     <>
-      <SettingsRow
-        icon="person-circle-outline"
-        title={t('account.title')}
-        subtitle={t('account.unavailable')}
-      />
+      <SettingsRow icon="person-circle-outline" title="Account" subtitle="Unavailable" />
       <SettingsRow
         icon="refresh-outline"
-        title={t('account.retryTitle')}
-        subtitle={t('account.tryAgain')}
+        title={COPY.accountUnavailable}
+        subtitle="Try again"
         onPress={retry}
       />
     </>

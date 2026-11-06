@@ -6,7 +6,6 @@ import { SettingsRow, SettingsSection } from '@/components/settings-row';
 import { SettingsScreen } from '@/components/settings-screen';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { type TKey, useT } from '@/i18n';
 import { useBlockStore } from '@/stores/blockStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -17,21 +16,13 @@ import {
 } from '@/utils/privacyDefaults';
 import { privateZonesSummary } from '@/utils/settingsSummary';
 
-const VISIBILITY_KEY: Record<MapVisibility, TKey> = {
-  show: 'privacySafety.mapShow',
-  ends: 'privacySafety.mapEnds',
-  hide: 'privacySafety.mapHide',
-};
-
-const VISIBILITY_ORDER: readonly MapVisibility[] = ['show', 'ends', 'hide'];
-
-const STAT_KEY: Record<(typeof HIDDEN_STAT_CHOICES)[number]['stat'], TKey> = {
-  start_time: 'privacySafety.statStartTime',
-  pace: 'privacySafety.statPace',
-};
+const VISIBILITY_OPTIONS: ReadonlyArray<{ value: MapVisibility; label: string }> = [
+  { value: 'show', label: 'Show route' },
+  { value: 'ends', label: 'Hide route ends' },
+  { value: 'hide', label: 'Hide route' },
+];
 
 export default function PrivacySafetyScreen() {
-  const t = useT();
   const router = useRouter();
   const defaultPrivacy = useSettingsStore((s) => s.defaultPrivacy);
   const setDefaultPrivacy = useSettingsStore((s) => s.setDefaultPrivacy);
@@ -52,94 +43,101 @@ export default function PrivacySafetyScreen() {
   const hiddenCount = useBlockStore((s) => s.blocked.length + s.muted.length);
 
   return (
-    <SettingsScreen title={t('privacySafety.title')}>
+    <SettingsScreen title="Privacy and safety">
       <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-        {t('privacySafety.headingVisibility')}
+        DEFAULT VISIBILITY
       </ThemedText>
       <PrivacyPicker selected={defaultPrivacy} onSelect={setDefaultPrivacy} />
       <ThemedText type="caption" themeColor="textSecondary" style={{ marginTop: -Spacing.one }}>
-        {t('privacySafety.visibilityCaption')}
+        Who can see a new activity. You can still change it each time you save one.
       </ThemedText>
 
-      <SettingsSection title={t('privacySafety.sectionRoutes')}>
+      <SettingsSection title="Routes">
         <SettingsRow
           icon="shield-checkmark-outline"
-          title={t('privacySafety.privatePlaces')}
-          subtitle={t('privacySafety.privatePlacesHint', {
-            summary: privateZonesSummary(zoneCount, t),
-          })}
+          title="Private places"
+          subtitle={`${privateZonesSummary(zoneCount)} · hide routes near home or work`}
           onPress={() => router.push('/privacy-zones')}
         />
         <SettingsRow
           icon="eye-off-outline"
-          title={t('privacySafety.hideEnds')}
-          subtitle={hideRouteEnds ? t('privacySafety.hideEndsOn') : t('privacySafety.hideEndsOff')}
+          title="Hide route start and end"
+          subtitle={
+            hideRouteEnds
+              ? "On · others won't see at least the first and last 200 m"
+              : 'Off · others see the whole route'
+          }
           extra={
             <AppSwitch
               checked={hideRouteEnds}
               onChange={setHideRouteEnds}
-              label={t('privacySafety.hideEndsLabel')}
+              label="Hide the start and end of routes"
             />
           }
         />
       </SettingsSection>
 
       <ThemedText type="eyebrow" themeColor="textSecondary" accessibilityRole="header">
-        {t('privacySafety.headingMap')}
+        DEFAULT MAP VISIBILITY
       </ThemedText>
-      <ChipRow
-        options={VISIBILITY_ORDER.map((value) => ({ value, label: t(VISIBILITY_KEY[value]) }))}
-        value={mapVisibility}
-        onChange={chooseMapVisibility}
-      />
+      <ChipRow options={VISIBILITY_OPTIONS} value={mapVisibility} onChange={chooseMapVisibility} />
       <ThemedText type="caption" themeColor="textSecondary" style={{ marginTop: -Spacing.one }}>
-        {t('privacySafety.mapCaption')}
+        Where a new activity starts. Other athletes' apps honour it, but it is a request, not a
+        lock, and you can change it for each activity when you save it. Hiding the route also hides
+        its ends, which is what files you import get.
       </ThemedText>
 
-      <SettingsSection title={t('privacySafety.sectionNew')} footer={t('privacySafety.newFooter')}>
+      <SettingsSection
+        title="New activities"
+        footer="These are the starting choices in the save form for activities you record or add by hand. Your own view always shows everything, and each activity can be changed when you save it."
+      >
         <>
-          {HIDDEN_STAT_CHOICES.map(({ stat }) => {
-            const name = t(STAT_KEY[stat]);
-            const hidden = defaultHiddenStats.includes(stat);
-            return (
-              <SettingsRow
-                key={stat}
-                icon="eye-off-outline"
-                title={t('privacySafety.hideStat', { stat: name })}
-                subtitle={hidden ? t('privacySafety.hideStatOn') : t('privacySafety.hideStatOff')}
-                extra={
-                  <AppSwitch
-                    checked={hidden}
-                    onChange={(on) => setDefaultHiddenStat(stat, on)}
-                    label={t('privacySafety.hideStatLabel', { stat: name })}
-                  />
-                }
-              />
-            );
-          })}
+          {HIDDEN_STAT_CHOICES.map(({ stat, label }) => (
+            <SettingsRow
+              key={stat}
+              icon="eye-off-outline"
+              title={`Hide ${label.toLowerCase()}`}
+              subtitle={
+                defaultHiddenStats.includes(stat)
+                  ? "On · other athletes' apps leave it out"
+                  : 'Off · others can see it'
+              }
+              extra={
+                <AppSwitch
+                  checked={defaultHiddenStats.includes(stat)}
+                  onChange={(on) => setDefaultHiddenStat(stat, on)}
+                  label={`Hide ${label.toLowerCase()} by default`}
+                />
+              }
+            />
+          ))}
         </>
         <SettingsRow
           icon="volume-mute-outline"
-          title={t('privacySafety.mute')}
-          subtitle={defaultMuted ? t('privacySafety.muteOn') : t('privacySafety.muteOff')}
+          title="Mute from Home and club feeds"
+          subtitle={
+            defaultMuted
+              ? 'On · left out of other athletes’ Home feeds; still on your profile'
+              : 'Off · shows in Home and club feeds'
+          }
           extra={
             <AppSwitch
               checked={defaultMuted}
               onChange={setDefaultMuted}
-              label={t('privacySafety.muteLabel')}
+              label="Mute new activities from Home and club feeds"
             />
           }
         />
       </SettingsSection>
 
-      <SettingsSection title={t('privacySafety.sectionPeople')}>
+      <SettingsSection title="People">
         <SettingsRow
           icon="ban-outline"
-          title={t('privacySafety.blocked')}
+          title="Blocked and muted"
           subtitle={
             hiddenCount === 0
-              ? t('privacySafety.blockedNone')
-              : t('privacySafety.blockedCount', { count: hiddenCount })
+              ? 'No one'
+              : `${hiddenCount} ${hiddenCount === 1 ? 'person' : 'people'}`
           }
           onPress={() => router.push('/blocked')}
         />
