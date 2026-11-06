@@ -1,12 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ExpoLocation from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
-import { Linking, PermissionsAndroid, Platform } from 'react-native';
+import { AppState, Linking, PermissionsAndroid, Platform } from 'react-native';
 import { Palette } from '@/constants/palette';
 import { locationRequestFor } from '@/platform/locationRequest';
 import type { BackgroundLocation, StorageAdapter } from '@/platform/ports';
 import type { AccuracyMode } from '@/stores/settingsStore';
 import type { Location } from '@/types';
+import {
+  FOLLOW_ROUTE_KEY,
+  FOLLOW_ROUTE_STATE_KEY,
+  type FollowAlertState,
+  FRESH_FOLLOW_STATE,
+  followAlertText,
+  type StoredFollowRoute,
+  stepFollowAlert,
+} from '@/utils/followAlert';
 import { logger } from '@/utils/logger';
 import { fixFromCoords } from './fixFromCoords';
 
@@ -26,6 +36,34 @@ const ACCURACY_BY_MODE = {
   balanced: ExpoLocation.Accuracy.Balanced,
   power: ExpoLocation.Accuracy.Low,
 } as const;
+
+const ROUTE_ALERT_CHANNEL = 'route';
+
+/**
+ * While a saved route is being followed and the app is not on screen, say so with a notification
+ * when the athlete leaves it or gets back on. On screen, the Record banner, buzz and voice do it.
+ */
+async function checkFollowedRoute(position: [number, number]): Promise<void> {
+  const raw = await storage.getItem(FOLLOW_ROUTE_KEY);
+  if (!raw) return;
+  const route = JSON.parse(raw) as StoredFollowRoute;
+  if (!Array.isArray(route.line) || route.line.length < 2) return;
+  const savedState = await storage.getItem(FOLLOW_ROUTE_STATE_KEY);
+  const state: FollowAlertState = savedState ? JSON.parse(savedState) : FRESH_FOLLOW_STATE;
+  const step = stepFollowAlert(state, position, route.line);
+  await storage.setItem(FOLLOW_ROUTE_STATE_KEY, JSON.stringify(step.state));
+  if (!step.alert || AppState.currentState === 'active') return;
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync(ROUTE_ALERT_CHANNEL, {
+      name: 'Route alerts',
+      importance: Notifications.AndroidImportance.HIGH,
+    });
+  }
+  await Notifications.scheduleNotificationAsync({
+    content: { ...followAlertText(step.alert, route.name), data: { kind: 'route-alert' } },
+    trigger: Platform.OS === 'android' ? { channelId: ROUTE_ALERT_CHANNEL } : null,
+  });
+}
 
 /**
  * Headless task body. React state doesn't exist here, so the task only
@@ -69,6 +107,8 @@ TaskManager.defineTask(
       const trimmed =
         existing.length > MAX_BUFFERED_POINTS ? existing.slice(-MAX_BUFFERED_POINTS) : existing;
       await storage.setItem(BACKGROUND_POINTS_KEY, JSON.stringify(trimmed));
+      const newest = locations.at(-1);
+      if (newest) await checkFollowedRoute([newest.coords.longitude, newest.coords.latitude]);
     } catch (err) {
       logger.warn('[BackgroundLocation] Task failed:', err);
     }
