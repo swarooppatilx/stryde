@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useT } from '@/i18n';
 import type { ActivityType } from '@/types';
 import type { GpsSignal } from '@/utils/gpsSignal';
 import type { ReadinessActionKind, ReadinessCheck } from '@/utils/readiness';
@@ -38,7 +37,6 @@ export function RecordPreRun({
   onReadinessAction,
 }: RecordPreRunProps) {
   const theme = useTheme();
-  const t = useT();
   return (
     <RecordSheet>
       <SheetHandle />
@@ -49,7 +47,7 @@ export function RecordPreRun({
           <Tappable
             onPress={onOpenSettings}
             accessibilityRole="button"
-            accessibilityLabel={t('record.settingsLabel')}
+            accessibilityLabel="Recording settings"
             style={styles.cog}
           >
             <Ionicons name="settings-outline" size={22} color={theme.textSecondary} />

@@ -8,13 +8,11 @@ import { ThemedView } from '@/components/themed-view';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
-import { useT } from '@/i18n';
 
 /** The frame shared by every settings screen: back button, title and a scrolling column. */
 export function SettingsScreen({ title, children }: { title: string; children: ReactNode }) {
   const goBack = useGoBack();
   const theme = useTheme();
-  const t = useT();
   return (
     <ThemedView type="background" style={styles.container}>
       <SafeAreaView style={styles.container}>
@@ -25,7 +23,7 @@ export function SettingsScreen({ title, children }: { title: string; children: R
               hitSlop={8}
               style={styles.backButton}
               accessibilityRole="button"
-              accessibilityLabel={t('common.goBack')}
+              accessibilityLabel="Go back"
             >
               <Ionicons name="chevron-back" size={24} color={theme.text} />
             </Tappable>

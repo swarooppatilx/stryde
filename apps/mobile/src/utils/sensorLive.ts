@@ -1,4 +1,3 @@
-import { t as defaultT, type TFunction } from '@/i18n';
 import type { BleDevice, SensorKind } from '@/platform/ports';
 import { formatSpeed, type UnitSystem } from '@/utils/format';
 
@@ -74,13 +73,16 @@ export function newlyLost(
   return next.filter((kind) => !before.includes(kind));
 }
 
-export function sensorsSubtitle(
-  { connected, paired }: { connected: number; paired: number },
-  t: TFunction = defaultT
-): string {
-  if (connected > 0) return t('flyout.sensorsConnected', { count: connected });
-  if (paired > 0) return t('flyout.sensorsPaired', { count: paired });
-  return t('common.none');
+export function sensorsSubtitle({
+  connected,
+  paired,
+}: {
+  connected: number;
+  paired: number;
+}): string {
+  if (connected > 0) return `${connected} connected`;
+  if (paired > 0) return `${paired} paired`;
+  return 'None';
 }
 
 /** Signal strength in dBm as 0 (unknown) to 4 bars. */

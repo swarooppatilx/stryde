@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { LanguageSetting } from '@/i18n/resolve';
 import { getPlatform } from '@/platform';
 import type { ActivityPrivacy, ActivityType, HiddenStat, PrivacyZone } from '@/types';
 import type { AudioCueInterval } from '@/utils/audioCue';
@@ -89,8 +88,6 @@ interface SettingsState {
   weekStartsOn: WeekStartDay;
   /** Whether animation follows the phone's setting or is always kept to a minimum. */
   motion: MotionPreference;
-  /** The app's language: the phone's, or one picked here. */
-  language: LanguageSetting;
   /** Places whose surroundings are cut from the route others see; this device only. */
   privacyZones: PrivacyZone[];
   countdownSeconds: CountdownSeconds;
@@ -131,7 +128,6 @@ interface SettingsState {
   setStartTab: (tab: StartTab) => void;
   setWeekStartsOn: (day: WeekStartDay) => void;
   setMotion: (motion: MotionPreference) => void;
-  setLanguage: (language: LanguageSetting) => void;
   addPrivacyZone: (zone: Omit<PrivacyZone, 'id'>) => PrivacyZone;
   removePrivacyZone: (id: string) => void;
   setCountdownSeconds: (seconds: CountdownSeconds) => void;
@@ -161,7 +157,6 @@ const INITIAL_STATE = {
   startTab: 'index' as StartTab,
   weekStartsOn: 0 as WeekStartDay,
   motion: 'auto' as MotionPreference,
-  language: 'system' as LanguageSetting,
   privacyZones: [] as PrivacyZone[],
   countdownSeconds: 3 as CountdownSeconds,
   liveStatSlots: DEFAULT_LIVE_STAT_SLOTS,
@@ -200,7 +195,6 @@ export const useSettingsStore = create<SettingsState>()(
       setStartTab: (tab) => set({ startTab: tab }),
       setWeekStartsOn: (day) => set({ weekStartsOn: day }),
       setMotion: (motion) => set({ motion }),
-      setLanguage: (language) => set({ language }),
       addPrivacyZone: (input) => {
         const zone: PrivacyZone = {
           id: getPlatform().ids.next(),
@@ -230,7 +224,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: '@stryde/settings',
-      version: 15,
+      version: 14,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as Record<string, unknown>;
@@ -291,9 +285,6 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version < 14) {
           state = { ...state, adjustGpsInBatterySaver: true };
-        }
-        if (version < 15) {
-          state = { ...state, language: 'system' };
         }
         return state;
       },

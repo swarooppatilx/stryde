@@ -46,7 +46,6 @@ import type { RecoveryChoice } from '@/hooks/useRecoveredRun';
 import { useStartCountdown } from '@/hooks/useStartCountdown';
 import { useTrackingSession } from '@/hooks/useTrackingSession';
 import { useVerticalSwipe } from '@/hooks/useVerticalSwipe';
-import { useT } from '@/i18n';
 import { getPlatform } from '@/platform';
 import { setFinishedSession } from '@/services/activityPipeline';
 import { confirmStart } from '@/services/startChecks';
@@ -101,7 +100,7 @@ export default function TrackingScreen() {
   const [pickedType, setActivityType] = useState<ActivityType>('run');
   // A run picked back up after a restart shows the sport it was started with.
   const activityType = snapshot.activityType ?? pickedType;
-  const activeType = SPORT_TYPES.find((sport) => sport.type === activityType);
+  const activeType = SPORT_TYPES.find((t) => t.type === activityType);
   const activityLabel = activeType?.label ?? activityType;
 
   // The session and the preview only emit when something changes, so age the GPS fix on a clock.
@@ -121,7 +120,6 @@ export default function TrackingScreen() {
 
   const router = useRouter();
   const theme = useTheme();
-  const t = useT();
   const insets = useSafeAreaInsets();
   const unitSystem = useUnitSystem();
   const [locked, setLocked] = useState(false);
@@ -227,19 +225,14 @@ export default function TrackingScreen() {
   useHideTabBar(isSessionActive);
 
   const showStartFailure = (message: string | undefined) =>
-    Alert.alert(t('record.locationErrorTitle'), message ?? t('record.locationErrorBody'), [
-      { text: t('common.ok') },
-    ]);
+    Alert.alert('Location Error', message ?? 'Unable to access your location.', [{ text: 'OK' }]);
 
   // Waiting for the first GPS answer can take seconds; the button says so instead of looking dead.
   const [starting, setStarting] = useState(false);
   const handleStart = async (type: ActivityType) => {
     setStarting(true);
     try {
-      const result = await start(
-        type,
-        SPORT_TYPES.find((sport) => sport.type === type)?.label ?? type
-      );
+      const result = await start(type, SPORT_TYPES.find((t) => t.type === type)?.label ?? type);
       // 'permission': the permission prompt already explained itself; 'busy': a double tap.
       if (!result.ok && result.reason === 'gps') showStartFailure(result.message);
       if (result.ok) setFullStats(true);
@@ -275,9 +268,9 @@ export default function TrackingScreen() {
 
   const wasPaused = useRef(false);
   useEffect(() => {
-    if (isTracking && wasPaused.current) Toast.show(t('record.resumed'), 2);
+    if (isTracking && wasPaused.current) Toast.show('Recording resumed', 2);
     wasPaused.current = isPaused;
-  }, [isTracking, isPaused, t]);
+  }, [isTracking, isPaused]);
 
   // A second tap while the first is still closing the run would find nothing to finish.
   const finishing = useRef(false);
@@ -287,12 +280,12 @@ export default function TrackingScreen() {
       // Ask before anything is torn down: finishing a run this short throws it away.
       Alert.alert(
         // Says how far the athlete got.
-        t('record.tooShortTitle'),
-        t('record.tooShortBody', { distance: formatDistance(distance, unitSystem) }),
+        'Not moving yet?',
+        `You have moved ${formatDistance(distance, unitSystem)}, which is too short to save. Please continue or start over.`,
         [
-          { text: t('common.resume'), style: 'cancel' },
+          { text: 'Resume', style: 'cancel' },
           {
-            text: t('common.discard'),
+            text: 'Discard',
             style: 'destructive',
             onPress: async () => {
               finishing.current = true;
@@ -313,7 +306,7 @@ export default function TrackingScreen() {
       beacon.end();
       const result = await finish();
       if (!result.ok) {
-        Alert.alert(t('record.finishFailedTitle'), result.error);
+        Alert.alert('Could not finish', result.error);
         return;
       }
       router.push({
@@ -322,7 +315,7 @@ export default function TrackingScreen() {
       });
     } catch (error) {
       logger.error('[Record] Finish failed', error);
-      Alert.alert(t('record.finishFailedTitle'), t('record.finishFailedBody'));
+      Alert.alert('Could not finish', 'Please try again.');
     } finally {
       finishing.current = false;
     }
@@ -332,10 +325,10 @@ export default function TrackingScreen() {
   const confirmDiscardRun = () => {
     if (finishing.current) return;
     confirmDestructive({
-      title: t('record.discardTitle'),
-      message: t('record.discardBody'),
-      confirmLabel: t('common.discard'),
-      cancelLabel: t('common.resume'),
+      title: 'Discard this activity?',
+      message: 'What you have recorded so far will be deleted.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Resume',
       onConfirm: async () => {
         finishing.current = true;
         try {
@@ -379,9 +372,9 @@ export default function TrackingScreen() {
   // Back on a live recording asks instead of leaving: the tab bar is hidden then, so Back was the way out.
   useBackHandler(() => {
     if (backWhileRecording({ locked, finishing: finishing.current }) === 'ask') {
-      Alert.alert(t('record.leaveTitle'), t('record.leaveBody'), [
-        { text: t('common.resume'), style: 'cancel' },
-        { text: t('record.finishAndSave'), onPress: () => void finishRef.current() },
+      Alert.alert('Leave the recording?', 'It keeps recording until you finish it.', [
+        { text: 'Resume', style: 'cancel' },
+        { text: 'Finish and save', onPress: () => void finishRef.current() },
       ]);
     }
   }, isSessionActive);
@@ -591,10 +584,10 @@ export default function TrackingScreen() {
                   style={styles.backgroundNote}
                   onPress={() => void getPlatform().background.requestPermission()}
                   accessibilityRole="button"
-                  accessibilityLabel={t('record.backgroundOffLabel')}
+                  accessibilityLabel="Recording stops when the screen locks. Allow location all the time."
                 >
                   <ThemedText type="caption" themeColor="warningText" style={styles.pillText}>
-                    {t('record.backgroundOffNote')}
+                    Recording stops when the screen locks. Tap to allow location "all the time".
                   </ThemedText>
                 </Pressable>
               )}
@@ -603,11 +596,11 @@ export default function TrackingScreen() {
                   style={styles.liveNote}
                   onPress={beacon.share}
                   accessibilityRole="button"
-                  accessibilityLabel={t('record.shareLive')}
+                  accessibilityLabel="Share live location"
                 >
                   <View style={styles.liveDot} />
                   <ThemedText type="caption" style={styles.liveText}>
-                    {t('record.liveNote')}
+                    LIVE · Tap to share
                   </ThemedText>
                 </Pressable>
               )}
@@ -650,24 +643,19 @@ export default function TrackingScreen() {
                 <Pressable
                   onPress={() => setFlyoutOpen(!flyoutOpen)}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    flyoutOpen ? t('record.optionsClose') : t('record.optionsOpen')
-                  }
+                  accessibilityLabel={flyoutOpen ? 'Close options' : 'Open options'}
                 >
                   <SheetHandle />
                 </Pressable>
               </GestureDetector>
               {flyoutOpen && (
                 <RecordFlyout
-                  rows={flyoutRows(
-                    {
-                      trackLaps,
-                      mapStyle,
-                      liveShare: beacon.available ? beacon.enabled : null,
-                      sensors: sensorCounts,
-                    },
-                    t
-                  )}
+                  rows={flyoutRows({
+                    trackLaps,
+                    mapStyle,
+                    liveShare: beacon.available ? beacon.enabled : null,
+                    sensors: sensorCounts,
+                  })}
                   trackLaps={trackLaps}
                   onToggleLaps={setTrackLaps}
                   liveShare={beacon.enabled}

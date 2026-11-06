@@ -4,8 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TabBarIcon } from '@/components/tab-bar-icon';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
-import type { TKey } from '@/i18n';
-import { useT } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { haptics } from '@/utils/haptics';
 import { shouldOpenStartTab, startTabRoute } from '@/utils/startTab';
@@ -13,16 +11,15 @@ import { tabBarStyle } from '@/utils/tabBarStyle';
 import { tabTints } from '@/utils/tabBarTint';
 
 const TABS = [
-  { name: 'index', title: 'tabs.home', kind: 'home' },
-  { name: 'map', title: 'tabs.maps', kind: 'map' },
-  { name: 'tracking', title: 'tabs.record', kind: 'record' },
-  { name: 'groups', title: 'tabs.groups', kind: 'groups' },
-  { name: 'profile', title: 'tabs.you', kind: 'you' },
-] as const satisfies ReadonlyArray<{ name: string; title: TKey; kind: string }>;
+  { name: 'index', title: 'Home', kind: 'home' },
+  { name: 'map', title: 'Maps', kind: 'map' },
+  { name: 'tracking', title: 'Record', kind: 'record' },
+  { name: 'groups', title: 'Groups', kind: 'groups' },
+  { name: 'profile', title: 'You', kind: 'you' },
+] as const;
 
 export default function TabLayout() {
   const theme = useTheme();
-  const t = useT();
   const { bottom } = useSafeAreaInsets();
   const tints = tabTints(theme);
   const router = useRouter();
@@ -56,7 +53,7 @@ export default function TabLayout() {
           key={tab.name}
           name={tab.name}
           options={{
-            title: t(tab.title),
+            title: tab.title,
             tabBarIcon: ({ focused }) => <TabBarIcon kind={tab.kind} focused={focused} />,
           }}
         />

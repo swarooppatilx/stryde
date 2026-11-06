@@ -287,8 +287,8 @@ describe('preferred sports', () => {
     expect(migrate({ autoPause: true }, 9)).toMatchObject({ preferredSports: [] });
   });
 
-  it('are on version 15', () => {
-    expect(useSettingsStore.persist.getOptions().version).toBe(15);
+  it('are on version 14', () => {
+    expect(useSettingsStore.persist.getOptions().version).toBe(14);
   });
 });
 
@@ -331,7 +331,6 @@ describe('migrating to the save-form defaults', () => {
       defaultHiddenStats: [],
       defaultMutedFromFeeds: false,
       adjustGpsInBatterySaver: true,
-      language: 'system',
     });
   });
 
@@ -353,30 +352,9 @@ describe('adjusting GPS in battery saver', () => {
   });
 
   it('is added on when an older install is upgraded', () => {
-    expect(migrate({ accuracyMode: 'power' }, 13)).toMatchObject({
+    expect(migrate({ accuracyMode: 'power' }, 13)).toEqual({
       accuracyMode: 'power',
       adjustGpsInBatterySaver: true,
     });
-  });
-});
-
-describe('language', () => {
-  it('follows the phone by default and stores a choice', () => {
-    expect(useSettingsStore.getState().language).toBe('system');
-    useSettingsStore.getState().setLanguage('hi');
-    expect(useSettingsStore.getState().language).toBe('hi');
-    useSettingsStore.getState().reset();
-    expect(useSettingsStore.getState().language).toBe('system');
-  });
-
-  it('is added as system when an older install is upgraded', () => {
-    expect(migrate({ adjustGpsInBatterySaver: false }, 14)).toEqual({
-      adjustGpsInBatterySaver: false,
-      language: 'system',
-    });
-  });
-
-  it('keeps a stored choice when current-version state is migrated', () => {
-    expect(migrate({ language: 'hi' }, 15)).toEqual({ language: 'hi' });
   });
 });

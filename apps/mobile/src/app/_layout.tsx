@@ -32,7 +32,6 @@ import { useProtectedRoute } from '@/hooks/useProtectedRoute';
 import { usePushNotifications, usePushPrimer } from '@/hooks/usePushNotifications';
 import { useRecoveredRun } from '@/hooks/useRecoveredRun';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
-import '@/i18n/sync';
 import { getPlatform } from '@/platform';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSocialStore } from '@/stores/socialStore';

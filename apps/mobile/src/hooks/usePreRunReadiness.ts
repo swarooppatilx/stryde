@@ -1,6 +1,5 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { useT } from '@/i18n';
 import { getPlatform } from '@/platform';
 import { type ReadinessCheck, readinessChecks, readinessRows, readOrNull } from '@/utils/readiness';
 
@@ -8,7 +7,6 @@ const CHECK_EVERY_MS = 3000;
 
 /** The "Before you start" rows, polled while focused and `active` and refreshed on focus. Empty until the phone answers and when nothing is wrong; a failed read counts as unknown and never warns. */
 export function usePreRunReadiness(active: boolean): ReadinessCheck[] {
-  const t = useT();
   const [rows, setRows] = useState<ReadinessCheck[]>([]);
   useFocusEffect(
     useCallback(() => {
@@ -26,16 +24,13 @@ export function usePreRunReadiness(active: boolean): ReadinessCheck[] {
           ]);
         if (cancelled) return;
         const next = readinessRows(
-          readinessChecks(
-            {
-              location: permission,
-              backgroundLocation,
-              servicesOn,
-              notifications,
-              freeStorageBytes,
-            },
-            t
-          )
+          readinessChecks({
+            location: permission,
+            backgroundLocation,
+            servicesOn,
+            notifications,
+            freeStorageBytes,
+          })
         );
         setRows((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
       };
@@ -46,7 +41,7 @@ export function usePreRunReadiness(active: boolean): ReadinessCheck[] {
         cancelled = true;
         clearInterval(id);
       };
-    }, [active, t])
+    }, [active])
   );
   return rows;
 }

@@ -1,4 +1,4 @@
-import { t as defaultT, type TFunction } from '@/i18n';
+import { READINESS_COPY as C } from '@/constants/copy';
 
 /** `tip` is a static hint that is never a verdict: it says nothing about the phone's actual state. */
 export type ReadinessStatus = 'ok' | 'warn' | 'blocked' | 'tip';
@@ -40,19 +40,16 @@ function ok(id: ReadinessCheck['id'], title: string): ReadinessCheck {
   return { id, status: 'ok', title, detail: '' };
 }
 
-function locationCheck(input: ReadinessInput, t: TFunction): ReadinessCheck {
+function locationCheck(input: ReadinessInput): ReadinessCheck {
   const { location } = input;
-  const settings = {
-    kind: 'openAppSettings',
-    label: t('readiness.locationBlockedAction'),
-  } as const;
-  if (!location) return ok('location', t('readiness.locationBlockedTitle'));
+  const settings = { kind: 'openAppSettings', label: C.locationBlockedAction } as const;
+  if (!location) return ok('location', C.locationBlockedTitle);
   if (!location.granted) {
     return {
       id: 'location',
       status: 'blocked',
-      title: t('readiness.locationBlockedTitle'),
-      detail: t('readiness.locationBlockedDetail'),
+      title: C.locationBlockedTitle,
+      detail: C.locationBlockedDetail,
       action: settings,
     };
   }
@@ -60,63 +57,58 @@ function locationCheck(input: ReadinessInput, t: TFunction): ReadinessCheck {
     return {
       id: 'location',
       status: 'warn',
-      title: t('readiness.locationApproxTitle'),
-      detail: t('readiness.locationApproxDetail'),
-      action: { ...settings, label: t('readiness.locationApproxAction') },
+      title: C.locationApproxTitle,
+      detail: C.locationApproxDetail,
+      action: { ...settings, label: C.locationApproxAction },
     };
   }
   if (input.backgroundLocation === false) {
     return {
       id: 'location',
       status: 'warn',
-      title: t('readiness.locationBackgroundTitle'),
-      detail: t('readiness.locationBackgroundDetail'),
-      action: { ...settings, label: t('readiness.locationBackgroundAction') },
+      title: C.locationBackgroundTitle,
+      detail: C.locationBackgroundDetail,
+      action: { ...settings, label: C.locationBackgroundAction },
     };
   }
-  return ok('location', t('readiness.locationBlockedTitle'));
+  return ok('location', C.locationBlockedTitle);
 }
 
 /**
  * The pre-run checks, worst first (blocked, warn, tip, ok; stable within a status).
  * Battery use cannot be read with the installed packages, so it is always a `tip`.
  */
-export function readinessChecks(input: ReadinessInput, t: TFunction = defaultT): ReadinessCheck[] {
+export function readinessChecks(input: ReadinessInput): ReadinessCheck[] {
   const checks: ReadinessCheck[] = [
-    locationCheck(input, t),
+    locationCheck(input),
     input.servicesOn === false
       ? {
           id: 'services',
           status: 'blocked',
-          title: t('readiness.servicesTitle'),
-          detail: t('readiness.servicesDetail'),
-          action: { kind: 'openLocationSettings', label: t('readiness.servicesAction') },
+          title: C.servicesTitle,
+          detail: C.servicesDetail,
+          action: { kind: 'openLocationSettings', label: C.servicesAction },
         }
-      : ok('services', t('readiness.servicesTitle')),
+      : ok('services', C.servicesTitle),
     input.notifications === false
       ? {
           id: 'notifications',
           status: 'warn',
-          title: t('readiness.notificationsTitle'),
-          detail: t('readiness.notificationsDetail'),
-          action: { kind: 'openAppSettings', label: t('readiness.notificationsAction') },
+          title: C.notificationsTitle,
+          detail: C.notificationsDetail,
+          action: { kind: 'openAppSettings', label: C.notificationsAction },
         }
-      : ok('notifications', t('readiness.notificationsTitle')),
+      : ok('notifications', C.notificationsTitle),
     {
       id: 'battery',
       status: 'tip',
-      title: t('readiness.batteryTitle'),
-      detail: t('readiness.batteryDetail'),
-      action: { kind: 'openAppSettings', label: t('readiness.batteryAction') },
+      title: C.batteryTitle,
+      detail: C.batteryDetail,
+      action: { kind: 'openAppSettings', label: C.batteryAction },
     },
     input.freeStorageBytes !== null && input.freeStorageBytes < LOW_STORAGE_BYTES
-      ? {
-          id: 'storage',
-          status: 'warn',
-          title: t('readiness.storageTitle'),
-          detail: t('readiness.storageDetail'),
-        }
-      : ok('storage', t('readiness.storageTitle')),
+      ? { id: 'storage', status: 'warn', title: C.storageTitle, detail: C.storageDetail }
+      : ok('storage', C.storageTitle),
   ];
   return checks
     .map((check, index) => ({ check, index }))

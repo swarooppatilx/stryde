@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
+import { READINESS_COPY } from '@/constants/copy';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useT } from '@/i18n';
 import type { ReadinessActionKind, ReadinessCheck } from '@/utils/readiness';
 import { Tappable } from './tappable';
 import { ThemedText } from './themed-text';
@@ -14,14 +14,13 @@ interface ReadinessCardProps {
 /** A quiet list of what could stop a recording, shown only when something needs a look. */
 export function ReadinessCard({ rows, onAction }: ReadinessCardProps) {
   const theme = useTheme();
-  const t = useT();
   if (rows.length === 0) return null;
   return (
     <View
       style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}
-      accessibilityLabel={t('readiness.heading')}
+      accessibilityLabel={READINESS_COPY.heading}
     >
-      <ThemedText type="smallBold">{t('readiness.heading')}</ThemedText>
+      <ThemedText type="smallBold">{READINESS_COPY.heading}</ThemedText>
       {rows.map((row) => (
         <View key={row.id} style={styles.row}>
           <View
