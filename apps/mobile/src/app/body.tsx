@@ -24,7 +24,9 @@ import {
 import { useBodyStore } from '@/stores/bodyStore';
 import { useProfileStore } from '@/stores/profileStore';
 import {
+  fieldChanged,
   formatHeight,
+  isUnparsedEntry,
   parseHeightCm,
   parseMaxHeartRate,
   parseRestingHeartRate,
@@ -97,22 +99,22 @@ export default function BodyScreen() {
 
   const weightKg = parseWeightKg(weight, units);
   const heightCm = parseHeightCm(height, units);
-  const weightInvalid = weight.trim() !== '' && weightKg === null;
-  const heightInvalid = height.trim() !== '' && heightCm === null;
+  const weightInvalid = isUnparsedEntry(weight, weightKg);
+  const heightInvalid = isUnparsedEntry(height, heightCm);
   const maxHrValue = parseMaxHeartRate(maxHr);
-  const maxHrInvalid = maxHr.trim() !== '' && maxHrValue === null;
+  const maxHrInvalid = isUnparsedEntry(maxHr, maxHrValue);
   const restingHrValue = parseRestingHeartRate(restingHr);
-  const restingHrInvalid = restingHr.trim() !== '' && restingHrValue === null;
+  const restingHrInvalid = isUnparsedEntry(restingHr, restingHrValue);
   // The zone boundaries as typed; the usual ones are not "changed", and an odd set cannot be saved.
   const floorsValue = parseZoneFloors(floorTexts);
   const floorsInvalid = floorsValue === null;
   const floorsChanged =
     floorsValue !== null && !sameFloors(floorsValue, storedFloors ?? DEFAULT_ZONE_FLOORS);
   const changed =
-    (weightKg ?? null) !== (storedWeight ?? null) ||
-    (heightCm ?? null) !== (storedHeight ?? null) ||
-    (maxHrValue ?? null) !== (storedMaxHr ?? null) ||
-    (restingHrValue ?? null) !== (storedRestingHr ?? null) ||
+    fieldChanged(weightKg, storedWeight) ||
+    fieldChanged(heightCm, storedHeight) ||
+    fieldChanged(maxHrValue, storedMaxHr) ||
+    fieldChanged(restingHrValue, storedRestingHr) ||
     floorsChanged;
   const canSave =
     !weightInvalid &&
@@ -142,11 +144,10 @@ export default function BodyScreen() {
 
   const save = () => {
     if (!canSave) return;
-    if ((weightKg ?? null) !== (storedWeight ?? null)) saveWeight(weightKg);
-    if ((heightCm ?? null) !== (storedHeight ?? null)) saveHeight(heightCm);
-    if ((maxHrValue ?? null) !== (storedMaxHr ?? null)) saveMaxHeartRate(maxHrValue);
-    if ((restingHrValue ?? null) !== (storedRestingHr ?? null))
-      saveRestingHeartRate(restingHrValue);
+    if (fieldChanged(weightKg, storedWeight)) saveWeight(weightKg);
+    if (fieldChanged(heightCm, storedHeight)) saveHeight(heightCm);
+    if (fieldChanged(maxHrValue, storedMaxHr)) saveMaxHeartRate(maxHrValue);
+    if (fieldChanged(restingHrValue, storedRestingHr)) saveRestingHeartRate(restingHrValue);
     if (floorsChanged && floorsValue) {
       saveZoneFloors(sameFloors(floorsValue, DEFAULT_ZONE_FLOORS) ? null : floorsValue);
     }

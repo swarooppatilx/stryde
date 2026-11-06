@@ -155,3 +155,13 @@ export function summariseBody(
     maxHeartRateMeasured: input.maxHeartRate !== undefined,
   };
 }
+
+/** Whether a field's typed value differs from the stored one; "nothing yet" is the same whether it is null or undefined. */
+export function fieldChanged(typed: number | null | undefined, stored: number | null | undefined) {
+  return (typed ?? null) !== (stored ?? null);
+}
+
+/** A field that has text in it that did not parse to a value: the one case worth flagging, since an empty field is allowed. */
+export function isUnparsedEntry(text: string, parsed: unknown): boolean {
+  return text.trim() !== '' && parsed === null;
+}

@@ -3,7 +3,9 @@ import {
   basalCalories,
   bmi,
   bmiBand,
+  fieldChanged,
   formatHeight,
+  isUnparsedEntry,
   maxHeartRate,
   parseHeightCm,
   parseMaxHeartRate,
@@ -189,5 +191,35 @@ describe('parseRestingHeartRate', () => {
     expect(parseRestingHeartRate('29')).toBeNull();
     expect(parseRestingHeartRate('121')).toBeNull();
     expect(parseRestingHeartRate('52.5')).toBeNull();
+  });
+});
+
+describe('fieldChanged', () => {
+  it('is false when the typed value matches the stored one', () => {
+    expect(fieldChanged(70, 70)).toBe(false);
+    expect(fieldChanged(null, null)).toBe(false);
+  });
+
+  it('treats a missing stored value like an empty field, so an untouched form is not "changed"', () => {
+    expect(fieldChanged(null, undefined)).toBe(false);
+    expect(fieldChanged(undefined, null)).toBe(false);
+  });
+
+  it('is true for a new value, a cleared field, or a first value', () => {
+    expect(fieldChanged(72, 70)).toBe(true);
+    expect(fieldChanged(null, 70)).toBe(true);
+    expect(fieldChanged(70, undefined)).toBe(true);
+  });
+});
+
+describe('isUnparsedEntry', () => {
+  it('is true only when something was typed and it did not parse', () => {
+    expect(isUnparsedEntry('abc', null)).toBe(true);
+    expect(isUnparsedEntry('70', 70)).toBe(false);
+  });
+
+  it('leaves an empty or blank field alone: that just means "no value"', () => {
+    expect(isUnparsedEntry('', null)).toBe(false);
+    expect(isUnparsedEntry('   ', null)).toBe(false);
   });
 });
