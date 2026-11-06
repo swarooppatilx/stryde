@@ -60,6 +60,30 @@ describe('findRecordedActivity', () => {
     expect(ranges[ranges.length - 1]?.[0]).toBe(deploy);
   });
 
+  it('waits out an RPC node that lags the head instead of failing', async () => {
+    const c = client(1_000n, () => [log(OWNER, 5_000n)]);
+    const pastHead = Object.assign(new Error('Invalid parameters'), {
+      details: 'block range extends beyond current head block: requested 1000, head 999',
+    });
+    c.getLogs.mockRejectedValueOnce(pastHead);
+
+    expect(await findRecordedActivity(c, REGISTRY, HASH, 100n, { headLagDelayMs: 0 })).toEqual({
+      owner: OWNER,
+      distance: 5_000n,
+    });
+    expect(c.getLogs).toHaveBeenCalledTimes(2);
+    expect(c.getLogs.mock.calls[1]?.[0]).toMatchObject({ toBlock: 1_000n });
+  });
+
+  it('still fails on other RPC errors', async () => {
+    const c = client(1_000n, () => []);
+    c.getLogs.mockRejectedValueOnce(new Error('rate limited'));
+
+    await expect(
+      findRecordedActivity(c, REGISTRY, HASH, 100n, { headLagDelayMs: 0 })
+    ).rejects.toThrow('rate limited');
+  });
+
   it('returns null when the hash was never recorded', async () => {
     const c = client(LOG_WINDOW_BLOCKS * 3n, () => []);
 
