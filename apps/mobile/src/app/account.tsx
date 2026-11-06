@@ -11,7 +11,7 @@ import { useBalances } from '@/hooks/useBalances';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
 import { getPlatform } from '@/platform';
-import { shortAddress } from '@/utils/challengeForm';
+import { shortAddress } from '@/utils/address';
 import { formatEthAmount, formatTokenAmount } from '@/utils/eth';
 import { haptics } from '@/utils/haptics';
 import { logger } from '@/utils/logger';

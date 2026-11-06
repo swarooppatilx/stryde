@@ -1,4 +1,5 @@
 import { formatEther } from 'viem';
+import { shortAddress } from '@/utils/address';
 import { parseEthAmount } from './eth';
 
 const MAX_TARGET_METERS = 1_000_000;
@@ -55,9 +56,14 @@ export function validateChallenge(input: ChallengeFormInput): ChallengeFormResul
   return { ok: true, targetMeters, stakeWei };
 }
 
-/** `0x1234…abcd`: enough to tell two addresses apart at a glance. */
-export function shortAddress(wallet: string): string {
-  return `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
+/**
+ * Why a wallet cannot match a challenge stake, or null when it can (or when the balance has not
+ * loaded yet, which must not block the action). Without this, accepting from an unfunded wallet went
+ * to the chain and came back as "UserOperation reverted during simulation with reason 0x".
+ */
+export function stakeShortfall(balanceWei: bigint | null, stakeWei: bigint): string | null {
+  if (balanceWei === null || balanceWei >= stakeWei) return null;
+  return `Matching this stake takes ${formatEther(stakeWei)} ETH and your wallet has ${formatEther(balanceWei)} ETH.`;
 }
 
 /** Who a challenge goes to. A name always comes with the short address, and an address is never printed twice. */

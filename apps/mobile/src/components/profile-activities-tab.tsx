@@ -7,7 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteActivity } from '@/services/activityDeletion';
 import type { Activity, ActivityType } from '@/types';
-import { Alert } from '@/utils/alert';
+import { confirmDestructive } from '@/utils/confirmDestructive';
 import type { UnitSystem } from '@/utils/format';
 import { countOf } from '@/utils/plural';
 import { filterBySport } from '@/utils/profile';
@@ -15,6 +15,7 @@ import { Toast } from '@/utils/toast';
 import { Card } from './card';
 import { ChipRow } from './filter-chips';
 import { ProfileActivityRow } from './profile-activity-row';
+import { Tappable } from './tappable';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
@@ -26,23 +27,17 @@ interface Props {
 
 function confirmDelete(activity: Activity) {
   const name = activity.name || 'Activity';
-  Alert.alert(
-    'Delete Activity',
-    activity.onchainActivityId
+  confirmDestructive({
+    title: 'Delete Activity',
+    message: activity.onchainActivityId
       ? COPY.removeFromDevice(name)
       : `Are you sure you want to delete "${name}"?`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteActivity(activity.id);
-          Toast.info('Activity deleted', 1.2);
-        },
-      },
-    ]
-  );
+    confirmLabel: 'Delete',
+    onConfirm: () => {
+      deleteActivity(activity.id);
+      Toast.info('Activity deleted', 1.2);
+    },
+  });
 }
 
 /** The athlete's own activities, newest first, filterable by sport, swipe to delete. */
@@ -86,9 +81,20 @@ export function ProfileActivitiesTab({ activities, sportStats, unitSystem }: Pro
       {sportStats.length > 1 && (
         <ChipRow options={sportOptions} value={activeSport} onChange={setSportFilter} />
       )}
-      <ThemedText type="caption" themeColor="textSecondary">
-        {countOf(visible.length, 'activity', 'activities')} · swipe to delete
-      </ThemedText>
+      <ThemedView style={styles.listHeader}>
+        <ThemedText type="caption" themeColor="textSecondary">
+          {countOf(visible.length, 'activity', 'activities')} · swipe to delete
+        </ThemedText>
+        <Tappable
+          onPress={() => router.push('/activities')}
+          accessibilityRole="button"
+          accessibilityLabel="View all activities"
+        >
+          <ThemedText type="small" style={{ color: theme.accentText }}>
+            View all
+          </ThemedText>
+        </Tappable>
+      </ThemedView>
       {visible.map((activity) => (
         <ProfileActivityRow
           key={activity.id}
@@ -104,6 +110,7 @@ export function ProfileActivitiesTab({ activities, sportStats, unitSystem }: Pro
 
 const styles = StyleSheet.create({
   content: { gap: Spacing.three },
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   emptyCard: {
     padding: Spacing.five,
     alignItems: 'center',

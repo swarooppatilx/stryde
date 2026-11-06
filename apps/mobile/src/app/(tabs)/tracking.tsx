@@ -1,7 +1,7 @@
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
+import { type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LocateButton } from '@/components/locate-button';
@@ -25,6 +25,7 @@ import { Palette } from '@/constants/palette';
 import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import { useFollowCamera, useSmoothedHeading } from '@/hooks/useFollowCamera';
 import { useGpsPreview } from '@/hooks/useGpsPreview';
 import { useHideTabBar } from '@/hooks/useHideTabBar';
@@ -44,6 +45,7 @@ import { useRecordUiStore } from '@/stores/recordUiStore';
 import type { ActivityType, Ring } from '@/types';
 import { Alert } from '@/utils/alert';
 import { colorSegments } from '@/utils/colorSegments';
+import { confirmDestructive } from '@/utils/confirmDestructive';
 import { MAX_ZOOM, MIN_ZOOM, TILT_DEGREES } from '@/utils/followCamera';
 import { formatDistance, METERS_PER_MILE } from '@/utils/format';
 import { describeGpsSignal } from '@/utils/gpsSignal';
@@ -243,10 +245,11 @@ export default function TrackingScreen() {
     if (isTooShort(activityType, distance)) {
       // Ask before anything is torn down: finishing a run this short throws it away.
       Alert.alert(
-        'Too short to save',
-        `You have moved ${formatDistance(distance, unitSystem)}. Keep going, or discard this activity.`,
+        // Says how far the athlete got.
+        'Not moving yet?',
+        `You have moved ${formatDistance(distance, unitSystem)}, which is too short to save. Please continue or start over.`,
         [
-          { text: 'Keep recording', style: 'cancel' },
+          { text: 'Resume', style: 'cancel' },
           {
             text: 'Discard',
             style: 'destructive',
@@ -285,21 +288,20 @@ export default function TrackingScreen() {
   // Throwing a run away cannot be undone, so ask first, whatever its length.
   const confirmDiscardRun = () => {
     if (finishing.current) return;
-    Alert.alert('Discard this activity?', 'What you have recorded so far will be deleted.', [
-      { text: 'Keep recording', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: async () => {
-          finishing.current = true;
-          try {
-            await finish();
-          } finally {
-            finishing.current = false;
-          }
-        },
+    confirmDestructive({
+      title: 'Discard this activity?',
+      message: 'What you have recorded so far will be deleted.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Resume',
+      onConfirm: async () => {
+        finishing.current = true;
+        try {
+          await finish();
+        } finally {
+          finishing.current = false;
+        }
       },
-    ]);
+    });
   };
 
   // Save or Discard chosen on the recovery prompt: once the run is back in the session, take the
@@ -330,21 +332,14 @@ export default function TrackingScreen() {
   const finishRef = useRef(finishActivity);
   finishRef.current = finishActivity;
   // Back on a live recording asks instead of leaving: the tab bar is hidden then, so Back was the way out.
-  useFocusEffect(
-    useCallback(() => {
-      if (!isSessionActive) return undefined;
-      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (backWhileRecording({ locked, finishing: finishing.current }) === 'ask') {
-          Alert.alert('Leave the recording?', 'It keeps recording until you finish it.', [
-            { text: 'Keep recording', style: 'cancel' },
-            { text: 'Finish and save', onPress: () => void finishRef.current() },
-          ]);
-        }
-        return true;
-      });
-      return () => subscription.remove();
-    }, [isSessionActive, locked])
-  );
+  useBackHandler(() => {
+    if (backWhileRecording({ locked, finishing: finishing.current }) === 'ask') {
+      Alert.alert('Leave the recording?', 'It keeps recording until you finish it.', [
+        { text: 'Resume', style: 'cancel' },
+        { text: 'Finish and save', onPress: () => void finishRef.current() },
+      ]);
+    }
+  }, isSessionActive);
 
   // The camera follows from here on; this is only where the map is first drawn.
   const [initialCenter] = useState<[number, number]>(() =>

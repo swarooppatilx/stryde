@@ -14,7 +14,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
 import { type SavedRoute, useRouteStore } from '@/stores/routeStore';
-import { Alert } from '@/utils/alert';
+import { confirmDeleteRoute } from '@/utils/confirmDeleteRoute';
 import {
   activeFilterCount,
   filterSavedRoutes,
@@ -50,10 +50,7 @@ export default function SavedRoutesScreen() {
   const filtered = narrowing > 0 || filters.starredOnly;
   const chipValue = selectedChip(filters.starredOnly, narrowing);
   const confirmDelete = (route: SavedRoute) =>
-    Alert.alert('Delete this route?', route.name, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => remove(route.id) },
-    ]);
+    confirmDeleteRoute(route.name, () => remove(route.id));
 
   return (
     <ThemedView type="background" style={styles.container}>

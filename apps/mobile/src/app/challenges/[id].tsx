@@ -6,6 +6,7 @@ import { Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { WalletClient } from 'viem';
 import { formatEther } from 'viem';
+import { readBalances } from '@/backends/balanceSource';
 import { AppButton } from '@/components/button';
 import { ChallengeStandings } from '@/components/challenge-standings';
 import { ListMessage } from '@/components/list-message';
@@ -20,6 +21,7 @@ import { BorderRadius, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useBalances } from '@/hooks/useBalances';
 import { useChainAction } from '@/hooks/useChainAction';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useEnsName } from '@/hooks/useEnsName';
@@ -27,13 +29,20 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { useSocialUser } from '@/hooks/useSocialUser';
 import { useWithdrawnStore } from '@/stores/withdrawnStore';
 import { Alert } from '@/utils/alert';
-import { CHALLENGE_STATUS_LABEL, challengeStatusColor } from '@/utils/challengeFilter';
+import {
+  CHALLENGE_STATUS_LABEL,
+  challengeActions,
+  challengeStatusColor,
+} from '@/utils/challengeFilter';
+import { stakeShortfall } from '@/utils/challengeForm';
+import { confirmDestructive } from '@/utils/confirmDestructive';
 import { formatDateTime } from '@/utils/dates';
 import { buildDetailDeepLink } from '@/utils/deepLink';
 import { getParsedError } from '@/utils/errors';
 import { formatDistance, getDisplayName } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { logger } from '@/utils/logger';
+import { readUntil } from '@/utils/retry';
 import { Toast } from '@/utils/toast';
 
 type OnchainChallenge = NonNullable<Awaited<ReturnType<typeof services.challenge.getChallenge>>>;
@@ -43,6 +52,9 @@ export default function ChallengeDetailScreen() {
   const goBack = useGoBack();
   const theme = useTheme();
   const currentUserId = useCurrentUserId().toLowerCase();
+  const { eth: balanceWei } = useBalances(
+    currentUserId.startsWith('0x') ? (currentUserId as `0x${string}`) : null
+  );
   const unitSystem = useUnitSystem();
   const { run } = useChainAction();
 
@@ -64,13 +76,15 @@ export default function ChallengeDetailScreen() {
     if (!id || !/^\d+$/.test(id)) {
       setChallenge(null);
       setLoadError(null);
-      return;
+      return null;
     }
     try {
       // getChallenge answers null for an id the registry never issued, which is the
       // "no such challenge" case — distinct from the request failing.
-      setChallenge(await services.challenge.getChallenge(BigInt(id)));
+      const loaded = await services.challenge.getChallenge(BigInt(id));
+      setChallenge(loaded);
       setLoadError(null);
+      return loaded;
     } catch (e) {
       logger.warn('[Challenge] Failed to load:', e);
       if (challengeRef.current) {
@@ -79,8 +93,24 @@ export default function ChallengeDetailScreen() {
       } else {
         setLoadError('Failed to load this challenge. Check your connection and try again.');
       }
+      return undefined;
     }
   }, [id]);
+
+  // A read right after a confirmed write can come from an RPC node that has not seen it yet, which
+  // left an accepted challenge showing "Open" with a live Accept button. Keep reading until the
+  // status moves (or a few tries pass) when the write is one that changes it.
+  const loadAfterWrite = useCallback(
+    async (statusBefore: number | undefined, changesStatus: boolean) => {
+      if (!changesStatus) return load();
+      return readUntil(
+        async () => load(),
+        (c) => c != null && c.status !== statusBefore,
+        { tries: 6, delayMs: 2_000 }
+      );
+    },
+    [load]
+  );
 
   const reload = useCallback(() => {
     setIsLoading(true);
@@ -189,11 +219,21 @@ export default function ChallengeDetailScreen() {
     challenge.status === 2 &&
     (isChallenger || isOpponent) &&
     challenge.winner.toLowerCase() !== currentUserId;
+  const actions = challengeActions({
+    status: challenge.status,
+    deadline: challenge.deadline,
+    now: Math.floor(Date.now() / 1000),
+    isChallenger,
+    isOpponent,
+    isWinner,
+    hasWithdrawn,
+  });
 
   const runAction = async (
     write: (wallet: WalletClient) => Promise<{ confirmed: boolean; txHash?: `0x${string}` }>,
     labels: { pending: string; success: string },
-    onConfirmed?: () => void
+    onConfirmed?: () => void,
+    changesStatus = true
   ) => {
     setIsBusy(true);
     try {
@@ -201,7 +241,7 @@ export default function ChallengeDetailScreen() {
       if (result?.confirmed) {
         onConfirmed?.();
         if (result.txHash) setLastTxHash(result.txHash);
-        await load();
+        await loadAfterWrite(challenge.status, changesStatus);
       }
     } finally {
       setIsBusy(false);
@@ -209,8 +249,18 @@ export default function ChallengeDetailScreen() {
   };
 
   // Accepting sends the stake from this wallet: spell out what is being committed.
-  const handleAccept = () => {
+  const handleAccept = async () => {
     haptics.impactMedium();
+    // The balance on screen was read when this screen gained focus; funds sent while it was open
+    // (the common case: "add funds, then try again") would still read as 0, so ask the chain again.
+    const latest = currentUserId.startsWith('0x')
+      ? (await readBalances(currentUserId as `0x${string}`)).eth
+      : balanceWei;
+    const shortfall = stakeShortfall(latest ?? balanceWei, challenge.stake);
+    if (shortfall) {
+      Alert.alert('Not enough ETH', `${shortfall} Add funds to your wallet, then try again.`);
+      return;
+    }
     const ends = formatDateTime(challenge.deadline * 1000);
     Alert.alert(
       'Accept challenge?',
@@ -232,18 +282,17 @@ export default function ChallengeDetailScreen() {
 
   const handleCancel = () => {
     haptics.tap();
-    Alert.alert('Cancel this challenge?', 'It will no longer be open for anyone to accept.', [
-      { text: 'Keep it', style: 'cancel' },
-      {
-        text: 'Cancel challenge',
-        style: 'destructive',
-        onPress: () =>
-          runAction((wallet) => services.challenge.cancelChallenge(wallet, challenge.id), {
-            pending: 'Cancelling...',
-            success: 'Challenge cancelled',
-          }),
-      },
-    ]);
+    confirmDestructive({
+      title: 'Cancel this challenge?',
+      message: 'It will no longer be open for anyone to accept.',
+      confirmLabel: 'Cancel challenge',
+      cancelLabel: 'Keep it',
+      onConfirm: () =>
+        runAction((wallet) => services.challenge.cancelChallenge(wallet, challenge.id), {
+          pending: 'Cancelling...',
+          success: 'Challenge cancelled',
+        }),
+    });
   };
 
   const handleSettle = async () => {
@@ -264,7 +313,7 @@ export default function ChallengeDetailScreen() {
       });
       if (result?.confirmed) {
         if (result.txHash) setLastTxHash(result.txHash);
-        await load();
+        await loadAfterWrite(challenge.status, true);
       }
     } catch (error) {
       logger.error('[ChallengeDetail] Failed to determine winner:', error);
@@ -293,7 +342,9 @@ export default function ChallengeDetailScreen() {
               () => {
                 haptics.success();
                 if (id) markWithdrawn(id);
-              }
+              },
+              // A withdrawal pays out without changing the challenge's status.
+              false
             );
           },
         },
@@ -421,35 +472,27 @@ export default function ChallengeDetailScreen() {
               );
             })()}
 
-          {challenge.status === 0 && isOpponent && (
+          {actions.includes('accept') && (
             <AppButton onPress={handleAccept} disabled={isBusy}>
               {isBusy ? 'Accepting...' : 'Accept & Match Stake'}
             </AppButton>
           )}
-          {challenge.status === 0 && isChallenger && !deadlinePassed && (
+          {actions.includes('cancel') && (
             <AppButton onPress={handleCancel} disabled={isBusy} variant="secondary">
               Cancel Challenge
             </AppButton>
           )}
-          {challenge.status === 0 && isChallenger && deadlinePassed && !hasWithdrawn && (
-            <AppButton onPress={handleWithdraw} disabled={isBusy}>
-              {isBusy ? 'Withdrawing...' : 'Reclaim Stake'}
-            </AppButton>
-          )}
-          {challenge.status === 1 && (isChallenger || isOpponent) && !deadlinePassed && (
+          {actions.includes('settle') && (
             <AppButton onPress={handleSettle} disabled={isBusy}>
               {isBusy ? 'Settling...' : 'Settle Challenge'}
             </AppButton>
           )}
-          {challenge.status === 1 &&
-            (isChallenger || isOpponent) &&
-            deadlinePassed &&
-            !hasWithdrawn && (
-              <AppButton onPress={handleWithdraw} disabled={isBusy}>
-                {isBusy ? 'Withdrawing...' : 'Reclaim Stake'}
-              </AppButton>
-            )}
-          {isWinner && !hasWithdrawn && (
+          {actions.includes('reclaim') && (
+            <AppButton onPress={handleWithdraw} disabled={isBusy}>
+              {isBusy ? 'Withdrawing...' : 'Reclaim Stake'}
+            </AppButton>
+          )}
+          {actions.includes('withdrawWinnings') && (
             <AppButton onPress={handleWithdraw} disabled={isBusy}>
               {isBusy ? 'Withdrawing...' : 'Withdraw Winnings'}
             </AppButton>

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { BackHandler, ScrollView, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SetupGoalStep } from '@/components/setup-goal-step';
 import { SetupPeopleStep } from '@/components/setup-people-step';
@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { SETUP_COPY } from '@/constants/copy';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useBackHandler } from '@/hooks/useBackHandler';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useSetupStore } from '@/stores/setupStore';
@@ -79,13 +80,7 @@ export default function MakeItYoursScreen() {
   };
 
   // The phone's back button walks the steps in reverse; on the first it offers to skip instead of closing.
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      back();
-      return true;
-    });
-    return () => subscription.remove();
-  });
+  useBackHandler(back);
 
   const position = SETUP_STEPS.indexOf(step) + 1;
   const { title, body } = TITLES[step];

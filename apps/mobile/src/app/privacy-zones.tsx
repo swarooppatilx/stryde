@@ -15,7 +15,7 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { getPlatform } from '@/platform';
 import { ensureForegroundLocation } from '@/services/locationPermission';
 import { MAX_PRIVACY_ZONES, useSettingsStore } from '@/stores/settingsStore';
-import { Alert } from '@/utils/alert';
+import { confirmDestructive } from '@/utils/confirmDestructive';
 import { formatDistance } from '@/utils/format';
 import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
@@ -56,10 +56,13 @@ export default function PrivacyZonesScreen() {
   };
 
   const confirmRemove = (id: string, zoneName: string) =>
-    Alert.alert(`Remove ${zoneName}?`, 'New activities will show the route near it again.', [
-      { text: 'Keep', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => removeZone(id) },
-    ]);
+    confirmDestructive({
+      title: `Remove ${zoneName}?`,
+      message: 'New activities will show the route near it again.',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep',
+      onConfirm: () => removeZone(id),
+    });
 
   return (
     <ThemedView type="background" style={styles.container}>

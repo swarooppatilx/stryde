@@ -18,7 +18,7 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { useRouteElevation } from '@/hooks/useRouteElevation';
 import { resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRouteStore } from '@/stores/routeStore';
-import { Alert } from '@/utils/alert';
+import { confirmDeleteRoute } from '@/utils/confirmDeleteRoute';
 import { formatDistance, parsePolyline, SPORT_LABEL } from '@/utils/format';
 import { toGpx } from '@/utils/gpx';
 import { routeBounds } from '@/utils/routeBounds';
@@ -71,18 +71,11 @@ export default function RouteDetailScreen() {
     if (gpx) void shareGpx(route.name, gpx);
   };
   const confirmDelete = () =>
-    Alert.alert('Delete this route?', route.name, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          remove(route.id);
-          Toast.info('Route deleted', 1);
-          goBack();
-        },
-      },
-    ]);
+    confirmDeleteRoute(route.name, () => {
+      remove(route.id);
+      Toast.info('Route deleted', 1);
+      goBack();
+    });
   const saveName = () => {
     if (name !== null) rename(route.id, name);
     setName(null);
@@ -144,6 +137,9 @@ export default function RouteDetailScreen() {
           <RouteElevationCard line={line} elevation={elevation} />
           {name === null ? (
             <View style={styles.actions}>
+              <AppButton onPress={() => router.push(`/flyover?routeId=${route.id}`)}>
+                Fly over route
+              </AppButton>
               <AppButton variant="secondary" onPress={exportGpx}>
                 Export GPX
               </AppButton>

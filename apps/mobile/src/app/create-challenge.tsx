@@ -36,8 +36,8 @@ import { useEnsName } from '@/hooks/useEnsName';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useShake } from '@/hooks/useShake';
 import type { ActivityType } from '@/types';
-import { sameAddress } from '@/utils/address';
-import { opponentLabel, shortAddress, validateChallenge } from '@/utils/challengeForm';
+import { sameAddress, shortAddress } from '@/utils/address';
+import { opponentLabel, validateChallenge } from '@/utils/challengeForm';
 import {
   ENS_PROBLEM_COPY,
   findLookAlike,
@@ -328,7 +328,12 @@ export default function CreateChallengeScreen() {
             No users match "{opponentQuery}".
           </ThemedText>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.oppRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.oppRow}
+            keyboardShouldPersistTaps="handled"
+          >
             {(filteredOpponents ?? []).map((o) => {
               const isSelected = selectedOpponent?.wallet === o.wallet;
               return (
@@ -389,7 +394,11 @@ export default function CreateChallengeScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <Animated.View style={[styles.field, opponentShake.style]}>
             <ThemedText type="eyebrow" themeColor="textSecondary">
               Challenge who?
@@ -522,7 +531,7 @@ export default function CreateChallengeScreen() {
                 style={{ color: theme.textSecondary, marginTop: Spacing.one }}
               >
                 {`Balance: ${formatEthAmount(balanceWei)}`}
-                {address ? ` · ${address.slice(0, 6)}…${address.slice(-4)}` : ''}
+                {address ? ` · ${shortAddress(address)}` : ''}
               </ThemedText>
             )}
           </Animated.View>
