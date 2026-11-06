@@ -17,9 +17,15 @@ import type {
 } from '@/types/worldId';
 import { logger } from '@/utils/logger';
 
-/** A developer-login profile has no real account to verify, so it uses a stand-in. Dev builds only, and kept out of release bundles. */
-const usesDevVerification = () =>
-  DEV_TOOLS.enabled && PROFILES[getActiveProfileId()].auth === 'dev';
+/**
+ * Uses the on-device stand-in when the profile has no real API (Sandbox), or on Local when World ID
+ * credentials are not configured. When World ID is configured, Local and Live both run the real
+ * World ID check against the API server. Dev builds only, and kept out of release bundles.
+ */
+const usesDevVerification = () => {
+  const profile = PROFILES[getActiveProfileId()];
+  return DEV_TOOLS.enabled && profile.auth === 'dev' && (profile.fakeApi || !isWorldIdConfigured());
+};
 
 async function checkForProfile(
   kind: WorldCheckKind,
@@ -81,6 +87,7 @@ export function useWorldVerification() {
         }
 
         const message = err instanceof Error ? err.message : 'Verification failed';
+        logger.warn('[WorldId] Check failed', err);
         setError({ code: 'unknown', message });
         setStatus('error');
         return null;
