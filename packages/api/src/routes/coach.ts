@@ -19,6 +19,7 @@ import {
   toVitals,
 } from '../lib/coach.js';
 import { parseFacts } from '../lib/coachFacts.js';
+import { checkPlan } from '../lib/coachRules.js';
 import { logError } from '../lib/logError.js';
 import {
   chat,
@@ -110,31 +111,64 @@ coach.post('/plan', async (c) => {
   const facts = parseFacts(g.body.facts);
 
   try {
-    const { text, receipt } = await chat(planMessages(history, today, goal, facts), {
-      maxTokens: 500,
-    });
-    const plan = parsePlan(text);
+    const messages = planMessages(history, today, goal, facts);
+    const first = await chat(messages, { maxTokens: 500 });
+    const receipts: ZeroGReceipt[] = [first.receipt];
+    let plan = parsePlan(first.text);
     if (!plan) {
       budget.refund(g.wallet, 'plan');
       logError('[coach/plan] unparseable reply', {
-        requestId: receipt.requestId,
-        text: text.slice(0, 300),
+        requestId: first.receipt.requestId,
+        text: first.text.slice(0, 300),
       });
       return c.json(
         {
           error: 'The coach replied in a way we could not read. Try again.',
-          requestId: receipt.requestId,
+          requestId: first.receipt.requestId,
         },
         502
       );
     }
+
+    // The plan is held to the athlete's own numbers: one retry with the rule stated, then a clamp.
+    let adjusted: string[] = [];
+    let check = checkPlan(plan, facts);
+    if (check.violations.length > 0) {
+      const stated = check.violations.join('; ');
+      try {
+        const retry = await chat(
+          [
+            ...messages,
+            { role: 'assistant' as const, content: first.text },
+            {
+              role: 'user' as const,
+              content: `That plan breaks these safety limits: ${stated}. Reply again with JSON only: a plan inside the limits.`,
+            },
+          ],
+          { maxTokens: 500 }
+        );
+        receipts.push(retry.receipt);
+        const second = parsePlan(retry.text);
+        if (second) {
+          plan = second;
+          check = checkPlan(second, facts);
+        }
+      } catch (error) {
+        logError('[coach/plan] retry unavailable, clamping the first plan', error);
+      }
+      if (check.violations.length > 0) {
+        plan = check.clamped;
+        adjusted = check.adjusted;
+      }
+    }
     console.info(
-      `[coach] plan ${g.wallet.slice(0, 8)} via ${receipt.model} req=${receipt.requestId}`
+      `[coach] plan ${g.wallet.slice(0, 8)} via ${first.receipt.model} req=${receipts.map((r) => r.requestId).join(',')}${adjusted.length ? ' adjusted' : ''}`
     );
     return c.json({
       plan,
       date: today,
-      zeroG: [receipt],
+      ...(adjusted.length ? { adjusted } : {}),
+      zeroG: receipts,
       remaining: budget.remaining(g.wallet, 'plan'),
     });
   } catch (error) {

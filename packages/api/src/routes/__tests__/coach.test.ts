@@ -133,6 +133,158 @@ describe('coach routes', () => {
     expect(JSON.stringify(sent.messages)).not.toContain('Facts:');
   });
 
+  describe('plan safety rules', () => {
+    const HEAVY = {
+      week: { km: 20, minutes: 130, runs: 4 },
+      lastWeek: { km: 20, minutes: 130, runs: 4 },
+      longestKm14: 10,
+      daysSinceHard: 5,
+      hardDays7: 1,
+    };
+    const planReply = (distanceKm: number, id: string, type = 'easy') =>
+      routerReply(
+        {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  title: 'Run',
+                  type,
+                  distanceKm,
+                  durationMin: distanceKm * 6,
+                  effort: 'easy',
+                  summary: 's',
+                  steps: [{ label: 'Run', detail: `${distanceKm} km` }],
+                  why: 'w',
+                }),
+              },
+            },
+          ],
+        },
+        id
+      );
+    type PlanBody = {
+      plan: { distanceKm: number; type: string };
+      adjusted?: string[];
+      zeroG: { requestId: string }[];
+      remaining: number;
+    };
+
+    it('asks once more with the rule stated, and keeps the fixed plan', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(planReply(8, 'req_one'))
+        .mockResolvedValueOnce(planReply(3, 'req_two'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await post('/plan', { wallet: WALLET, history: [], facts: HEAVY });
+      const body = (await res.json()) as PlanBody;
+
+      expect(res.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(body.plan.distanceKm).toBe(3);
+      expect(body.adjusted).toBeUndefined();
+      expect(body.zeroG.map((r) => r.requestId)).toEqual(['req_one', 'req_two']);
+      expect(body.remaining).toBe(0);
+      const retry = JSON.parse(
+        (fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string
+      );
+      const last = retry.messages.at(-1).content as string;
+      expect(last).toContain('breaks these safety limits');
+      expect(last).toContain('at most 3 km');
+      expect(retry.messages.at(-2).role).toBe('assistant');
+    });
+
+    it('clamps when the retry still breaks the rule, with both receipts and one charge', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(planReply(8, 'req_one'))
+        .mockResolvedValueOnce(planReply(9, 'req_two'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await post('/plan', { wallet: WALLET, history: [], facts: HEAVY });
+      const body = (await res.json()) as PlanBody;
+
+      expect(res.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(body.plan.distanceKm).toBe(3);
+      expect(body.adjusted?.length).toBeGreaterThan(0);
+      expect(body.zeroG.map((r) => r.requestId)).toEqual(['req_one', 'req_two']);
+      // One allowance was charged for both calls: the budget of 1 is spent, the next is refused.
+      expect(body.remaining).toBe(0);
+      expect((await post('/plan', { wallet: WALLET, history: [], facts: HEAVY })).status).toBe(429);
+    });
+
+    it('clamps the first plan when the retry reply is unreadable', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(planReply(8, 'req_one'))
+        .mockResolvedValueOnce(
+          routerReply({ choices: [{ message: { content: 'sorry, no' } }] }, 'req_two')
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const body = (await (
+        await post('/plan', { wallet: WALLET, history: [], facts: HEAVY })
+      ).json()) as PlanBody;
+      expect(body.plan.distanceKm).toBe(3);
+      expect(body.adjusted?.length).toBeGreaterThan(0);
+      expect(body.zeroG).toHaveLength(2);
+    });
+
+    it('clamps the first plan when the retry call fails', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(planReply(8, 'req_one'))
+        .mockResolvedValueOnce(routerReply({ error: { message: 'no balance' } }, 'req_two', 402));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await post('/plan', { wallet: WALLET, history: [], facts: HEAVY });
+      const body = (await res.json()) as PlanBody;
+      expect(res.status).toBe(200);
+      expect(body.plan.distanceKm).toBe(3);
+      expect(body.zeroG.map((r) => r.requestId)).toEqual(['req_one']);
+    });
+
+    it('makes one call when the plan is already inside the rules', async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(planReply(3, 'req_one'));
+      vi.stubGlobal('fetch', fetchMock);
+      const body = (await (
+        await post('/plan', { wallet: WALLET, history: [], facts: HEAVY })
+      ).json()) as PlanBody;
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(body.adjusted).toBeUndefined();
+      expect(body.zeroG).toHaveLength(1);
+    });
+
+    it('does not check anything without facts', async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(planReply(30, 'req_one'));
+      vi.stubGlobal('fetch', fetchMock);
+      const body = (await (
+        await post('/plan', { wallet: WALLET, history: [] })
+      ).json()) as PlanBody;
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(body.plan.distanceKm).toBe(30);
+    });
+
+    it('makes a hard session easy after a hard day', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(planReply(5, 'req_one', 'intervals'))
+        .mockResolvedValueOnce(planReply(5, 'req_two', 'tempo'));
+      vi.stubGlobal('fetch', fetchMock);
+      const body = (await (
+        await post('/plan', {
+          wallet: WALLET,
+          history: [],
+          facts: { ...HEAVY, week: { km: 5, minutes: 30, runs: 1 }, daysSinceHard: 1 },
+        })
+      ).json()) as PlanBody;
+      expect(body.plan.type).toBe('easy');
+      expect(body.adjusted?.[0]).toContain('Made easy');
+    });
+  });
+
   it('stops at the daily allowance', async () => {
     vi.stubGlobal(
       'fetch',
