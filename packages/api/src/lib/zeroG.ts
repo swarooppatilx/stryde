@@ -48,8 +48,10 @@ interface Trace {
 function receiptFrom(response: Response, body: unknown, model: string): ZeroGReceipt {
   const trace = (body as { x_0g_trace?: Trace } | null)?.x_0g_trace;
   const cost = Number(trace?.billing?.total_cost_usd_micro);
+  // The header can arrive as "<edge id>, <router id>"; the trace carries the router's id alone.
+  const header = response.headers.get('x-request-id')?.split(',').at(-1)?.trim() || null;
   return {
-    requestId: response.headers.get('x-request-id') ?? trace?.request_id ?? null,
+    requestId: trace?.request_id ?? header,
     model,
     costUsdMicro: Number.isFinite(cost) ? cost : null,
   };
@@ -58,10 +60,17 @@ function receiptFrom(response: Response, body: unknown, model: string): ZeroGRec
 /** Waits between attempts when the router or one of its providers stumbles. */
 const RETRY_DELAYS_MS = [1_500, 4_000];
 
-/** A provider hiccup (the router's 5xx, or its own rate limit) is worth another try; a 4xx about the request or a 402 for credit is not. */
+/**
+ * A provider hiccup (the router's 5xx, its own rate limit, a timeout or a dropped connection) is
+ * worth another try; a 4xx about the request or a 402 for credit is not.
+ */
 function isTransient(error: unknown): boolean {
   if (error instanceof ZeroGError) return error.status === 429 || error.status >= 500;
-  return error instanceof Error && error.name === 'TimeoutError';
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === 'TimeoutError' ||
+    (error instanceof TypeError && /fetch failed/i.test(error.message))
+  );
 }
 
 async function sendWithRetry<T>(

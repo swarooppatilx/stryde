@@ -41,6 +41,7 @@ All routes are under `/api`. Every mount except `/health` and `/maintenance` req
 | `ZEROG_API_KEY`, `ZEROG_BASE_URL` | 0G Private Computer router for `/coach` |
 | `ZEROG_CHAT_MODEL`, `ZEROG_IMAGE_MODEL`, `ZEROG_STT_MODEL` | Optional model pins; otherwise chosen from the router's model list |
 | `ZEROG_DAILY_PLANS`, `ZEROG_DAILY_POSTERS`, `ZEROG_DAILY_DEBRIEFS`, `ZEROG_DAILY_REVIEWS` | Optional per-wallet daily allowances |
+| `ZEROG_DAILY_TOTAL` | Optional cap on coach calls across all wallets per UTC day (default 400) |
 | `CRON_SECRET` | Bearer token for `/maintenance` |
 
 ### Push
