@@ -5,11 +5,10 @@ import { GeolocateControl, Map as MapLibreMap, NavigationControl, ScaleControl }
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef } from 'react';
 import type { TerritoryFeatureCollection } from '../../_lib/territories';
-import styles from './TerritoryMap.module.css';
 
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
-// Pune, where the demo happens; shown when there is no territory to frame yet.
+// Shown when there is no territory to frame yet.
 const DEFAULT_CENTER: [number, number] = [73.8567, 18.5204];
 
 function boundsOf(
@@ -111,5 +110,5 @@ export function TerritoryMap({ territories, onMapReady }: TerritoryMapProps) {
     return () => map.remove();
   }, [territories, onMapReady]);
 
-  return <div ref={containerRef} className={styles.mapContainer} />;
+  return <div ref={containerRef} className="h-full w-full" />;
 }

@@ -3,18 +3,17 @@
 import type { Map as MapLibreMapType } from 'maplibre-gl';
 import { useState } from 'react';
 import type { TerritoryFeatureCollection } from '../../_lib/territories';
-import styles from '../../maps/page.module.css';
-import { SiteHeader } from '../home/SiteHeader';
-import { MapToolbar } from './MapToolbar';
-import { TerritoryMap } from './TerritoryMap';
+import { SiteHeader } from '../layout/site-header';
+import { MapToolbar } from './map-toolbar';
+import { TerritoryMap } from './territory-map';
 
 export function MapScreen({ territories }: { territories: TerritoryFeatureCollection }) {
   const [map, setMap] = useState<MapLibreMapType | null>(null);
 
   return (
-    <div className={styles.pageWrap}>
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#faf9f8]">
       <SiteHeader />
-      <div className={styles.mapArea}>
+      <div className="relative flex-1">
         <TerritoryMap territories={territories} onMapReady={setMap} />
         <MapToolbar map={map} />
       </div>
