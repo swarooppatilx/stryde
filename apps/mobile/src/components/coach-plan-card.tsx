@@ -20,13 +20,16 @@ import { Alert } from '@/utils/alert';
 import { coachFacts } from '@/utils/coachFacts';
 import { localDay, recentHistory } from '@/utils/coachRun';
 import { haptics } from '@/utils/haptics';
-import { factsLine, PRIVACY_LINE, planHeadline } from '@/utils/planCardText';
+import { factsLine, PRIVACY_LINE, planHeadline, streakText } from '@/utils/planCardText';
+import { isKept, keptDays, planStreak } from '@/utils/planKept';
 
 /** Today's session, written on 0G from the last two weeks of runs and what the athlete said about them. */
 export function CoachPlanCard({ auth }: { auth: HumanAuth | null }) {
   const theme = useTheme();
   const today = localDay(new Date());
   const saved = useCoachStore((s) => s.plans[today]);
+  const plans = useCoachStore((s) => s.plans);
+  const streak = planStreak(keptDays(plans), today);
   const [busy, setBusy] = useState(false);
   const maxHr = useMaxHeartRate();
   const restingHr = useProfileStore((s) => s.settings.restingHeartRate);
@@ -119,15 +122,44 @@ export function CoachPlanCard({ auth }: { auth: HumanAuth | null }) {
           <ThemedText type="caption" themeColor="textSecondary">
             {PRIVACY_LINE}
           </ThemedText>
-          <AppButton
-            size="small"
-            variant="ghost"
-            onPress={generate}
-            loading={busy}
-            disabled={busy || !auth}
-          >
-            Rethink today
-          </AppButton>
+          {saved.committedAt === undefined ? (
+            <>
+              <AppButton
+                onPress={() => {
+                  useCoachStore.getState().commitPlan(today, Date.now());
+                  haptics.success();
+                }}
+                icon={<Ionicons name="checkmark-circle-outline" size={18} color={Brand.white} />}
+              >
+                I'm doing this
+              </AppButton>
+              <AppButton
+                size="small"
+                variant="ghost"
+                onPress={generate}
+                loading={busy}
+                disabled={busy || !auth}
+              >
+                Rethink today
+              </AppButton>
+            </>
+          ) : (
+            <ThemedView style={styles.row}>
+              <Ionicons
+                name={isKept(saved) ? 'checkmark-circle' : 'time-outline'}
+                size={18}
+                color={isKept(saved) ? Brand.verified : theme.textSecondary}
+              />
+              <ThemedView style={styles.flex}>
+                <ThemedText type="smallBold">
+                  {isKept(saved) ? 'Plan kept' : "You're on it. Go run."}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {isKept(saved) ? streakText(streak) : 'We check it off when your run is saved.'}
+                </ThemedText>
+              </ThemedView>
+            </ThemedView>
+          )}
         </>
       ) : (
         <>

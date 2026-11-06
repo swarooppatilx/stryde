@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CoachPlan } from '@/services/coachService';
 import type { CoachFacts } from '@/utils/coachFacts';
-import { factsLine, PRIVACY_LINE, planHeadline } from '@/utils/planCardText';
+import { factsLine, PRIVACY_LINE, planHeadline, streakText } from '@/utils/planCardText';
 
 const facts = (over: Partial<CoachFacts> = {}): CoachFacts => ({
   week: { km: 12.4, minutes: 80, runs: 3 },
@@ -79,5 +79,14 @@ describe('PRIVACY_LINE', () => {
   it('says what leaves the phone and what never does', () => {
     expect(PRIVACY_LINE).toContain('TEE');
     expect(PRIVACY_LINE).toContain('Never your route or private notes');
+  });
+});
+
+describe('streakText', () => {
+  it('invites a first streak, then counts the days', () => {
+    expect(streakText(0)).toContain('start a streak');
+    expect(streakText(-2)).toContain('start a streak');
+    expect(streakText(1)).toBe('1 day of kept plans. Come back tomorrow to make it 2.');
+    expect(streakText(3)).toBe('3 days of kept plans.');
   });
 });

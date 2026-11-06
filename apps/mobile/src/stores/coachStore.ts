@@ -14,6 +14,10 @@ export interface SavedPlan {
   facts?: CoachFacts;
   receipts: ZeroGReceipt[];
   createdAt: number;
+  /** When the athlete said "I'm doing this"; absent until they do. */
+  committedAt?: number;
+  /** The activity that kept the plan, once one matched. */
+  doneRunId?: string;
 }
 
 export interface SavedPoster {
@@ -44,6 +48,8 @@ interface CoachState {
   debriefs: Record<string, SavedDebrief>;
   reviews: Record<string, SavedReview>;
   savePlan: (plan: SavedPlan) => void;
+  commitPlan: (day: string, at: number) => void;
+  markPlanDone: (day: string, runId: string) => void;
   savePoster: (activityId: string, poster: SavedPoster) => void;
   saveDebrief: (activityId: string, debrief: SavedDebrief) => void;
   saveReview: (activityId: string, review: SavedReview) => void;
@@ -63,6 +69,18 @@ export const useCoachStore = create<CoachState>()(
           const days = Object.keys(plans).sort().reverse();
           for (const old of days.slice(PLAN_DAYS_KEPT)) delete plans[old];
           return { plans };
+        }),
+      commitPlan: (day, at) =>
+        set((s) => {
+          const saved = s.plans[day];
+          if (!saved || saved.committedAt !== undefined) return s;
+          return { plans: { ...s.plans, [day]: { ...saved, committedAt: at } } };
+        }),
+      markPlanDone: (day, runId) =>
+        set((s) => {
+          const saved = s.plans[day];
+          if (!saved || saved.doneRunId) return s;
+          return { plans: { ...s.plans, [day]: { ...saved, doneRunId: runId } } };
         }),
       savePoster: (activityId, poster) =>
         set((s) => ({ posters: { ...s.posters, [activityId]: poster } })),

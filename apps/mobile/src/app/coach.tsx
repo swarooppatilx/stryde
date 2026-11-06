@@ -29,8 +29,11 @@ import {
   requestHumanApproval,
   revokeAgent,
 } from '@/services/humanPassService';
+import { useActivityStore } from '@/stores/activityStore';
+import { useCoachStore } from '@/stores/coachStore';
 import { useWorldVerificationStore } from '@/stores/worldVerificationStore';
 import { Alert } from '@/utils/alert';
+import { planUpdates } from '@/utils/planKept';
 import { Toast } from '@/utils/toast';
 
 const REFRESH_MS = 5_000;
@@ -86,6 +89,16 @@ export default function CoachScreen() {
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // A run saved since the athlete said "I'm doing this" keeps that day's plan.
+  useFocusEffect(
+    useCallback(() => {
+      const { plans, markPlanDone } = useCoachStore.getState();
+      for (const { day, runId } of planUpdates(plans, useActivityStore.getState().activities)) {
+        markPlanDone(day, runId);
+      }
+    }, [])
+  );
 
   const refresh = useCallback(async () => {
     if (!auth) return;

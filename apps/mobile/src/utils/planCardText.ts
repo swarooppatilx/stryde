@@ -42,3 +42,10 @@ export function planHeadline(plan: CoachPlan): string | null {
   if (plan.durationMin) parts.push(`${Math.round(plan.durationMin)} min`);
   return parts.join(' · ');
 }
+
+/** "3 days of kept plans"; "Come back tomorrow for day 2" when today is the first. */
+export function streakText(streak: number): string {
+  if (streak <= 0) return 'Come back tomorrow to start a streak.';
+  if (streak === 1) return '1 day of kept plans. Come back tomorrow to make it 2.';
+  return `${streak} days of kept plans.`;
+}
