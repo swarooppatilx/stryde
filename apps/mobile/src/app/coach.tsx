@@ -107,7 +107,7 @@ export default function CoachScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      void refresh();
       const timer = setInterval(refresh, REFRESH_MS);
       return () => clearInterval(timer);
     }, [refresh])
@@ -130,14 +130,14 @@ export default function CoachScreen() {
     } finally {
       setBusy(null);
       setActive(null);
-      refresh();
+      void refresh();
     }
   };
 
   const decline = async (approval: Approval) => {
     if (!address) return;
     await cancelApproval(approval.id, address).catch(() => undefined);
-    refresh();
+    void refresh();
   };
 
   const revoke = (grantId: string, label: string) => {
@@ -149,7 +149,7 @@ export default function CoachScreen() {
         style: 'destructive',
         onPress: async () => {
           await revokeAgent(grantId, address).catch(() => undefined);
-          refresh();
+          void refresh();
         },
       },
     ]);

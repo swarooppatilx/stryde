@@ -66,7 +66,11 @@ export function computeSweatScore(input: SweatInput): SweatResult {
 
   let coveredMs = 0;
   for (let i = 1; i < window.length; i++) {
-    coveredMs += Math.min(SAMPLE_GAP_MS, window[i]!.timestamp - window[i - 1]!.timestamp);
+    const current = window[i];
+    const previous = window[i - 1];
+    if (current && previous) {
+      coveredMs += Math.min(SAMPLE_GAP_MS, current.timestamp - previous.timestamp);
+    }
   }
   const coverage = Math.min(1, coveredMs / durationMs);
 

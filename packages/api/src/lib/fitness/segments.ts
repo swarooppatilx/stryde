@@ -36,13 +36,16 @@ export function matchSegmentEffort(
   let best: SegmentEffortMatch | null = null;
 
   for (let i = 0; i < track.length; i++) {
-    const startPoint = track[i]!;
+    const startPoint = track[i];
+    if (!startPoint) continue;
     if (haversineMeters(startPoint, segment.start) > gateRadiusM) continue;
 
     let covered = 0;
     for (let j = i + 1; j < track.length; j++) {
-      const point = track[j]!;
-      covered += haversineMeters(track[j - 1]!, point);
+      const point = track[j];
+      const previous = track[j - 1];
+      if (!point || !previous) continue;
+      covered += haversineMeters(previous, point);
       if (covered > segment.distanceM * MAX_COVERAGE_RATIO) break;
       if (haversineMeters(point, segment.end) > gateRadiusM) continue;
       if (covered < segment.distanceM * MIN_COVERAGE_RATIO) continue;

@@ -43,6 +43,12 @@ export function ActivityProofCard({ activity }: { activity: Activity }) {
       Toast.info('No heart-rate data from your watch yet', 2);
   };
 
+  const noSweatNote = canResync ? (
+    <ThemedText type="caption" themeColor="textSecondary">
+      No heart-rate data yet. Watches sync to Health Connect / Apple Health in batches.
+    </ThemedText>
+  ) : null;
+
   return (
     <ThemedView style={[styles.card, { backgroundColor: theme.backgroundSelected }]}>
       {activity.sweat ? (
@@ -64,11 +70,9 @@ export function ActivityProofCard({ activity }: { activity: Activity }) {
             </ThemedText>
           </ThemedView>
         </ThemedView>
-      ) : canResync ? (
-        <ThemedText type="caption" themeColor="textSecondary">
-          No heart-rate data yet. Watches sync to Health Connect / Apple Health in batches.
-        </ThemedText>
-      ) : null}
+      ) : (
+        noSweatNote
+      )}
 
       {canResync && (
         <TouchableOpacity onPress={resync} disabled={syncing} accessibilityRole="button">

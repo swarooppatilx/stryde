@@ -44,6 +44,11 @@ async function runApproval(
   return humanPass.advanceApproval(approval.id);
 }
 
+function defined<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to be defined`);
+  return value;
+}
+
 const human = (sub: string, acr = ACR_ORB): Decision => ({ kind: 'approve', sub, acr });
 
 beforeEach(() => {
@@ -136,12 +141,18 @@ describe('Human Pass approvals', () => {
     });
     expect(humanPass.consumeOneTimeSecrets(issued, undefined)).not.toHaveProperty('token');
     expect(humanPass.consumeOneTimeSecrets(issued, 'wrong-secret')).not.toHaveProperty('token');
-    const secrets = humanPass.consumeOneTimeSecrets(store.getApproval(issued.id)!, CLIENT_SECRET);
+    const secrets = humanPass.consumeOneTimeSecrets(
+      defined(store.getApproval(issued.id), 'approval'),
+      CLIENT_SECRET
+    );
     const token = secrets?.token as string;
     expect(token).toMatch(/^stryde_agent_/);
     expect(humanPass.resolveAgentToken(`Bearer ${token}`)?.wallet).toBe(WALLET_A);
     expect(
-      humanPass.consumeOneTimeSecrets(store.getApproval(issued.id)!, CLIENT_SECRET)
+      humanPass.consumeOneTimeSecrets(
+        defined(store.getApproval(issued.id), 'approval'),
+        CLIENT_SECRET
+      )
     ).not.toHaveProperty('token');
 
     const recovered = await runApproval(WALLET_NEW, 'recover_account', human('human-a'));
@@ -164,7 +175,7 @@ describe('Human Pass approvals', () => {
   });
 
   it('enforces Orb when the reward policy requires it', () => {
-    const policy = humanPass.ACTIONS.claim_activity_reward!;
+    const policy = defined(humanPass.ACTIONS.claim_activity_reward, 'reward policy');
     policy.acceptableAcr = [ACR_ORB];
     try {
       const approval = {

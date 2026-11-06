@@ -28,15 +28,17 @@ function downsample(track: TimedPoint[]): TimedPoint[] {
 
 /** Called by the tracking screen when a recording finishes. */
 export function setFinishedSession(track: TimedPoint[]): void {
-  if (track.length < 2) {
+  const sorted = [...track].sort((a, b) => a.timestamp - b.timestamp);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (sorted.length < 2 || !first || !last) {
     pendingSession = null;
     return;
   }
-  const sorted = [...track].sort((a, b) => a.timestamp - b.timestamp);
   pendingSession = {
     track: downsample(sorted),
-    startedAt: sorted[0]!.timestamp,
-    endedAt: sorted[sorted.length - 1]!.timestamp,
+    startedAt: first.timestamp,
+    endedAt: last.timestamp,
   };
 }
 

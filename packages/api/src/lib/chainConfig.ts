@@ -85,3 +85,9 @@ export function getRelayChainConfig(): RelayChainConfig {
   };
   return _config;
 }
+
+export function contractAddress(config: RelayChainConfig, name: string): `0x${string}` {
+  const address = config.contracts[name];
+  if (!address) throw new Error(`[relay] Contract not deployed on this chain: ${name}`);
+  return address;
+}

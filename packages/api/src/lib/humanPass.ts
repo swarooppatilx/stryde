@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { getRelayChainConfig } from './chainConfig.js';
+import { contractAddress, getRelayChainConfig } from './chainConfig.js';
 import { expectedIssuer, getIdentityProvider } from './identityProvider.js';
 import { RELAY_ABIS } from './relayAbis.js';
 import { getRelayerPublicClient, getRelayerWallet } from './relayer.js';
@@ -156,7 +156,7 @@ export const ACTIONS: Record<string, ActionPolicy> = {
       const publicClient = getRelayerPublicClient();
       const activityId = BigInt(Number(params.activityId));
       const [activityHash, owner] = (await publicClient.readContract({
-        address: config.contracts.activityRegistry!,
+        address: contractAddress(config, 'activityRegistry'),
         abi: RELAY_ABIS.activityRegistry,
         functionName: 'getActivity',
         args: [activityId],
@@ -166,7 +166,7 @@ export const ACTIONS: Record<string, ActionPolicy> = {
         throw new HumanPassError('not_owner', 'That activity belongs to another athlete.', 403);
       }
       const rewarded = (await publicClient.readContract({
-        address: config.contracts.moveToEarnToken!,
+        address: contractAddress(config, 'moveToEarnToken'),
         abi: RELAY_ABIS.moveToEarnToken,
         functionName: 'isRewarded',
         args: [activityHash],
@@ -175,12 +175,14 @@ export const ACTIONS: Record<string, ActionPolicy> = {
         throw new HumanPassError('already_rewarded', 'This activity was already rewarded.', 409);
 
       const relayer = getRelayerWallet();
+      const account = relayer.account;
+      if (!account) throw new Error('Relayer wallet has no account');
       const hash = await relayer.writeContract({
-        address: config.contracts.moveToEarnToken!,
+        address: contractAddress(config, 'moveToEarnToken'),
         abi: RELAY_ABIS.moveToEarnToken,
         functionName: 'mintForActivity',
         args: [wallet, activityHash, BigInt(Math.round(Number(params.distanceM)))],
-        account: relayer.account!,
+        account,
         chain: config.chain,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -306,8 +308,14 @@ export async function createApproval(input: {
   return approval;
 }
 
+function updateExisting(id: string, patch: Partial<Approval>): Approval {
+  const updated = store.updateApproval(id, patch);
+  if (!updated) throw new HumanPassError('not_found', 'Approval not found', 404);
+  return updated;
+}
+
 function fail(approval: Approval, status: ApprovalStatus, error: string): Approval {
-  return store.updateApproval(approval.id, { status, error })!;
+  return updateExisting(approval.id, { status, error });
 }
 
 /**
@@ -380,13 +388,13 @@ export async function advanceApproval(id: string): Promise<Approval> {
   const poll = await provider.poll(approval.deviceCode);
   switch (poll.kind) {
     case 'pending':
-      return store.updateApproval(id, { nextPollAt: now + approval.pollIntervalSec * 1000 })!;
+      return updateExisting(id, { nextPollAt: now + approval.pollIntervalSec * 1000 });
     case 'slow_down': {
       const interval = approval.pollIntervalSec + 5;
-      return store.updateApproval(id, {
+      return updateExisting(id, {
         pollIntervalSec: interval,
         nextPollAt: now + interval * 1000,
-      })!;
+      });
     }
     case 'denied':
       return fail(approval, 'denied', poll.description || 'The request was declined in World App.');
@@ -405,12 +413,12 @@ export async function advanceApproval(id: string): Promise<Approval> {
     return fail(approval, 'failed', `ID token validation failed: ${(error as Error).message}`);
   }
 
-  approval = store.updateApproval(id, {
+  approval = updateExisting(id, {
     authTime: identity.authTime,
     acr: identity.acr,
     amr: identity.amr,
     sub: identity.sub,
-  })!;
+  });
 
   const denial = authorizeIdentity(approval, identity);
   if (denial) return fail(approval, 'denied', ERROR_MESSAGES[denial] ?? denial);
@@ -420,14 +428,17 @@ export async function advanceApproval(id: string): Promise<Approval> {
   if (!fresh || fresh.status !== 'pending') return fresh ?? approval;
   store.updateApproval(id, { status: 'executing' });
 
+  const executor = ACTIONS[approval.action];
+  if (!executor) return fail(approval, 'failed', 'Unknown action');
+
   try {
-    const result = await ACTIONS[approval.action]!.execute({
+    const result = await executor.execute({
       wallet: approval.wallet as `0x${string}`,
       identity,
       params: approval.params,
       approval,
     });
-    return store.updateApproval(id, { status: 'completed', result })!;
+    return updateExisting(id, { status: 'completed', result });
   } catch (error) {
     const message =
       error instanceof HumanPassError
@@ -459,17 +470,18 @@ export function consumeOneTimeSecrets(
   }
   const { token, ...rest } = approval.result;
   const holdsSecret =
-    Boolean(clientSecret && approval.clientSecretHash) &&
-    hashToken(clientSecret!) === approval.clientSecretHash;
+    !!clientSecret &&
+    !!approval.clientSecretHash &&
+    hashToken(clientSecret) === approval.clientSecretHash;
   if (!holdsSecret) return rest;
   store.updateApproval(approval.id, { result: { ...rest, tokenDelivered: true } });
   return { ...rest, token };
 }
 
 export function resolveAgentToken(authorization: string | undefined) {
-  const match = authorization?.match(/^Bearer\s+(stryde_agent_[A-Za-z0-9_-]+)$/);
-  if (!match) return null;
-  const grant = store.findAgentGrantByTokenHash(hashToken(match[1]!));
+  const token = authorization?.match(/^Bearer\s+(stryde_agent_[A-Za-z0-9_-]+)$/)?.[1];
+  if (!token) return null;
+  const grant = store.findAgentGrantByTokenHash(hashToken(token));
   if (!grant) return null;
   const link = store.findLinkBySubject(grant.iss, grant.sub);
   // A recovered account moves the human to a new wallet; old grants die with the old wallet.
@@ -498,14 +510,16 @@ export function isWalletBanned(wallet: string): boolean {
   return store.listBannedWallets().includes(wallet.toLowerCase());
 }
 
+function findLinkToBan(input: { wallet?: string; sub?: string }) {
+  if (input.wallet) return store.findLinkByWallet(input.wallet);
+  if (input.sub) return store.findLinkBySubject(expectedIssuer(), input.sub);
+  return undefined;
+}
+
 export function banHuman(input: { wallet?: string; sub?: string; reason: string }): {
   sub: string;
 } {
-  const link = input.wallet
-    ? store.findLinkByWallet(input.wallet)
-    : input.sub
-      ? store.findLinkBySubject(expectedIssuer(), input.sub)
-      : undefined;
+  const link = findLinkToBan(input);
   if (!link) throw new HumanPassError('not_linked', 'No World ID is linked to that athlete.', 404);
   store.addBan({ iss: link.iss, sub: link.sub, reason: input.reason, bannedAt: Date.now() });
   return { sub: link.sub };

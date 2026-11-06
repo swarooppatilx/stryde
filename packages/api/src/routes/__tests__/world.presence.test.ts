@@ -95,7 +95,7 @@ async function check(world: World, body: object, result: object) {
   const { sessionId } = (await session.json()) as { sessionId: string };
   pollStatus.current = { type: 'confirmed', result };
   const poll = await world.request(`/session/${sessionId}/poll`, { method: 'POST' });
-  return (await poll.json()) as Record<string, any>;
+  return (await poll.json()) as Record<string, unknown>;
 }
 
 describe('Signed by a Human', () => {

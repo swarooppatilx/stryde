@@ -170,6 +170,11 @@ ${buttons}<button class="deny" name="persona" value="deny">Decline</button></for
 </body></html>`);
 });
 
+function mockVerifyHeading(answered: boolean, approved: boolean): string {
+  if (!answered) return 'This request was already answered or expired';
+  return approved ? 'Approved' : 'Declined';
+}
+
 humanPass.post('/mock/verify', async (c) => {
   if (!isMockIdentityEnabled()) return c.text('Not found', 404);
   const form = await c.req.parseBody();
@@ -180,10 +185,11 @@ humanPass.post('/mock/verify', async (c) => {
     code,
     persona ? { kind: 'approve', sub: `mock-${persona.id}`, acr: persona.acr } : { kind: 'deny' }
   );
+  const heading = mockVerifyHeading(ok, Boolean(persona));
   return c.html(
     `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:system-ui;background:#0b0b0f;color:#fff;padding:24px">
-<h2>${ok ? (persona ? 'Approved' : 'Declined') : 'This request was already answered or expired'}</h2>
+<h2>${heading}</h2>
 <p>You can return to Stryde now.</p></body></html>`
   );
 });

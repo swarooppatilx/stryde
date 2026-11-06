@@ -86,7 +86,7 @@ export default function CashOutScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load])
   );
 
@@ -133,7 +133,7 @@ export default function CashOutScreen() {
     );
     if (result?.confirmed) {
       setAmount('');
-      load();
+      void load();
     }
   };
 

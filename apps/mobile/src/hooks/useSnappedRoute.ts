@@ -34,6 +34,8 @@ export function useSnappedRoute(
     distance: number;
   } | null>(null);
   const [failed, setFailed] = useState<{ key: string; reason: SnapFailure } | null>(null);
+  const latest = useRef({ points, profile });
+  latest.current = { points, profile };
   const wanted = snap && points.length >= 2 && !!ENV.MAPBOX_ACCESS_TOKEN;
 
   useEffect(() => {
@@ -45,6 +47,7 @@ export function useSnappedRoute(
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
+      const { points, profile } = latest.current;
       fetchSnappedRoute(points, profile, {
         token: ENV.MAPBOX_ACCESS_TOKEN,
         signal: controller.signal,
@@ -67,8 +70,7 @@ export function useSnappedRoute(
       clearTimeout(timer);
       controller.abort();
     };
-    // `key` stands for the points and profile.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the waypoint string, not the array identity
+    // `key` stands for the points and profile, which are read from a ref.
   }, [key, wanted]);
 
   const straight = { line: [...points], distance: waypointsDistance(points) };

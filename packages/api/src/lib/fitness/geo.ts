@@ -66,7 +66,9 @@ export function encodeGeohash(latitude: number, longitude: number, precision = 7
 export function pathDistanceMeters(points: LatLng[]): number {
   let total = 0;
   for (let i = 1; i < points.length; i++) {
-    total += haversineMeters(points[i - 1]!, points[i]!);
+    const from = points[i - 1];
+    const to = points[i];
+    if (from && to) total += haversineMeters(from, to);
   }
   return total;
 }

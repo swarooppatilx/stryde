@@ -88,8 +88,9 @@ export function getArkivWallet(): ArkivWallet {
 }
 
 export function getArkivWriter(): `0x${string}` {
-  if (!writerAddress) getArkivWallet();
-  return writerAddress!;
+  getArkivWallet();
+  if (!writerAddress) throw new Error('[arkiv] Writer address unavailable');
+  return writerAddress;
 }
 
 export interface SegmentRecord {

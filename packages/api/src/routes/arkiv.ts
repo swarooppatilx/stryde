@@ -13,7 +13,7 @@ import {
   segmentLeaderboard,
   upsertBeacon,
 } from '../lib/arkivFitness.js';
-import { getRelayChainConfig } from '../lib/chainConfig.js';
+import { contractAddress, getRelayChainConfig } from '../lib/chainConfig.js';
 import {
   computeSweatScore,
   encodeGeohash,
@@ -64,7 +64,7 @@ async function currentSeasonId(): Promise<number> {
   try {
     const config = getRelayChainConfig();
     const season = (await getRelayerPublicClient().readContract({
-      address: config.contracts.seasonManager!,
+      address: contractAddress(config, 'seasonManager'),
       abi: RELAY_ABIS.seasonManager,
       functionName: 'getCurrentSeason',
     })) as { id: bigint; isActive: boolean };
@@ -207,8 +207,10 @@ arkiv.post(
       return c.json({ error: 'This athlete is suspended from Stryde.' }, 403);
 
     const track = (body.track as TimedPoint[]).slice().sort((a, b) => a.timestamp - b.timestamp);
-    const first = track[0]!;
-    const last = track[track.length - 1]!;
+    const first = track[0];
+    const last = track[track.length - 1];
+    if (!first || !last)
+      return c.json({ error: `track must have 2-${MAX_TRACK_POINTS} points` }, 400);
     const sweat = computeSweatScore({
       samples: Array.isArray(body.heartRate?.samples) ? body.heartRate.samples : [],
       restingBpm: body.heartRate?.restingBpm,

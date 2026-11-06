@@ -23,7 +23,12 @@ const kudos = (n: number, giver = BOB, block = 1000n, activityId = 7n): WatchedL
 });
 
 function setup(
-  options: { stored?: bigint | null; head?: bigint; notify?: NotifyDeps['notify']; resolveRecipient?: NotifyDeps['resolveRecipient'] } = {}
+  options: {
+    stored?: bigint | null;
+    head?: bigint;
+    notify?: NotifyDeps['notify'];
+    resolveRecipient?: NotifyDeps['resolveRecipient'];
+  } = {}
 ) {
   const { stored: initial, head, ...overrides } = options;
   let stored = initial === undefined ? 900n : initial;

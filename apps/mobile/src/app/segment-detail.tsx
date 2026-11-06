@@ -56,7 +56,7 @@ export default function SegmentDetailScreen() {
   }, [key, scope]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const markers: MapMarker[] = useMemo(

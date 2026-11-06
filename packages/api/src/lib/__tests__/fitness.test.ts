@@ -11,6 +11,11 @@ import {
 process.env.SWARM_REF_SECRET = 'test-secret-test-secret-test-secret';
 const { isSealedReference, openReference, sealReference } = await import('../swarm.js');
 
+function defined<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`expected ${what} to be defined`);
+  return value;
+}
+
 /** A straight run north along a meridian, one point every 10 s at ~3.6 m/s. */
 function straightRun(points: number, startLat = 19.076, lng = 72.8777): TimedPoint[] {
   return Array.from({ length: points }, (_, i) => ({
@@ -29,16 +34,16 @@ describe('geohash', () => {
 describe('segment matching', () => {
   it('times an effort between the start and end gates', () => {
     const run = straightRun(60);
-    const segment = segmentFromTrack(run.slice(10, 40))!;
+    const segment = defined(segmentFromTrack(run.slice(10, 40)), 'segment');
     const match = matchSegmentEffort(run, segment);
-    expect(match).not.toBeNull();
-    expect(match!.elapsedSec).toBeGreaterThanOrEqual(280);
-    expect(match!.elapsedSec).toBeLessThanOrEqual(320);
+    const effort = defined(match, 'segment match');
+    expect(effort.elapsedSec).toBeGreaterThanOrEqual(280);
+    expect(effort.elapsedSec).toBeLessThanOrEqual(320);
   });
 
   it('does not match a run that never reaches the end gate', () => {
     const run = straightRun(60);
-    const segment = segmentFromTrack(straightRun(30, 19.2))!;
+    const segment = defined(segmentFromTrack(straightRun(30, 19.2)), 'segment');
     expect(matchSegmentEffort(run, segment)).toBeNull();
   });
 });

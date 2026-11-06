@@ -32,6 +32,17 @@ import {
   recordingSummary,
 } from '@/utils/settingsSummary';
 
+function HealthConnectAccessRow({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <SettingsRow
+      icon="settings-outline"
+      title="Manage Health Connect access"
+      onPress={openHealthSettings}
+    />
+  );
+}
+
 export default function SettingsListScreen() {
   const router = useRouter();
   const handleLogout = useLogout();
@@ -168,15 +179,7 @@ export default function SettingsListScreen() {
             />
           }
         />
-        {settings.healthData && Platform.OS === 'android' ? (
-          <SettingsRow
-            icon="settings-outline"
-            title="Manage Health Connect access"
-            onPress={openHealthSettings}
-          />
-        ) : (
-          <></>
-        )}
+        <HealthConnectAccessRow visible={settings.healthData && Platform.OS === 'android'} />
       </SettingsSection>
 
       <SettingsSection title="Partner features">

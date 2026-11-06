@@ -23,6 +23,11 @@ function formatPaceSec(secPerKm: number): string {
   return `${min}:${String(sec).padStart(2, '0')} /km`;
 }
 
+function formatAge(secondsAgo: number | null): string {
+  if (secondsAgo !== null && secondsAgo < 60) return `${secondsAgo}s`;
+  return `${Math.round((secondsAgo ?? 0) / 60)}m`;
+}
+
 export default function LiveBeaconScreen() {
   const { runId } = useLocalSearchParams<{ runId: string }>();
   const theme = useTheme();
@@ -48,9 +53,9 @@ export default function LiveBeaconScreen() {
         else setError((e as Error).message);
       }
     };
-    poll();
+    void poll();
     const timer = setInterval(() => {
-      poll();
+      void poll();
       setNow(Date.now());
     }, POLL_MS);
     return () => {
@@ -60,6 +65,32 @@ export default function LiveBeaconScreen() {
   }, [runId]);
 
   const secondsAgo = beacon ? Math.max(0, Math.round((now - beacon.updatedAt) / 1000)) : null;
+
+  const liveStatus = beacon ? (
+    <Card style={styles.card}>
+      <ThemedView style={styles.liveRow}>
+        <View style={[styles.dot, { backgroundColor: Brand.danger }]} />
+        <ThemedText type="smallBold">LIVE · updated {formatAge(secondsAgo)} ago</ThemedText>
+      </ThemedView>
+      <ThemedText type="sectionTitle">{formatPaceSec(beacon.paceSecPerKm)}</ThemedText>
+      <ThemedText type="caption" themeColor="textSecondary">
+        {beacon.athlete.slice(0, 6)}…{beacon.athlete.slice(-4)}
+        {beacon.batteryPct === null ? '' : ` · battery ${beacon.batteryPct}%`}
+      </ThemedText>
+      <TouchableOpacity onPress={() => Linking.openURL(`${ARKIV_EXPLORER}/entity/${beacon.key}`)}>
+        <ThemedView style={styles.liveRow}>
+          <Ionicons name="open-outline" size={14} color={theme.brand.primary} />
+          <ThemedText type="small" style={{ color: theme.brand.primary }}>
+            Beacon entity on Arkiv
+          </ThemedText>
+        </ThemedView>
+      </TouchableOpacity>
+    </Card>
+  ) : (
+    <ThemedText type="small" themeColor="textSecondary">
+      {error ?? 'Finding the runner…'}
+    </ThemedText>
+  );
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -93,38 +124,8 @@ export default function LiveBeaconScreen() {
                 live location is kept.
               </ThemedText>
             </Card>
-          ) : beacon ? (
-            <Card style={styles.card}>
-              <ThemedView style={styles.liveRow}>
-                <View style={[styles.dot, { backgroundColor: Brand.danger }]} />
-                <ThemedText type="smallBold">
-                  LIVE · updated{' '}
-                  {secondsAgo !== null && secondsAgo < 60
-                    ? `${secondsAgo}s`
-                    : `${Math.round((secondsAgo ?? 0) / 60)}m`}{' '}
-                  ago
-                </ThemedText>
-              </ThemedView>
-              <ThemedText type="sectionTitle">{formatPaceSec(beacon.paceSecPerKm)}</ThemedText>
-              <ThemedText type="caption" themeColor="textSecondary">
-                {beacon.athlete.slice(0, 6)}…{beacon.athlete.slice(-4)}
-                {beacon.batteryPct === null ? '' : ` · battery ${beacon.batteryPct}%`}
-              </ThemedText>
-              <TouchableOpacity
-                onPress={() => Linking.openURL(`${ARKIV_EXPLORER}/entity/${beacon.key}`)}
-              >
-                <ThemedView style={styles.liveRow}>
-                  <Ionicons name="open-outline" size={14} color={theme.brand.primary} />
-                  <ThemedText type="small" style={{ color: theme.brand.primary }}>
-                    Beacon entity on Arkiv
-                  </ThemedText>
-                </ThemedView>
-              </TouchableOpacity>
-            </Card>
           ) : (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error ?? 'Finding the runner…'}
-            </ThemedText>
+            liveStatus
           )}
         </View>
       </SafeAreaView>

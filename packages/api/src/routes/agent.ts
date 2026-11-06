@@ -7,7 +7,7 @@ import {
   isArkivConfigured,
   segmentLeaderboard,
 } from '../lib/arkivFitness.js';
-import { getRelayChainConfig } from '../lib/chainConfig.js';
+import { contractAddress, getRelayChainConfig } from '../lib/chainConfig.js';
 import { encodeGeohash } from '../lib/fitness/index.js';
 import {
   AGENT_ACTIONS,
@@ -51,19 +51,19 @@ agent.get('/me', async (c) => {
     const client = getRelayerPublicClient();
     const [verified, activityCount, strdBalance] = await Promise.all([
       client.readContract({
-        address: config.contracts.profileRegistry!,
+        address: contractAddress(config, 'profileRegistry'),
         abi: RELAY_ABIS.profileRegistry,
         functionName: 'isVerified',
         args: [wallet],
       }),
       client.readContract({
-        address: config.contracts.activityRegistry!,
+        address: contractAddress(config, 'activityRegistry'),
         abi: RELAY_ABIS.activityRegistry,
         functionName: 'getActivityCount',
         args: [wallet],
       }),
       client.readContract({
-        address: config.contracts.moveToEarnToken!,
+        address: contractAddress(config, 'moveToEarnToken'),
         abi: RELAY_ABIS.moveToEarnToken,
         functionName: 'balanceOf',
         args: [wallet],
@@ -72,7 +72,7 @@ agent.get('/me', async (c) => {
     const count = activityCount as bigint;
     const recentIds = count
       ? ((await client.readContract({
-          address: config.contracts.activityRegistry!,
+          address: contractAddress(config, 'activityRegistry'),
           abi: RELAY_ABIS.activityRegistry,
           functionName: 'getUserActivityIds',
           args: [wallet, count > 5n ? count - 5n : 0n, 5n],

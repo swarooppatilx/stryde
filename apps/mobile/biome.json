@@ -8,7 +8,17 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**", "*.ts", "*.tsx", "*.js", "!.expo", "!android", "!ios", "!expo-env.d.ts"]
+    "includes": [
+      "src/**",
+      "*.ts",
+      "*.tsx",
+      "*.js",
+      "!.expo",
+      "!android",
+      "!ios",
+      "!expo-env.d.ts",
+      "!assets/expo.icon"
+    ]
   },
   "linter": {
     "rules": {

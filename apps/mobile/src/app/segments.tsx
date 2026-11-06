@@ -25,11 +25,12 @@ import { haversineDistance } from '@/utils/geo';
 import { Toast } from '@/utils/toast';
 
 function trackOf(activity: Activity): Array<{ latitude: number; longitude: number }> {
-  return activity.polyline
-    .split(';')
-    .map((p) => p.split(',').map(Number))
-    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat))
-    .map(([lng, lat]) => ({ latitude: lat!, longitude: lng! }));
+  return activity.polyline.split(';').flatMap((p) => {
+    const [lng, lat] = p.split(',').map(Number);
+    return lng !== undefined && lat !== undefined && Number.isFinite(lng) && Number.isFinite(lat)
+      ? [{ latitude: lat, longitude: lng }]
+      : [];
+  });
 }
 
 export default function SegmentsScreen() {
@@ -74,7 +75,7 @@ export default function SegmentsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load])
   );
 

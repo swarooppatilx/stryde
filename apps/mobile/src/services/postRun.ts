@@ -598,12 +598,13 @@ export async function releaseHeldReward(
   activity: Activity,
   deps: Pick<PostRunDeps, 'store' | 'chain'>
 ): Promise<RewardRelease> {
-  if (!deps.chain || !activity.activityHash) {
+  const { chain } = deps;
+  if (!chain || !activity.activityHash) {
     return { status: 'failed', error: new Error('This activity is not onchain yet.') };
   }
   const activityHash = activity.activityHash as `0x${string}`;
   const reward = await attempt('held reward mint', () =>
-    deps.chain!.mintReward(activityHash, activity.distance)
+    chain.mintReward(activityHash, activity.distance)
   );
   if (reward.ok) {
     deps.store.updateActivity(activity.id, {

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { encodeAbiParameters, type Hex, keccak256 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { getRelayChainConfig } from '../lib/chainConfig.js';
+import { contractAddress, getRelayChainConfig } from '../lib/chainConfig.js';
 import { isWalletBanned } from '../lib/humanPass.js';
 import { getRelayerPublicClient } from '../lib/relayer.js';
 
@@ -54,10 +54,12 @@ function hookAddress(): `0x${string}` | null {
   return value && HEX_ADDRESS_RE.test(value) ? (value as `0x${string}`) : null;
 }
 
+const HOOK_UNCONFIGURED = { error: 'SweatFeeHook is not configured on this server' };
+
 function poolKey(hook: `0x${string}`) {
   return {
     currency0: '0x0000000000000000000000000000000000000000',
-    currency1: getRelayChainConfig().contracts.moveToEarnToken!,
+    currency1: contractAddress(getRelayChainConfig(), 'moveToEarnToken'),
     fee: 0x800000,
     tickSpacing: 60,
     hooks: hook,
@@ -69,13 +71,13 @@ export function feePassProofMessage(wallet: string, issuedAt: number): string {
 }
 
 uniswap.use('*', async (c, next) => {
-  if (!hookAddress())
-    return c.json({ error: 'SweatFeeHook is not configured on this server' }, 503);
+  if (!hookAddress()) return c.json(HOOK_UNCONFIGURED, 503);
   await next();
 });
 
 uniswap.get('/info', (c) => {
-  const hook = hookAddress()!;
+  const hook = hookAddress();
+  if (!hook) return c.json(HOOK_UNCONFIGURED, 503);
   return c.json({
     chainId: getRelayChainConfig().chainId,
     hook,
@@ -92,7 +94,8 @@ uniswap.get('/fee', async (c) => {
   const wallet = c.req.query('wallet') ?? '';
   if (!HEX_ADDRESS_RE.test(wallet)) return c.json({ error: 'wallet required' }, 400);
   const client = getRelayerPublicClient();
-  const hook = hookAddress()!;
+  const hook = hookAddress();
+  if (!hook) return c.json(HOOK_UNCONFIGURED, 503);
   const [withPass, withoutPass, active] = await Promise.all([
     client.readContract({
       address: hook,
@@ -167,7 +170,8 @@ uniswap.post('/fee-pass', async (c) => {
   if (!signerKey) return c.json({ error: 'Service misconfigured' }, 503);
   const signer = privateKeyToAccount(signerKey);
 
-  const hook = hookAddress()!;
+  const hook = hookAddress();
+  if (!hook) return c.json(HOOK_UNCONFIGURED, 503);
   const router = SEPOLIA_V4.poolSwapTest;
   const chainId = BigInt(getRelayChainConfig().chainId);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + PASS_TTL_SEC);
