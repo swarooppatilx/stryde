@@ -25,6 +25,7 @@ export const useRecentSearchStore = create<RecentSearchState>()(
     {
       name: '@stryde/recent-searches',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

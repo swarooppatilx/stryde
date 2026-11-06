@@ -78,6 +78,7 @@ export const useRouteStore = create<RouteState>()(
     {
       name: '@stryde/routes',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

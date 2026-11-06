@@ -7,7 +7,10 @@ vi.mock('@/services/strydeApi', async (original) => ({
   apiFetch,
 }));
 vi.mock('expo-linking', () => ({ openURL: vi.fn() }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn() } }));
+vi.mock('react-native', () => ({
+  AppState: { addEventListener: vi.fn() },
+  Platform: { OS: 'ios' },
+}));
 
 const { humanFetch } = await import('@/services/humanPassService');
 

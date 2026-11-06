@@ -44,6 +44,7 @@ export const useSetupStore = create<SetupState>()(
     {
       name: '@stryde/setup',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => asyncStorageAdapter),
     }
   )

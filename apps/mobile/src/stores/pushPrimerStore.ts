@@ -24,6 +24,7 @@ export const usePushPrimerStore = create<PushPrimerState>()(
     {
       name: '@stryde/push-primer',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => asyncStorageAdapter),
     }
   )

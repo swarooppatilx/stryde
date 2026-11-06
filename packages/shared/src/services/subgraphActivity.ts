@@ -1,6 +1,7 @@
 import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
 import { getActiveConfig } from './client';
+import { indexCall } from './indexApi';
 import { HEX_ADDRESS_RE } from './subgraphClient';
 import { paginate } from './subgraphPaginate';
 import type { SyncedActivity } from './sync';
@@ -10,13 +11,13 @@ const HEX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 interface ActivityEntity {
   id: string;
   activityId: string;
-  user: { id: string };
+  user: string | { id: string };
   activityHash: string;
   activityType: number;
-  distance: string;
-  duration: string;
-  territoryArea: string;
-  timestamp: string;
+  distance: string | number;
+  duration: string | number;
+  territoryArea: string | number;
+  timestamp: string | number;
   metadataCid: string | null;
 }
 
@@ -26,7 +27,33 @@ export async function getActivitiesFromSubgraph(
   activityHash?: string
 ): Promise<SyncedActivity[] | null> {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    if (wallet && !HEX_ADDRESS_RE.test(wallet)) {
+      throw new Error(`Invalid wallet address for index query: ${wallet}`);
+    }
+    if (activityHash && !HEX_HASH_RE.test(activityHash)) {
+      throw new Error(`Invalid activity hash for index query: ${activityHash}`);
+    }
+    const params = new URLSearchParams({ limit: '1000' });
+    if (wallet) params.set('wallet', wallet.toLowerCase());
+    if (activityHash) params.set('hash', activityHash.toLowerCase());
+    const answer = await indexCall<{
+      activities: ActivityEntity[];
+    }>(`activities?${params.toString()}`);
+    if (!answer) return null;
+    return answer.activities.map((a) => ({
+      activityHash: a.activityHash,
+      owner: typeof a.user === 'string' ? a.user : a.user.id,
+      activityId: BigInt(a.activityId),
+      activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
+      distance: Number(a.distance),
+      duration: Number(a.duration),
+      territoryArea: Number(a.territoryArea),
+      timestamp: Number(a.timestamp),
+      metadata: '',
+      metadataCid: a.metadataCid ?? undefined,
+    }));
+  }
   if (wallet && !HEX_ADDRESS_RE.test(wallet)) {
     throw new Error(`Invalid wallet address for subgraph query: ${wallet}`);
   }
@@ -52,7 +79,7 @@ export async function getActivitiesFromSubgraph(
     const activityType: ActivityType = ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run';
     return {
       activityHash: a.activityHash,
-      owner: a.user.id,
+      owner: typeof a.user === 'string' ? a.user : a.user.id,
       activityId: BigInt(a.activityId),
       activityType,
       distance: Number(a.distance),
@@ -89,7 +116,7 @@ export async function getRecentActivitiesForUsersFromSubgraph(
     .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
     .map((a) => ({
       activityHash: a.activityHash,
-      owner: a.user.id,
+      owner: typeof a.user === 'string' ? a.user : a.user.id,
       activityId: BigInt(a.activityId),
       activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
       distance: Number(a.distance),
