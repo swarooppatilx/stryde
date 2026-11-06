@@ -24,6 +24,8 @@ export interface SyncedActivity {
   metadataPhotos?: string[];
   metadataPolyline?: string;
   metadataTerritory?: ActivityMetadata['territory'];
+  metadataMuted?: boolean;
+  metadataHiddenStats?: string[];
 }
 
 export interface SyncedTerritory {
@@ -139,6 +141,8 @@ async function hydrateActivityMetadata(activities: SyncedActivity[]): Promise<Sy
       metadataPhotos: metadata.photos,
       metadataPolyline: metadata.polyline,
       metadataTerritory: metadata.territory,
+      metadataMuted: metadata.mutedFromFeeds === true ? true : undefined,
+      metadataHiddenStats: metadata.hiddenStats?.length ? metadata.hiddenStats : undefined,
     };
   });
 }

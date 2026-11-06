@@ -33,6 +33,10 @@ export interface ActivityMetadata {
   territory?: Ring | null;
   /** The route as [lng, lat][] in the same order as the on-chain `polyline` arg to recordActivity(). */
   coordinates?: Array<[number, number]>;
+  /** The author asked for this to stay out of other people's Home feeds; apps honour it, the chain does not enforce it. */
+  mutedFromFeeds?: boolean;
+  /** Stats other people's apps leave out of the card and page (`pace`, `start_time`); display-only, the figures stay readable on the chain. */
+  hiddenStats?: string[];
 }
 
 const UPLOAD_TIMEOUT_MS = 30_000;
