@@ -40,6 +40,47 @@ const ICON_OF_MAKI: Record<string, IconName> = {
   campsite: 'bonfire-outline',
   water: 'water-outline',
   swimming: 'water-outline',
+  information: 'information-circle-outline',
+  shelter: 'home-outline',
+  doctor: 'medkit-outline',
+  convenience: 'cart-outline',
+  beach: 'sunny-outline',
+  playground: 'happy-outline',
+  'dog-park': 'paw-outline',
+  attraction: 'star-outline',
+  monument: 'flag-outline',
+  museum: 'library-outline',
+  ferry: 'boat-outline',
+  rail: 'train-outline',
+  'rail-metro': 'subway-outline',
+  bus: 'bus-outline',
+};
+
+/**
+ * Plain names for the places athletes stop at, so the card reads "Drinking water" or "Summit"
+ * rather than the map's internal class. Anything not listed keeps the map's own type.
+ */
+const LABEL_OF_MAKI: Record<string, string> = {
+  'drinking-water': 'Drinking water',
+  toilet: 'Toilets',
+  viewpoint: 'Viewpoint',
+  mountain: 'Summit',
+  information: 'Visitor information',
+  shelter: 'Shelter',
+  campsite: 'Campsite',
+  'picnic-site': 'Picnic spot',
+  bicycle: 'Bike shop',
+  'bicycle-share': 'Bike share',
+  'dog-park': 'Dog park',
+  beach: 'Beach',
+  playground: 'Playground',
+  doctor: 'Clinic',
+  hospital: 'Hospital',
+  pharmacy: 'Pharmacy',
+  fuel: 'Fuel station',
+  parking: 'Parking',
+  convenience: 'Convenience store',
+  grocery: 'Grocery',
 };
 
 export function poiIcon(maki: string): IconName {
@@ -64,6 +105,8 @@ export function poiFromFeature(feature: {
   const [lng, lat] = coords as [unknown, unknown];
   if (typeof lng !== 'number' || typeof lat !== 'number') return null;
   const maki = typeof props.maki === 'string' ? props.maki : '';
+  const known = LABEL_OF_MAKI[maki];
+  if (known) return { name, kind: known, maki, coordinate: [lng, lat] };
   const rawKind =
     (typeof props.type === 'string' && props.type) ||
     (typeof props.category_en === 'string' && props.category_en) ||

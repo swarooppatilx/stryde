@@ -33,6 +33,18 @@ describe('poiFromFeature', () => {
   });
 });
 
+describe('athlete places', () => {
+  it('names the places athletes stop at in plain words', () => {
+    expect(
+      poiFromFeature({
+        geometry: { type: 'Point', coordinates: [1, 2] },
+        properties: { name: 'Tap', maki: 'drinking-water', class: 'general' },
+      })?.kind
+    ).toBe('Drinking water');
+    expect(poiIcon('mountain')).toBe('triangle-outline');
+  });
+});
+
 describe('poiIcon', () => {
   it('maps athlete-relevant places and falls back to a pin', () => {
     expect(poiIcon('drinking-water')).toBe('water-outline');

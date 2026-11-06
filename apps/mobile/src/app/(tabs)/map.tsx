@@ -242,6 +242,23 @@ export default function MapScreen() {
     onPress: () => setTimeFilter(f.value),
   }));
   // The native compass starts below the chip row so it is never hidden behind it.
+  /** The route builder, started from a tapped place in one of three ways. */
+  const openBuilder = (opts: {
+    to?: [number, number];
+    from?: [number, number];
+    loop?: boolean;
+  }) => {
+    setPoi(null);
+    router.push({
+      pathname: '/route-builder',
+      params: {
+        ...(opts.to && { to: opts.to.join(',') }),
+        ...(opts.from && { from: opts.from.join(',') }),
+        ...(opts.loop && { loop: '1' }),
+        sport: BUILDER_SPORT[sportFilter],
+      },
+    });
+  };
   const statusSurface = { backgroundColor: theme.backgroundElement };
   const heatRamp = heatRampFor(heatmapColor);
   const compassTopOffset = mapOnly
@@ -557,16 +574,9 @@ export default function MapScreen() {
           from={location}
           sport={sportFilter}
           onClose={() => setPoi(null)}
-          onRouteHere={(place) => {
-            setPoi(null);
-            router.push({
-              pathname: '/route-builder',
-              params: {
-                to: `${place.coordinate[0]},${place.coordinate[1]}`,
-                sport: BUILDER_SPORT[sportFilter],
-              },
-            });
-          }}
+          onRouteHere={(place) => openBuilder({ to: place.coordinate })}
+          onStartHere={(place) => openBuilder({ from: place.coordinate })}
+          onLoopsFromHere={(place) => openBuilder({ from: place.coordinate, loop: true })}
         />
       )}
       {/* After the map sheet, so a tapped territory's card sits on top of it instead of behind. */}

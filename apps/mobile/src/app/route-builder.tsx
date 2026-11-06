@@ -67,6 +67,11 @@ const ELEVATION_DELAY_MS = 700;
 /** A flat route's profile spans at least this many metres, so a kerb is not drawn as a hill. */
 const ELEVATION_MIN_RANGE_M = 30;
 
+/** The loop presets to offer for a sport; anything else gets the running ones. */
+function loopSportOf(sport: ActivityType): keyof typeof LOOP_DISTANCES {
+  return sport === 'ride' || sport === 'walk' || sport === 'hike' ? sport : 'run';
+}
+
 /** "lng,lat" from a route param, or null. */
 function parsePoint(value: string | undefined): RoutePoint | null {
   const [lng, lat] = (value ?? '').split(',').map(Number);
@@ -83,7 +88,12 @@ export default function RouteBuilderScreen() {
   const goBack = useGoBack();
   const insets = useSafeAreaInsets();
   const unitSystem = useUnitSystem();
-  const params = useLocalSearchParams<{ to?: string; sport?: ActivityType }>();
+  const params = useLocalSearchParams<{
+    to?: string;
+    from?: string;
+    loop?: string;
+    sport?: ActivityType;
+  }>();
   const stylePref = useMapPrefsStore((s) => s.style);
   const mapType = useMapPrefsStore((s) => s.mapType);
   const save = useRouteStore((s) => s.save);
@@ -96,7 +106,9 @@ export default function RouteBuilderScreen() {
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   // Loop generator: pick a distance, get three loops from the start (or from here).
   const [looping, setLooping] = useState(false);
-  const [loopTarget, setLoopTarget] = useState<number>(LOOP_DISTANCES.run[1] as number);
+  const [loopTarget, setLoopTarget] = useState<number>(
+    () => LOOP_DISTANCES[loopSportOf(params.sport ?? 'run')][1] as number
+  );
   const [loops, setLoops] = useState<LoopSuggestion[] | null>(null);
   const [loopsLoading, setLoopsLoading] = useState(false);
   const [loopSeed, setLoopSeed] = useState(0);
@@ -104,6 +116,14 @@ export default function RouteBuilderScreen() {
   useEffect(() => {
     let cancelled = false;
     const destination = parsePoint(params.to);
+    const origin = parsePoint(params.from);
+    // "Start here" or "Loops from here" on a place: it is the start, wherever you are.
+    if (origin) {
+      setCenter(origin);
+      setPoints([origin]);
+      if (params.loop === '1') setLooping(true);
+      return;
+    }
     getPlatform()
       .location.getLastKnown()
       .then((fix) => {
@@ -113,6 +133,7 @@ export default function RouteBuilderScreen() {
         // "Route here" from a place: from where you are to it.
         if (destination && here) setPoints([here, destination]);
         else if (destination) setPoints([destination]);
+        if (params.loop === '1') setLooping(true);
       })
       .catch(() => {
         if (!cancelled) setCenter(destination ?? DEFAULT_CENTER);
@@ -120,7 +141,7 @@ export default function RouteBuilderScreen() {
     return () => {
       cancelled = true;
     };
-  }, [params.to]);
+  }, [params.to, params.from, params.loop]);
 
   const snapped = useSnappedRoute(points, profileFor(sport), snap);
   const { line, distance } = snapped;
@@ -158,7 +179,7 @@ export default function RouteBuilderScreen() {
     setPoints((current) => addWaypoint(current, point));
   };
 
-  const loopSport = sport === 'ride' || sport === 'walk' || sport === 'hike' ? sport : 'run';
+  const loopSport = loopSportOf(sport);
   const loopOptions = LOOP_DISTANCES[loopSport].map((m) => ({
     value: String(m),
     label: formatDistance(m, unitSystem),

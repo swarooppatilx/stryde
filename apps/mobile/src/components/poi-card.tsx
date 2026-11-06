@@ -27,10 +27,22 @@ interface PoiCardProps {
   onClose(): void;
   /** Plans a route from the athlete to the place. */
   onRouteHere?: (poi: MapPoi) => void;
+  /** Opens the route builder with the place as the start. */
+  onStartHere?: (poi: MapPoi) => void;
+  /** Offers loops that start and finish at the place. */
+  onLoopsFromHere?: (poi: MapPoi) => void;
 }
 
 /** A tapped café, water point or viewpoint: what it is, how far, and how long to get there. */
-export function PoiCard({ poi, from, sport, onClose, onRouteHere }: PoiCardProps) {
+export function PoiCard({
+  poi,
+  from,
+  sport,
+  onClose,
+  onRouteHere,
+  onStartHere,
+  onLoopsFromHere,
+}: PoiCardProps) {
   const theme = useTheme();
   const unitSystem = useUnitSystem();
   const distance = from ? distanceTo(from, poi) : null;
@@ -92,6 +104,32 @@ export function PoiCard({ poi, from, sport, onClose, onRouteHere }: PoiCardProps
           </ThemedText>
         </Tappable>
       )}
+      {(onStartHere || onLoopsFromHere) && (
+        <View style={styles.secondary}>
+          {onStartHere && (
+            <Tappable
+              style={[styles.secondaryAction, { borderColor: theme.border }]}
+              onPress={() => onStartHere(poi)}
+              accessibilityRole="button"
+              accessibilityLabel={`Plan a route starting at ${poi.name}`}
+            >
+              <Ionicons name="flag-outline" size={16} color={theme.text} />
+              <ThemedText type="smallBold">Start here</ThemedText>
+            </Tappable>
+          )}
+          {onLoopsFromHere && (
+            <Tappable
+              style={[styles.secondaryAction, { borderColor: theme.border }]}
+              onPress={() => onLoopsFromHere(poi)}
+              accessibilityRole="button"
+              accessibilityLabel={`Find loops from ${poi.name}`}
+            >
+              <Ionicons name="sync-outline" size={16} color={theme.text} />
+              <ThemedText type="smallBold">Loops from here</ThemedText>
+            </Tappable>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -122,6 +160,17 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     alignItems: 'center',
     gap: 2,
+  },
+  secondary: { flexDirection: 'row', gap: Spacing.two },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
   },
   action: {
     minHeight: 44,
