@@ -31,7 +31,9 @@ export interface ITrackingService {
   pauseTracking(): Promise<void>;
   resumeTracking(): Promise<void>;
   stopTracking(): Promise<{ success: boolean; error?: string }>;
-  addLocation(location: Location): void;
+  /** `stepsAtFix` is the pedometer total when the fix was taken, for fixes handled after a delay. */
+  addLocation(location: Location, stepsAtFix?: number): void;
+  setFilterFixes(enabled: boolean): void;
   restoreSession(): Promise<void>;
   getLocations(): Location[];
   getDistance(): number;
@@ -48,6 +50,8 @@ export interface ITrackingService {
   /** One reading of the phone's acceleration in g; may pause or resume a run that has gone still. */
   addAccelerationSample(magnitudeG: number): void;
   getInterpolatedDistance(): number;
+  /** Meters walked by the pedometer since the last route point, which the next fix has not measured yet. */
+  getInterpolatedStepDistance(): number;
   generateInterpolatedPolyline(): string;
   generateInterpolatedPoint(): Location | null;
   addInterpolatedLocation(location: Location): void;

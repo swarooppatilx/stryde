@@ -9,11 +9,13 @@ import {
 } from '@/utils/fixClassifier';
 import { destinationPoint, haversineDistance, rejectOutliers, smoothLocations } from '@/utils/geo';
 import { IncrementalTrack } from '@/utils/incrementalTrack';
+import { PositionKalman } from '@/utils/kalman';
 import { logger } from '@/utils/logger';
 import { createMotionDetector } from '@/utils/motionPause';
 import { pairs } from '@/utils/pairs';
 import { TRACKING_STORAGE_KEY } from '@/utils/recoverableRun';
 import { NO_TRACE, round, type TraceRecorder } from '@/utils/trackingTrace';
+import { isTrackTraceOn, trackTrace } from '@/utils/trackTrace';
 import { trackingTrace } from './trackingTrace';
 
 const TRACKING_KEY = TRACKING_STORAGE_KEY;
@@ -30,6 +32,17 @@ function pathLength(points: Location[]): number {
     total += haversineDistance(from.latitude, from.longitude, to.latitude, to.longitude);
   }
   return total;
+}
+
+/** Compass bearing from one fix to the next, in radians clockwise from north; null when they coincide. */
+function bearing(from: Location, to: Location): number | null {
+  if (from.latitude === to.latitude && from.longitude === to.longitude) return null;
+  const phi1 = (from.latitude * Math.PI) / 180;
+  const phi2 = (to.latitude * Math.PI) / 180;
+  const dLambda = ((to.longitude - from.longitude) * Math.PI) / 180;
+  const y = Math.sin(dLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  return Math.atan2(y, x);
 }
 
 function toPolyline(points: Location[]): string {
@@ -68,6 +81,8 @@ type FixOutcome =
   | 'reject-accuracy'
   | 'reject-stale'
   | 'not-tracking'
+  | 'replace-start'
+  | 'filtered-still'
   | Exclude<FixClass, 'accept'>;
 
 export class TrackingService implements ITrackingService {
@@ -106,6 +121,29 @@ export class TrackingService implements ITrackingService {
   private static readonly MOTION_PAUSE_AFTER_MS = 10_000;
   /** If the GPS chip still reports at least this speed (m/s), the athlete is moving whatever the phone says. */
   private static readonly GPS_MOVING_MS = 1.5;
+  /** The same for walks and hikes: an easy walk is ~1.2 m/s, under the running figure. */
+  private static readonly GPS_MOVING_ON_FOOT_MS = 0.7;
+  /** Walks pause below this pace; 1 m/s cut slow walkers off mid-stride, since fix-to-fix speed is noisy. */
+  private static readonly WALK_PAUSE_SPEED_MS = 0.45;
+  /** Steps counted this recently mean the athlete is moving, whatever a still phone or a noisy fix says. */
+  private static readonly RECENT_STEPS_MS = 5_000;
+  /**
+   * Steps fill in the route only when the GPS has really dropped out. Phones often deliver a fix only every 3 s, so a
+   * 3 s wait filled nearly every gap, and those points zigzagged against the next fix and inflated the distance.
+   */
+  private static readonly STEP_FILL_AFTER_MS = 8_000;
+  /** With the filter on, fixes closer together than this are merged by it rather than stored. */
+  private static readonly FILTERED_MIN_INTERVAL_MS = 500;
+  /** The filtered estimate must move this far (m) to extend the track; less is someone standing. */
+  private static readonly FILTERED_MIN_STEP_M = 1;
+  /** Each calibration keeps this share of the old stride, so one stretch of bad GPS cannot swing it. */
+  private static readonly STRIDE_KEEP = 0.6;
+  /** Step-filled points head the way the track went over at least this many meters... */
+  private static readonly HEADING_BASELINE_M = 8;
+  /** ...within this long; an older direction is a guess. */
+  private static readonly HEADING_LOOKBACK_MS = 30_000;
+  /** Step length is re-measured over at least this many steps of GPS track. */
+  private static readonly CALIBRATION_STEPS = 30;
   /** The auto-pause decision trusts the chip's speed this long; the on-screen live speed uses its own, much shorter window. */
   private static readonly AUTO_PAUSE_SPEED_FRESH_MS = 15_000;
 
@@ -113,8 +151,17 @@ export class TrackingService implements ITrackingService {
   /** Newest fix seen, recorded or not; older ones are replays/out-of-order and ignored. */
   private lastFixTimestamp = 0;
   private stepLength = DEFAULT_STEP_LENGTH;
-  private stepsSinceLastGps = 0;
+  /** The pedometer's running total when the last route point (GPS or step-estimated) was laid down. */
+  private stepCountAtLastPoint: number | null = null;
+  /** The pedometer's running total at the last accepted GPS fix: what step length is calibrated against. */
+  private stepCountAtLastFix: number | null = null;
+  private calibrationMeters = 0;
+  private lastStepCount = 0;
+  private lastStepAt: number | null = null;
+  private previousGpsLocation: Location | null = null;
   private lastInterpolatedLocation: Location | null = null;
+  private filterFixes = true;
+  private kalman: PositionKalman | null = null;
   private useGyroscope = true;
   private maxSpeedKmh = 25;
   private distanceTrack: IncrementalTrack | null = null;
@@ -175,6 +222,7 @@ export class TrackingService implements ITrackingService {
     this.isTracking = true;
     this.clearSession();
     this.activityType = activityType ?? null;
+    this.kalman = this.filterFixes ? new PositionKalman(this.accelStd()) : null;
     this.startTime = this.clock.now();
     this.autoPaused = false;
     this.lowSpeedSince = null;
@@ -193,6 +241,12 @@ export class TrackingService implements ITrackingService {
   }
 
   async resumeTracking(): Promise<void> {
+    // Steps taken while paused are not route; calibrate again from the next fix.
+    this.stepCountAtLastFix = null;
+    this.stepCountAtLastPoint = null;
+    this.calibrationMeters = 0;
+    // The speed from before the stop says nothing about the first fix after it.
+    this.kalman?.reset();
     this.pausedByMotion = false;
     this.autoPaused = false;
     this.pauseLocation = null;
@@ -249,8 +303,32 @@ export class TrackingService implements ITrackingService {
     this.motionStillSince = null;
     this.lastSpeedReading = null;
     this.pausedByMotion = false;
-    this.stepsSinceLastGps = 0;
+    this.stepCountAtLastPoint = null;
+    this.stepCountAtLastFix = null;
+    this.calibrationMeters = 0;
+    this.lastStepCount = 0;
+    this.lastStepAt = null;
+    this.previousGpsLocation = null;
     this.lastInterpolatedLocation = null;
+    this.kalman = null;
+  }
+
+  /** Whether the pedometer counted steps within the last few seconds. */
+  private stepsRecently(): boolean {
+    const steps = this.motion.getStepCount();
+    const now = this.clock.now();
+    if (steps > this.lastStepCount) {
+      this.lastStepCount = steps;
+      this.lastStepAt = now;
+    } else if (steps < this.lastStepCount) {
+      // The sensors restarted and the running total began again.
+      this.lastStepCount = steps;
+    }
+    return this.lastStepAt !== null && now - this.lastStepAt < TrackingService.RECENT_STEPS_MS;
+  }
+
+  private onFoot(): boolean {
+    return this.activityType === 'walk' || this.activityType === 'hike';
   }
 
   /** How many fixes this session ignored, by reason: counts only, nothing about where. */
@@ -262,10 +340,10 @@ export class TrackingService implements ITrackingService {
     if (this.isTracking) this.rejections[reason]++;
   }
 
-  addLocation(location: Location): void {
+  addLocation(location: Location, stepsAtFix?: number): void {
     const before = this.locations.at(-1);
     const wasTracking = this.isTracking;
-    const outcome = this.storeFix(location);
+    const outcome = this.storeFix(location, stepsAtFix);
     this.traceFix(location, outcome, before, wasTracking);
   }
 
@@ -302,13 +380,15 @@ export class TrackingService implements ITrackingService {
     });
   }
 
-  private storeFix(location: Location): FixOutcome {
+  private storeFix(location: Location, stepsAtFix?: number): FixOutcome {
     if (location.timestamp < MIN_PLAUSIBLE_FIX_TIME_MS) {
       this.reject('clock');
+      this.logFix(location, 'ignore-clock');
       return 'reject-clock';
     }
     if (location.accuracy > MAX_FIX_ACCURACY_M) {
       this.reject('accuracy');
+      this.logFix(location, 'ignore-accuracy');
       return 'reject-accuracy';
     }
     if (location.speed !== undefined) {
@@ -318,57 +398,172 @@ export class TrackingService implements ITrackingService {
     // than what was already seen would walk the route backwards.
     if (location.timestamp <= this.lastFixTimestamp) {
       this.reject('duplicate');
+      this.logFix(location, 'ignore-backwards');
       return 'reject-stale';
     }
     this.lastFixTimestamp = location.timestamp;
     this.updateAutoPause(location);
 
-    if (this.isTracking) {
-      const verdict = classifyFix(location, this.locations.at(-1), {
-        maxSpeedMs: this.maxSpeedKmh / 3.6,
-        consecutiveTeleports: this.teleportRejects,
-        beforePrevious: this.locations.at(-2),
-      });
-      if (verdict === 'ignore-teleport' || verdict === 'ignore-acceleration') {
-        this.teleportRejects++;
-        logger.debug(`[Tracking] Ignored a jump (${this.teleportRejects} in a row)`);
-      }
-      if (verdict !== 'accept') {
-        this.reject(REJECTION_OF_VERDICT[verdict]);
-        return verdict;
-      }
-      this.teleportRejects = 0;
-
-      this.locations.push(location);
-      this.lastGpsLocation = location;
-
-      if (this.useGyroscope && this.stepsSinceLastGps > 0) {
-        const actualDistance = this.lastInterpolatedLocation
-          ? haversineDistance(
-              this.lastInterpolatedLocation.latitude,
-              this.lastInterpolatedLocation.longitude,
-              location.latitude,
-              location.longitude
-            )
-          : 0;
-
-        if (actualDistance > 0 && this.stepsSinceLastGps > 0) {
-          this.stepLength = actualDistance / this.stepsSinceLastGps;
-          this.stepLength = Math.max(0.3, Math.min(1.0, this.stepLength));
-          this.trace.record('gyro.stepLength', {
-            stepLength: round(this.stepLength, 3),
-            steps: this.stepsSinceLastGps,
-            gpsM: round(actualDistance, 2),
-          });
-        }
-      }
-
-      this.stepsSinceLastGps = 0;
-      this.lastInterpolatedLocation = location;
-      this.schedulePersist();
-      return 'accept';
+    if (!this.isTracking) {
+      this.logFix(location, this.autoPaused ? 'paused-auto' : 'paused');
+      return 'not-tracking';
     }
-    return 'not-tracking';
+
+    const steps = stepsAtFix ?? this.motion.getStepCount();
+    if (this.replacesStart(location)) {
+      // A new array, so the incremental distance starts again from the better point.
+      this.locations = [location];
+      this.lastGpsLocation = location;
+      this.lastInterpolatedLocation = location;
+      this.stepCountAtLastFix = steps;
+      this.stepCountAtLastPoint = steps;
+      this.calibrationMeters = 0;
+      this.kalman?.reset();
+      this.kalman?.update(location);
+      this.logFix(location, 'replace-start');
+      this.schedulePersist();
+      return 'replace-start';
+    }
+
+    const filtering = this.kalman !== null;
+    const verdict = classifyFix(location, this.locations.at(-1), {
+      maxSpeedMs: this.maxSpeedKmh / 3.6,
+      consecutiveTeleports: this.teleportRejects,
+      beforePrevious: this.locations.at(-2),
+      // The filter weighs small moves by their accuracy; dropping them under 3 m threw away a third of a walk.
+      ...(filtering && { minStepM: 0, minIntervalMs: TrackingService.FILTERED_MIN_INTERVAL_MS }),
+    });
+    if (verdict === 'ignore-teleport' || verdict === 'ignore-acceleration') {
+      this.teleportRejects++;
+      logger.debug(`[Tracking] Ignored a jump (${this.teleportRejects} in a row)`);
+    }
+    if (verdict !== 'accept') {
+      this.reject(REJECTION_OF_VERDICT[verdict]);
+      this.logFix(location, verdict);
+      return verdict;
+    }
+    this.teleportRejects = 0;
+
+    const point = this.kalman ? this.kalman.update(location) : location;
+    const last = this.locations.at(-1);
+    if (
+      filtering &&
+      last &&
+      haversineDistance(last.latitude, last.longitude, point.latitude, point.longitude) <
+        TrackingService.FILTERED_MIN_STEP_M
+    ) {
+      // Standing still: the estimate barely moved, and adding it would only add creep.
+      this.reject('duplicate');
+      this.logFix(location, 'filtered-still', point);
+      return 'filtered-still';
+    }
+
+    const previousFix = this.lastGpsLocation;
+    this.locations.push(point);
+    this.previousGpsLocation = previousFix;
+    this.lastGpsLocation = point;
+
+    // Calibrate step length on the GPS distance between two fixes and the steps taken between them.
+    // getStepCount() is a running total, so steps are always measured as a difference from a baseline.
+    if (previousFix) {
+      this.calibrationMeters += haversineDistance(
+        previousFix.latitude,
+        previousFix.longitude,
+        point.latitude,
+        point.longitude
+      );
+    }
+    if (this.stepCountAtLastFix === null || steps < this.stepCountAtLastFix) {
+      this.stepCountAtLastFix = steps;
+      this.calibrationMeters = 0;
+    } else if (steps - this.stepCountAtLastFix >= TrackingService.CALIBRATION_STEPS) {
+      // Fixes come about once a second (two steps), far too few to divide by; GPS jitter would dominate.
+      const measured = this.calibrationMeters / (steps - this.stepCountAtLastFix);
+      const [shortest, longest] = this.strideRange();
+      const blended =
+        TrackingService.STRIDE_KEEP * this.stepLength +
+        (1 - TrackingService.STRIDE_KEEP) * measured;
+      this.stepLength = Math.max(shortest, Math.min(longest, blended));
+      this.trace.record('gyro.stepLength', {
+        stepLength: round(this.stepLength, 3),
+        steps: steps - this.stepCountAtLastFix,
+        gpsM: round(this.calibrationMeters, 2),
+      });
+      this.stepCountAtLastFix = steps;
+      this.calibrationMeters = 0;
+    }
+    this.stepCountAtLastPoint = steps;
+    this.lastInterpolatedLocation = point;
+    this.logFix(location, 'accept', point);
+    this.schedulePersist();
+    return 'accept';
+  }
+
+  /** A believable stride for the sport (m); one short stretch of GPS must not set it to a shuffle or a bound. */
+  private strideRange(): [number, number] {
+    if (this.onFoot()) return [0.45, 0.95];
+    if (this.activityType === 'run') return [0.6, 1.8];
+    return [0.3, 1.5];
+  }
+
+  /** How sharply the athlete can change speed (m/s²), which sets how much the filter trusts a fix that disagrees. */
+  private accelStd(): number {
+    if (this.onFoot()) return 1;
+    if (this.activityType === 'run') return 2;
+    return 3;
+  }
+
+  /** Smooth fixes through a Kalman filter before they are stored (on by default). */
+  setFilterFixes(enabled: boolean): void {
+    this.filterFixes = enabled;
+    this.kalman = enabled && this.isTracking ? new PositionKalman(this.accelStd()) : null;
+  }
+
+  /**
+   * While the track is a single point, a sharper fix inside its error circle replaces it: a receiver still locking on
+   * (indoors especially) walks its first fixes tens of meters toward the truth, and each of those was counted as distance.
+   */
+  private replacesStart(location: Location): boolean {
+    const only = this.locations.length === 1 ? this.locations[0] : undefined;
+    if (!only || location.accuracy >= only.accuracy) return false;
+    const apart = haversineDistance(
+      only.latitude,
+      only.longitude,
+      location.latitude,
+      location.longitude
+    );
+    return apart <= only.accuracy + location.accuracy;
+  }
+
+  private logFix(location: Location, verdict: string, stored?: Location): void {
+    if (!isTrackTraceOn()) return;
+    const last = this.locations.at(-2) ?? null;
+    const kept = this.locations.at(-1);
+    const from = verdict === 'accept' ? last : kept;
+    const to = stored ?? location;
+    trackTrace('fix', {
+      t: this.startTime ? location.timestamp - this.startTime : location.timestamp,
+      lat: location.latitude,
+      lng: location.longitude,
+      acc: location.accuracy,
+      spd: location.speed ?? null,
+      v: verdict,
+      shift: stored
+        ? haversineDistance(
+            location.latitude,
+            location.longitude,
+            stored.latitude,
+            stored.longitude
+          )
+        : null,
+      leg: from
+        ? haversineDistance(from.latitude, from.longitude, to.latitude, to.longitude)
+        : null,
+      kfSpd: this.kalman?.speed ?? null,
+      steps: this.motion.getStepCount(),
+      n: this.locations.length,
+      stepLen: this.stepLength,
+    });
   }
 
   /**
@@ -384,6 +579,7 @@ export class TrackingService implements ITrackingService {
     if (this.autoPaused && this.pausedByMotion) {
       if (state === 'moving') {
         this.trace.record('autopause.off', { by: 'motion' });
+        trackTrace('auto-resume', { reason: 'motion' });
         void this.resumeTracking();
       }
       return;
@@ -403,12 +599,17 @@ export class TrackingService implements ITrackingService {
 
     const last = this.lastGpsLocation;
     if (!last) return;
+    // A phone held steady in the hand reads as still while its owner keeps walking; steps say otherwise.
+    if (this.stepsRecently()) return;
     // Judge by the freshest speed the chip reported, even from fixes ignored as standing jitter.
     const reading = this.lastSpeedReading;
+    const movingSpeed = this.onFoot()
+      ? TrackingService.GPS_MOVING_ON_FOOT_MS
+      : TrackingService.GPS_MOVING_MS;
     if (
       reading &&
       now - reading.at < TrackingService.AUTO_PAUSE_SPEED_FRESH_MS &&
-      reading.speed >= TrackingService.GPS_MOVING_MS
+      reading.speed >= movingSpeed
     ) {
       return;
     }
@@ -432,6 +633,12 @@ export class TrackingService implements ITrackingService {
     details: Record<string, unknown> = {}
   ): void {
     this.trace.record('autopause.on', { reason, at: location.timestamp, ...details });
+    trackTrace('auto-pause', {
+      reason,
+      t: this.startTime ? this.clock.now() - this.startTime : null,
+      steps: this.motion.getStepCount(),
+      chipSpd: this.lastSpeedReading?.speed ?? null,
+    });
     void this.pauseTracking();
     this.autoPaused = true;
     this.pauseLocation = location;
@@ -458,6 +665,7 @@ export class TrackingService implements ITrackingService {
   }
 
   private autoPauseSpeedMs(): number {
+    if (this.activityType === 'walk') return TrackingService.WALK_PAUSE_SPEED_MS;
     return this.usesPacePause()
       ? TrackingService.AUTO_PAUSE_SPEED_MS
       : TrackingService.STOPPED_SPEED_MS;
@@ -508,6 +716,7 @@ export class TrackingService implements ITrackingService {
         this.pauseLocation = null;
         this.lastPausedFix = null;
         this.lowSpeedSince = null;
+        trackTrace('auto-resume', { reason: 'gps', moved, stepSpeed });
         void this.resumeTracking();
       }
       return;
@@ -523,7 +732,7 @@ export class TrackingService implements ITrackingService {
           dt
         : 0;
 
-    if (speed < this.autoPauseSpeedMs()) {
+    if (speed < this.autoPauseSpeedMs() && !this.stepsRecently()) {
       if (this.lowSpeedSince === null) {
         this.trace.record('autopause.slowStart', {
           speed: round(speed, 2),
@@ -551,25 +760,44 @@ export class TrackingService implements ITrackingService {
   }
 
   getInterpolatedStepDistance(): number {
-    if (!this.useGyroscope || !this.lastInterpolatedLocation) return 0;
-    const steps = this.motion.getStepCount();
-    return steps * this.stepLength;
+    if (!this.isTracking || !this.useGyroscope || this.stepCountAtLastPoint === null) return 0;
+    const meters =
+      Math.max(0, this.motion.getStepCount() - this.stepCountAtLastPoint) * this.stepLength;
+    // The pedometer delivers steps in batches; no more than the sport's top speed allows since the last point.
+    const since = this.lastInterpolatedLocation?.timestamp;
+    if (since === undefined) return 0;
+    const seconds = Math.max(0, (this.clock.now() - since) / 1000);
+    return Math.min(meters, seconds * (this.maxSpeedKmh / 3.6));
   }
 
+  /**
+   * A step-estimated point for when the GPS goes quiet (a tunnel, tall buildings). Between regular fixes
+   * it returns nothing: estimated points there zigzag against the next fix and inflate the distance.
+   */
   generateInterpolatedPoint(): Location | null {
-    if (!this.isTracking || !this.lastGpsLocation || !this.useGyroscope) return null;
+    const fix = this.lastGpsLocation;
+    const before = this.previousGpsLocation;
+    if (!this.isTracking || !fix || !before || !this.useGyroscope) return null;
+    if (this.stepCountAtLastPoint === null) return null;
+    if (this.clock.now() - fix.timestamp < TrackingService.STEP_FILL_AFTER_MS) return null;
 
     const steps = this.motion.getStepCount();
-    if (steps <= this.stepsSinceLastGps) return null;
+    if (steps < this.stepCountAtLastPoint) this.stepCountAtLastPoint = steps;
+    const newSteps = steps - this.stepCountAtLastPoint;
+    if (newSteps <= 0) return null;
 
-    const newSteps = steps - this.stepsSinceLastGps;
+    // The gyroscope only integrates turns from wherever the phone pointed at start, not true north, so
+    // the direction comes from the GPS track: keep going the way the last two fixes went.
+    const origin = this.headingOrigin(fix);
+    if (!origin) return null;
+    const heading = bearing(origin, fix);
+    if (heading === null) return null;
     const distance = newSteps * this.stepLength;
-    const heading = this.motion.getHeading();
+    const from = this.lastInterpolatedLocation ?? fix;
 
-    const from = this.lastInterpolatedLocation ?? this.lastGpsLocation;
     const next = destinationPoint(from.latitude, from.longitude, distance, heading);
 
-    this.stepsSinceLastGps = steps;
+    this.stepCountAtLastPoint = steps;
 
     return {
       latitude: next.latitude,
@@ -577,6 +805,26 @@ export class TrackingService implements ITrackingService {
       timestamp: this.clock.now(),
       accuracy: 0,
     };
+  }
+
+  /**
+   * The latest earlier fix far enough back to give a direction: two fixes inside each other's error circles (consecutive
+   * walking fixes, or anything indoors) point nowhere in particular. Null when the recent track never got that far.
+   */
+  private headingOrigin(fix: Location): Location | null {
+    const needed = Math.max(TrackingService.HEADING_BASELINE_M, fix.accuracy);
+    for (let i = this.locations.length - 2; i >= 0; i--) {
+      const earlier = this.locations[i] as Location;
+      if (fix.timestamp - earlier.timestamp > TrackingService.HEADING_LOOKBACK_MS) return null;
+      const apart = haversineDistance(
+        earlier.latitude,
+        earlier.longitude,
+        fix.latitude,
+        fix.longitude
+      );
+      if (apart >= Math.max(needed, earlier.accuracy)) return earlier;
+    }
+    return null;
   }
 
   async restoreSession(): Promise<void> {
@@ -593,6 +841,7 @@ export class TrackingService implements ITrackingService {
         if (typeof data.activityType === 'string') {
           this.activityType = data.activityType;
         }
+        this.kalman = this.filterFixes ? new PositionKalman(this.accelStd()) : null;
         if (typeof data.startTime === 'number') {
           this.startTime = data.startTime;
         }

@@ -669,6 +669,59 @@ describe('a recording that never moved', () => {
   });
 });
 
+describe('background fixes merged while recording', () => {
+  function liveSession() {
+    const live = createTrackingService(platform);
+    const merged = createTrackingSession({
+      tracking: live,
+      territory: territoryService,
+      location: platform.location,
+      background: platform.background,
+      motion: platform.motion,
+      haptics: platform.haptics,
+      speaker: platform.speaker,
+      screenAwake: platform.screenAwake,
+      ensureLocationPermission: async () => true,
+      clock: platform.clock,
+      liveBackground: true,
+    });
+    return { live, merged };
+  }
+
+  /** A 60 s walk: the background service gets every 1 s fix, the screen's watcher only every third. */
+  async function walk(merged: TrackingSession) {
+    const fixes = straightTrack({ speedMps: 1.3, durationS: 60, intervalS: 1 });
+    for (const [i, fix] of fixes.entries()) {
+      platform.clock.set(fix.timestamp);
+      platform.background.deliver(fix);
+      if (i % 3 === 0) platform.location.emit(fix);
+      merged.tick();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+  }
+
+  it('builds the track from the 1 s background fixes, not only the 3 s foreground ones', async () => {
+    const { live, merged } = liveSession();
+    await merged.start({ ...OPTS, activityType: 'walk' });
+    await walk(merged);
+    await merged.pause();
+
+    expect(live.getLocations().length).toBeGreaterThan(40);
+  });
+
+  it('keeps them in time order, so none are thrown away as out of date', async () => {
+    const { live, merged } = liveSession();
+    await merged.start({ ...OPTS, activityType: 'walk' });
+    await walk(merged);
+    await merged.pause();
+
+    const stamps = live.getLocations().map((l) => l.timestamp);
+    expect(stamps).toEqual([...stamps].sort((a, b) => a - b));
+    expect(live.getRejections().duplicate).toBeLessThan(5);
+  });
+});
+
 describe('motion sensors (gyroscope assist)', () => {
   it('runs only while recording with the assist on, and always stops', async () => {
     await session.start({ ...OPTS, useGyroscope: true });
@@ -693,7 +746,7 @@ describe('motion sensors (gyroscope assist)', () => {
     platform.motion.steps = 5;
     platform.motion.heading = 0;
     platform.motion.moving = true;
-    platform.clock.advance(3000);
+    platform.clock.advance(9000);
     session.tick();
 
     // The point reached the interpolated set, so the service no longer falls

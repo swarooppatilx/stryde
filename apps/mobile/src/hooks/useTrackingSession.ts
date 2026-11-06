@@ -7,6 +7,7 @@ import type { ActivityType } from '@/types';
 import { autoPauseFor } from '@/utils/autoPause';
 import { METERS_PER_MILE } from '@/utils/format';
 import { logger } from '@/utils/logger';
+import { setTrackTrace } from '@/utils/trackTrace';
 import { useUnitSystem } from './use-unit-system';
 
 const TICK_MS = 1000;
@@ -21,8 +22,10 @@ export function useTrackingSession() {
     audioCueInterval,
     announceActions,
     keepScreenOn,
+    verboseTrackingLog,
   } = useSettingsStore(
     useShallow((s) => ({
+      verboseTrackingLog: s.verboseTrackingLog,
       useGyroscopeAssist: s.useGyroscopeAssist,
       autoPause: s.autoPause,
       autoPauseOnFoot: s.autoPauseOnFoot,
@@ -81,6 +84,8 @@ export function useTrackingSession() {
       useGyroscope: useGyroscopeAssist,
     });
   }, [autoPause, autoPauseOnFoot, snapshot.activityType, useGyroscopeAssist]);
+
+  useEffect(() => setTrackTrace(verboseTrackingLog), [verboseTrackingLog]);
 
   const live = snapshot.status !== 'idle';
   useEffect(() => {
