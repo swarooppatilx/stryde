@@ -35,6 +35,8 @@ export const useFeedPrefsStore = create<FeedPrefsState>()(
     {
       name: '@stryde/feed-prefs',
       version: 2,
+      // Version 2 only added closed cards; `merge` below fills them in for version 1 state.
+      migrate: (persisted) => persisted as FeedPrefsState,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
       // A value from storage that is no longer an order falls back to the default.
       merge: (persisted, current) => {
