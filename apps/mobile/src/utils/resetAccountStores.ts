@@ -4,6 +4,7 @@ import { trackingSession } from '@/services/trackingSession';
 import { useActivityStore } from '@/stores/activityStore';
 import { useBlockStore } from '@/stores/blockStore';
 import { useBodyStore } from '@/stores/bodyStore';
+import { useCoachStore } from '@/stores/coachStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useFeedPrefsStore } from '@/stores/feedPrefsStore';
 import { useGearStore } from '@/stores/gearStore';
@@ -39,6 +40,7 @@ export function resetAccountStores(): void {
   useCommunityStore.getState().reset();
   useGearStore.getState().reset();
   useGoalsStore.getState().reset();
+  useCoachStore.getState().reset();
   useHealthStore.getState().reset();
   useBodyStore.getState().reset();
   useRouteStore.getState().reset();

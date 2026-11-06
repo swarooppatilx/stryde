@@ -10,6 +10,7 @@ import { activities } from './routes/activities.js';
 import { agent } from './routes/agent.js';
 import { arkiv } from './routes/arkiv.js';
 import { clubs } from './routes/clubs.js';
+import { coach } from './routes/coach.js';
 import { health } from './routes/health.js';
 import { humanPass } from './routes/humanPass.js';
 import { indexRoutes } from './routes/indexRoutes.js';
@@ -78,6 +79,8 @@ const ROUTE_GROUPS = [
   { path: '/world', limit: 120, gated: true },
   { path: '/arkiv', limit: 60, gated: true },
   { path: '/uniswap', limit: 30, gated: true },
+  // Each call spends 0G credit, so the budget is tighter than the other gated groups.
+  { path: '/coach', limit: 20, gated: true },
   { path: '/relay', limit: 30, gated: false },
   { path: '/maintenance', limit: 5, gated: false },
   // Their own credentials: /human gates itself below (the mock approval page cannot send the key),
@@ -96,7 +99,6 @@ for (const { path, limit, gated } of ROUTE_GROUPS) {
 // the API key; it only exists when WORLD_OIDC_MOCK is on outside production.
 const isMockApprovalPage = (c: Context) => c.req.path.startsWith('/api/human/mock/');
 app.use('/human/*', async (c, next) => (isMockApprovalPage(c) ? next() : apiKeyGate(c, next)));
-
 app.route('/health', health);
 app.route('/activities', activities);
 app.route('/ipfs', ipfs);
@@ -112,5 +114,6 @@ app.route('/agent', agent);
 app.route('/arkiv', arkiv);
 app.route('/uniswap', uniswap);
 app.route('/live', live);
+app.route('/coach', coach);
 
 export default app;

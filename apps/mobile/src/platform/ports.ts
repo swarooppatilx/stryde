@@ -161,6 +161,8 @@ export interface Files {
   listDocuments(folder: string): string[];
   /** Removes a file by URI; nothing happens when it is already gone. */
   remove(uri: string): void;
+  /** Writes into the app's documents directory, which the OS keeps, and returns the file's URI. */
+  writeDocument(name: string, content: string, encoding?: 'utf8' | 'base64'): string;
 }
 
 /** A finished workout recorded by another app or a watch and kept in the phone's health data. */

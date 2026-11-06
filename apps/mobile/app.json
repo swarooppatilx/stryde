@@ -152,7 +152,13 @@
           "background": false
         }
       ],
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Stryde to record a short voice debrief after your run for your AI coach."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

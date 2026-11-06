@@ -8032,6 +8032,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-audio@npm:~57.0.5":
+  version: 57.0.5
+  resolution: "expo-audio@npm:57.0.5"
+  peerDependencies:
+    expo: "*"
+    expo-asset: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/16ccdf92608282c3877aa69aed72dff810fe0773fcfed0aa604ed8229c2ededaa0a091ef0823f15fc8cbd52ec9c685bae88e921a1c6c977a75c68d5363a2ccaf
+  languageName: node
+  linkType: hard
+
 "expo-blur@npm:57.0.2":
   version: 57.0.2
   resolution: "expo-blur@npm:57.0.2"
@@ -12215,6 +12227,7 @@ __metadata:
     expo: "npm:~57.0.20"
     expo-apple-authentication: "npm:~57.0.1"
     expo-application: "npm:^57.0.2"
+    expo-audio: "npm:~57.0.5"
     expo-blur: "npm:57.0.2"
     expo-build-properties: "npm:~57.0.17"
     expo-clipboard: "npm:~57.0.1"

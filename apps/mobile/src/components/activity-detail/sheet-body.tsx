@@ -13,6 +13,7 @@ import { ActivityRecordChips } from '@/components/activity-record-chips';
 import { ActivitySocialRow } from '@/components/activity-social-row';
 import { BestEfforts } from '@/components/best-efforts';
 import { AppButton } from '@/components/button';
+import { CoachRunCard } from '@/components/coach-run-card';
 import { GearPicker } from '@/components/gear-picker';
 import { LapsList } from '@/components/laps-list';
 import { RewardHoldBanner } from '@/components/reward-hold-banner';
@@ -60,6 +61,7 @@ interface Props {
   >;
   onOpenComments(): void;
   onShare(): void;
+  onSharePoster(): void;
   onFlyover(): void;
   onScrubChange(streamIndex: number | null): void;
   onContentHeight(height: number): void;
@@ -71,6 +73,7 @@ export function ActivitySheetBody({
   detail,
   onOpenComments,
   onShare,
+  onSharePoster,
   onFlyover,
   onScrubChange,
   onContentHeight,
@@ -119,6 +122,10 @@ export function ActivitySheetBody({
       {receipt && <ActivityReceiptLink url={receipt} />}
 
       <ActivitySocialRow activityId={activity.id} onOpen={onOpenComments} onShare={onShare} />
+
+      {isOwner && !activity.mocked && (
+        <CoachRunCard activity={activity} onSharePoster={onSharePoster} />
+      )}
 
       <ActivityRecordChips records={heldRecords} />
 

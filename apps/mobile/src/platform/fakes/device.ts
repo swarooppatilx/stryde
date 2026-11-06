@@ -254,6 +254,12 @@ export class MemoryFiles implements Files {
   remove(uri: string) {
     this.contents.delete(uri);
   }
+
+  writeDocument(name: string, content: string) {
+    const uri = `file:///documents/${name}`;
+    this.contents.set(uri, content);
+    return uri;
+  }
 }
 
 /** A health source you can script: set `status`, `access` and `workouts`, then see what was asked for. */
