@@ -85,6 +85,54 @@ describe('coach routes', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sk-test');
   });
 
+  it('passes the athlete facts into the plan prompt', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      routerReply({
+        choices: [
+          {
+            message: {
+              content:
+                '{"title":"Easy jog","type":"easy","distanceKm":3,"durationMin":25,"effort":"easy","steps":[{"label":"Jog","detail":"3 km"}],"why":"x"}',
+            },
+          },
+        ],
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const facts = {
+      week: { km: 12.4, minutes: 80, runs: 3 },
+      lastWeek: { km: 20, minutes: 130, runs: 4 },
+    };
+    await post('/plan', { wallet: WALLET, history: [RUN], facts });
+    const sent = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    const text = sent.messages.map((m: { content: string }) => m.content).join(' ');
+    expect(text).toContain('This week so far: 12.4 km');
+  });
+
+  it('ignores facts that are not believable', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      routerReply({
+        choices: [
+          {
+            message: {
+              content:
+                '{"title":"Easy jog","type":"easy","distanceKm":3,"durationMin":25,"effort":"easy","steps":[{"label":"Jog","detail":"3 km"}],"why":"x"}',
+            },
+          },
+        ],
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await post('/plan', {
+      wallet: WALLET,
+      history: [],
+      facts: { week: { km: -4 }, lastWeek: 'lots' },
+    });
+    expect(res.status).toBe(200);
+    const sent = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(JSON.stringify(sent.messages)).not.toContain('Facts:');
+  });
+
   it('stops at the daily allowance', async () => {
     vi.stubGlobal(
       'fetch',

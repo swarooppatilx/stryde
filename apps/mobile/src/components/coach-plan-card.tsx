@@ -8,10 +8,15 @@ import { ThemedView } from '@/components/themed-view';
 import { ZeroGReceipts } from '@/components/zero-g-receipts';
 import { Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useMaxHeartRate } from '@/hooks/useMaxHeartRate';
 import { requestPlan } from '@/services/coachService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useCoachStore } from '@/stores/coachStore';
+import { useGoalsStore } from '@/stores/goalsStore';
+import { useProfileStore } from '@/stores/profileStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Alert } from '@/utils/alert';
+import { coachFacts } from '@/utils/coachFacts';
 import { localDay, recentHistory } from '@/utils/coachRun';
 import { haptics } from '@/utils/haptics';
 
@@ -21,15 +26,30 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
   const today = localDay(new Date());
   const saved = useCoachStore((s) => s.plans[today]);
   const [busy, setBusy] = useState(false);
+  const maxHr = useMaxHeartRate();
+  const restingHr = useProfileStore((s) => s.settings.restingHeartRate);
+  const zoneFloors = useProfileStore((s) => s.settings.hrZoneFloors);
 
   const generate = async () => {
     if (!wallet) return;
     setBusy(true);
     try {
       const { activities } = useActivityStore.getState();
-      const { debriefs } = useCoachStore.getState();
-      const history = recentHistory(activities, debriefs, Date.now());
-      const result = await requestPlan(wallet, history, today);
+      const { debriefs, reviews } = useCoachStore.getState();
+      const profile = { maxHr, restingHr, zoneFloors };
+      const history = recentHistory(activities, debriefs, Date.now(), profile);
+      const facts = coachFacts(
+        activities,
+        {
+          debriefs,
+          reviews,
+          goals: useGoalsStore.getState().goals,
+          weekStartsOn: useSettingsStore.getState().weekStartsOn,
+          profile,
+        },
+        new Date()
+      );
+      const result = await requestPlan(wallet, history, today, facts);
       useCoachStore.getState().savePlan({ day: today, ...result, createdAt: Date.now() });
       haptics.success();
     } catch (error) {

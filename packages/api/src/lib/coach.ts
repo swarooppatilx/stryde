@@ -1,4 +1,5 @@
 /** Prompts and parsing for the Stryde Coach, which runs its inference on 0G. */
+import { type CoachFacts, describeFacts } from './coachFacts.js';
 
 export type Sport = 'run' | 'walk' | 'ride' | 'hike' | string;
 
@@ -116,7 +117,12 @@ export function extractJson(text: string): Record<string, unknown> | null {
 
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
-export function planMessages(history: RunSummary[], today: string, goal?: string) {
+export function planMessages(
+  history: RunSummary[],
+  today: string,
+  goal?: string,
+  facts?: CoachFacts | null
+) {
   const log = history.length
     ? history.map((r) => `- ${describeRun(r)}`).join('\n')
     : '- No activities recorded yet.';
@@ -126,6 +132,9 @@ export function planMessages(history: RunSummary[], today: string, goal?: string
       content:
         "You are Stryde Coach, a running and walking coach. Plan exactly one session for today from the athlete's recent log. " +
         'Respect recovery: after a hard or long day suggest easy or rest. Keep it achievable for the volume you see. ' +
+        (facts
+          ? 'You are given the athlete\'s measured facts: stay inside them, and cite at least two of their numbers in "why". '
+          : '') +
         'Reply with JSON only: {"title": string (max 6 words), ' +
         `"type": one of ${PLAN_TYPES.join('|')}, ` +
         '"distanceKm": number or null, "durationMin": number or null, ' +
@@ -136,7 +145,7 @@ export function planMessages(history: RunSummary[], today: string, goal?: string
     },
     {
       role: 'user' as const,
-      content: `Today is ${today}.${goal ? ` Goal: ${goal}.` : ''}\nRecent log (newest first):\n${log}`,
+      content: `Today is ${today}.${goal ? ` Goal: ${goal}.` : ''}${facts ? `\nFacts:\n${describeFacts(facts)}` : ''}\nRecent log (newest first):\n${log}`,
     },
   ];
 }

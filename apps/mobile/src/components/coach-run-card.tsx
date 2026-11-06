@@ -64,7 +64,8 @@ function ReviewSection({
       const history = recentHistory(
         activities.filter((a) => a.id !== activity.id),
         debriefs,
-        started
+        started,
+        { maxHr, restingHr, zoneFloors }
       );
       const result = await requestReview(
         wallet,

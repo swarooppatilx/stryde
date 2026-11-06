@@ -1,5 +1,6 @@
 import { getPlatform } from '@/platform';
 import { apiFetch } from '@/services/strydeApi';
+import type { CoachFacts } from '@/utils/coachFacts';
 import type { CoachRun, CoachVitals } from '@/utils/coachRun';
 
 /** One inference on 0G Private Computer, as the router billed it. */
@@ -57,11 +58,12 @@ export async function requestReview(
 export async function requestPlan(
   wallet: string,
   history: CoachRun[],
-  today: string
+  today: string,
+  facts?: CoachFacts
 ): Promise<{ plan: CoachPlan; receipts: ZeroGReceipt[] }> {
   const body = await apiFetch<{ plan: CoachPlan; zeroG: ZeroGReceipt[] }>('/coach/plan', {
     method: 'POST',
-    body: JSON.stringify({ wallet, history, today }),
+    body: JSON.stringify({ wallet, history, today, ...(facts ? { facts } : {}) }),
   });
   return { plan: body.plan, receipts: body.zeroG };
 }

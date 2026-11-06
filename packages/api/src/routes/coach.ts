@@ -18,6 +18,7 @@ import {
   toRunSummary,
   toVitals,
 } from '../lib/coach.js';
+import { parseFacts } from '../lib/coachFacts.js';
 import { logError } from '../lib/logError.js';
 import {
   chat,
@@ -106,8 +107,12 @@ coach.post('/plan', async (c) => {
       : new Date().toISOString().slice(0, 10);
   const goal = typeof g.body.goal === 'string' ? g.body.goal.slice(0, 120) : undefined;
 
+  const facts = parseFacts(g.body.facts);
+
   try {
-    const { text, receipt } = await chat(planMessages(history, today, goal), { maxTokens: 500 });
+    const { text, receipt } = await chat(planMessages(history, today, goal, facts), {
+      maxTokens: 500,
+    });
     const plan = parsePlan(text);
     if (!plan) {
       budget.refund(g.wallet, 'plan');
