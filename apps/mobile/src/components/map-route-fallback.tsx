@@ -6,6 +6,7 @@ import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 import type { MapRouteProps } from '@/components/map-route';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { DEFAULT_CENTER } from '@/constants/config';
 import { Palette } from '@/constants/palette';
 import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -89,7 +90,7 @@ export function MapRouteFallback({
   coordinates,
   territoryPolygons = [],
   markers = [],
-  initialCenter = [73.851074, 18.524209],
+  initialCenter = DEFAULT_CENTER,
   style,
 }: MapRouteProps) {
   const theme = useTheme();
