@@ -38,27 +38,49 @@ vi.mock('@worldcoin/idkit-server', () => ({
   signRequest: () => ({ sig: '0xsig', nonce: 'nonce', createdAt: 0, expiresAt: 1 }),
 }));
 
-vi.mock('@worldcoin/idkit-core', () => ({
-  IDKitErrorCodes: { UserRejected: 'user_rejected', Cancelled: 'cancelled' },
-  selfieCheckLegacy: () => ({}),
-  IDKit: {
-    request: () => ({
-      preset: async () => ({
-        connectorURI: 'https://world.org/verify?t=1',
-        pollOnce: async () => {
-          if (pollStatus.failWith) throw pollStatus.failWith;
-          return pollStatus.current;
-        },
-      }),
-    }),
-  },
-}));
+vi.mock('@worldcoin/idkit-core', () => {
+  const pending = async () => ({
+    connectorURI: 'https://world.org/verify?t=1',
+    pollOnce: async () => {
+      if (pollStatus.failWith) throw pollStatus.failWith;
+      return pollStatus.current;
+    },
+  });
+  const builder = () => ({ preset: pending, constraints: pending });
+  return {
+    IDKitErrorCodes: { UserRejected: 'user_rejected', Cancelled: 'cancelled' },
+    CredentialRequest: (type: string, options?: object) => ({ type, ...options }),
+    proofOfHuman: () => ({}),
+    hashSignal: (signal: string) => mockSignalHash(signal),
+    IDKit: { request: builder, proveSession: builder },
+  };
+});
+
+function mockSignalHash(signal: string): string {
+  return `0x${Array.from(signal, (ch) => ch.charCodeAt(0).toString(16))
+    .join('')
+    .slice(0, 60)}`;
+}
+
+/** What World returns for an Athlete Pass enrollment: a Selfie Check uniqueness proof that opened a session. */
+function enrollment(nullifier: string) {
+  return {
+    protocol_version: '4.0',
+    action: 'stryde-athlete-pass',
+    session_id: 'session_test',
+    environment: 'sandbox',
+    responses: [
+      { identifier: 'selfie', nullifier, signal_hash: mockSignalHash(WALLET), sybil_score: 0 },
+    ],
+  };
+}
 
 const ENV_KEYS = [
   'WORLD_RP_SIGNING_KEY',
   'WORLD_APP_ID',
   'WORLD_RP_ID',
   'WORLD_SKIP_REMOTE_VERIFY',
+  'WORLD_PRESENCE_FILE',
   'VERCEL_ENV',
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -70,6 +92,7 @@ async function loadWorld(env: { skip: boolean; vercelEnv?: string }) {
   process.env.WORLD_APP_ID = 'app_test';
   process.env.WORLD_RP_ID = 'rp_test';
   process.env.WORLD_SKIP_REMOTE_VERIFY = env.skip ? 'true' : 'false';
+  process.env.WORLD_PRESENCE_FILE = '';
   if (env.vercelEnv) process.env.VERCEL_ENV = env.vercelEnv;
   else delete process.env.VERCEL_ENV;
   const { world } = await import('../world.js');
@@ -159,7 +182,7 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
 
   it('mirrors a World-verified proof onchain when the flag is off', async () => {
     const nullifier = `0x${'ab'.repeat(32)}`;
-    pollStatus.current = { type: 'confirmed', result: { responses: [{ nullifier }] } };
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
     const world = await loadWorld({ skip: false });
 
@@ -175,7 +198,7 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
 
   it('retries the onchain mirror after a transient failure', async () => {
     const nullifier = `0x${'ab'.repeat(32)}`;
-    pollStatus.current = { type: 'confirmed', result: { responses: [{ nullifier }] } };
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
     mockPublicClient.simulateContract.mockRejectedValueOnce(new Error('rpc unreachable'));
     const world = await loadWorld({ skip: false });
@@ -188,7 +211,7 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
   }, 10_000);
 
   it('hashes a nullifier that is not a bytes32, so different values never collide', async () => {
-    pollStatus.current = { type: 'confirmed', result: { responses: [{ nullifier: 'raw-id-1' }] } };
+    pollStatus.current = { type: 'confirmed', result: enrollment('raw-id-1') };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
     const world = await loadWorld({ skip: false });
 
@@ -200,14 +223,20 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
     });
   });
 
-  it('does not mirror a proof without a nullifier, which would let one human verify many wallets', async () => {
-    pollStatus.current = { type: 'confirmed', result: { responses: [{}] } };
+  it('refuses a proof without a nullifier and mirrors nothing, so one human cannot verify many wallets', async () => {
+    const { nullifier: _omitted, ...withoutNullifier } = enrollment('x').responses[0] as {
+      nullifier: string;
+    };
+    pollStatus.current = {
+      type: 'confirmed',
+      result: { ...enrollment('x'), responses: [withoutNullifier] },
+    };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
     const world = await loadWorld({ skip: false });
 
     const result = await startAndPoll(world);
 
-    expect(result.status).toBe('confirmed');
+    expect(result.status).toBe('failed');
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(mockWallet.writeContract).not.toHaveBeenCalled();
   });

@@ -84,7 +84,9 @@ function makeId(): string {
 class RelayHttpError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    /** The relayer's machine-readable reason, e.g. a World ID check a held reward waits for. */
+    readonly code?: string
   ) {
     super(message);
   }
@@ -132,7 +134,8 @@ async function relayPost<T>(path: string, body: Record<string, unknown>): Promis
     const error = await response.json().catch(() => ({ error: response.statusText }));
     throw new RelayHttpError(
       error.error || `Relay request failed: ${response.status}`,
-      response.status
+      response.status,
+      typeof error.code === 'string' ? error.code : undefined
     );
   }
 
