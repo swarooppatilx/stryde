@@ -15,6 +15,7 @@ import { RELAY_ABIS } from '../lib/relayAbis.js';
 import { classifyRelayError, ReceiptTimeoutError, RetryLaterError } from '../lib/relayErrors.js';
 import { getRelayerPublicClient } from '../lib/relayer.js';
 import { type RelayResult, relayTx } from '../lib/relayerTx.js';
+import { DAILY_REWARD_MESSAGE, rewardLedger } from '../lib/rewardLimit.js';
 import { createSerialQueue } from '../lib/serialQueue.js';
 import { apiKeyGate } from '../middleware/apiKey.js';
 import { invalidJsonBody, limitBody, readJsonObject } from '../middleware/jsonBody.js';
@@ -162,13 +163,24 @@ relay.post('/mint-reward', async (c) => {
   const recordedGate = checkRewardGate(recipient, activityHash, Number(rewardMeters));
   if (!recordedGate.ok) return heldForPresence(c, recordedGate);
 
-  return respondWith(c, () =>
-    relayTx({
-      contract: 'moveToEarnToken',
-      functionName: 'mintForActivity',
-      args: [recipient, activityHash, rewardMeters],
-    })
-  );
+  // The recorded distance is the athlete's own claim: what one athlete can be paid in a day is bounded.
+  const meterCount = Number(rewardMeters);
+  if (!rewardLedger.reserve(recipient, meterCount)) {
+    return c.json({ error: DAILY_REWARD_MESSAGE, code: 'daily_reward_limit' }, 429);
+  }
+  return respondWith(c, async () => {
+    try {
+      return await relayTx({
+        contract: 'moveToEarnToken',
+        functionName: 'mintForActivity',
+        args: [recipient, activityHash, rewardMeters],
+      });
+    } catch (error) {
+      // A send that may still mine keeps its reservation; the activity hash stops a second mint of it.
+      if (!(error instanceof ReceiptTimeoutError)) rewardLedger.release(recipient, meterCount);
+      throw error;
+    }
+  });
 });
 
 const SETTLEMENT_REFUSALS = {
