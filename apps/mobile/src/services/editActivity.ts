@@ -106,6 +106,8 @@ export async function editActivity(
         ? (activity.territory ?? undefined)
         : undefined,
       coordinates: route.length > 0 ? route : undefined,
+      ...(activity.mutedFromFeeds && { mutedFromFeeds: true }),
+      ...(activity.hiddenStats?.length ? { hiddenStats: activity.hiddenStats } : {}),
     });
     if (!result?.confirmed) return { published: false, reason: 'failed' };
     store.updateActivity(activity.id, { metadataCid: result.cid });

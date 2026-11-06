@@ -343,4 +343,17 @@ describe('editing an activity whose route is hidden', () => {
     expect(published[0]?.metadata.coordinates).toBeUndefined();
     expect(published[0]?.metadata.territory).toBeUndefined();
   });
+
+  it('republishes the feed mute and hidden stats, so an edit cannot lift them', async () => {
+    const { store, chain, published } = setup();
+
+    await editActivity(
+      { store, chain },
+      activity({ mutedFromFeeds: true, hiddenStats: ['pace'] }),
+      { name: 'x' }
+    );
+
+    expect(published[0]?.metadata.mutedFromFeeds).toBe(true);
+    expect(published[0]?.metadata.hiddenStats).toEqual(['pace']);
+  });
 });
