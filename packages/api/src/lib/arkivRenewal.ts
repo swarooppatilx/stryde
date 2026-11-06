@@ -119,7 +119,10 @@ export async function renewExpiring(
 type PublicClient = ReturnType<typeof createArkivPublicClient>;
 type WalletClient = ReturnType<typeof createArkivWalletClient>;
 
-/** Reads this server signer's Stryde entities and extends them; only the creator may extend. */
+/**
+ * Reads the Stryde entities this server signer created and still owns, and extends them. Only the
+ * owner may extend, so entities handed to athletes (segments, efforts, route archives) are skipped.
+ */
 export function createArkivRenewalClient(
   publicClient: PublicClient,
   walletClient: WalletClient
@@ -140,6 +143,7 @@ export function createArkivRenewalClient(
           .select({ $key: true, $expiresAt: true })
           .where(...filters)
           .createdBy(creator)
+          .ownedBy(creator)
           .orderBy(asc('$key'))
           .limit(PAGE_LIMIT)
           .fetch();

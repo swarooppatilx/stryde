@@ -16,6 +16,7 @@ const fitness = vi.hoisted(() => ({
   findSegmentsNear: vi.fn(async () => []),
   createEffort: vi.fn(),
   getArkivWriter: vi.fn(() => '0x00000000000000000000000000000000000000ff'),
+  upsertBeacon: vi.fn(),
 }));
 const swarm = vi.hoisted(() => ({
   isSwarmConfigured: vi.fn(() => true),
@@ -170,5 +171,27 @@ describe('arkiv route archives', () => {
     const res = await arkiv.request(`/efforts/${EFFORT_KEY}/gpx?wallet=${ATHLETE}`);
     expect(res.status).toBe(401);
     expect(swarm.openReference).not.toHaveBeenCalled();
+  });
+});
+
+describe('arkiv live beacons', () => {
+  const post = () =>
+    arkiv.request('/beacons', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ runId: 'run-123456', athlete: OTHER, latitude: 19.07, longitude: 72.87 }),
+    });
+
+  it('refuses to move a beacon whose run id belongs to another athlete', async () => {
+    fitness.upsertBeacon.mockResolvedValue(null);
+    const res = await post();
+    expect(res.status).toBe(409);
+  });
+
+  it('updates the athlete their own beacon', async () => {
+    fitness.upsertBeacon.mockResolvedValue({ key: ARCHIVE_KEY, created: false });
+    const res = await post();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ key: ARCHIVE_KEY, created: false });
   });
 });
