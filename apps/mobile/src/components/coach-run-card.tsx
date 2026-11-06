@@ -30,14 +30,10 @@ import { useCoachStore } from '@/stores/coachStore';
 import { useProfileStore } from '@/stores/profileStore';
 import type { Activity } from '@/types';
 import { Alert } from '@/utils/alert';
-import { recentHistory, toCoachRun, toCoachVitals } from '@/utils/coachRun';
+import { coachErrorMessage, recentHistory, toCoachRun, toCoachVitals } from '@/utils/coachRun';
 import { haptics } from '@/utils/haptics';
 
 const MAX_DEBRIEF_MS = 45_000;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Something went wrong. Try again.';
-}
 
 function ReviewSection({
   activity,
@@ -75,7 +71,7 @@ function ReviewSection({
       useCoachStore.getState().saveReview(activity.id, { ...result, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
-      Alert.alert('Coach review', errorMessage(error));
+      Alert.alert('Coach review', coachErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -224,7 +220,7 @@ function DebriefSection({
       });
       haptics.success();
     } catch (error) {
-      Alert.alert('Debrief', errorMessage(error));
+      Alert.alert('Debrief', coachErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -316,7 +312,7 @@ function PosterSection({
       useCoachStore.getState().savePoster(activity.id, { ...result, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
-      Alert.alert('Run poster', errorMessage(error));
+      Alert.alert('Run poster', coachErrorMessage(error));
     } finally {
       setBusy(false);
     }

@@ -13,6 +13,7 @@ import { useActivityStore } from '@/stores/activityStore';
 import { useCoachStore } from '@/stores/coachStore';
 import { Alert } from '@/utils/alert';
 import { localDay, recentHistory } from '@/utils/coachRun';
+import { friendlyError } from '@/utils/friendlyError';
 import { haptics } from '@/utils/haptics';
 
 /** Today's session, written on 0G from the last two weeks of runs and what the athlete said about them. */
@@ -33,10 +34,7 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
       useCoachStore.getState().savePlan({ day: today, ...result, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
-      Alert.alert(
-        "Today's plan",
-        error instanceof Error ? error.message : 'Try again in a moment.'
-      );
+      Alert.alert("Today's plan", friendlyError(error, 'Try again in a moment.'));
     } finally {
       setBusy(false);
     }

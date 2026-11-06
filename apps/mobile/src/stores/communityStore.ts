@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ActivityType } from '@/types';
 import type { ChallengeEvent } from '@/types/event';
 import { sameAddress } from '@/utils/address';
+import { friendlyError } from '@/utils/friendlyError';
 import { logger } from '@/utils/logger';
 import { meetingPointFromChain } from '@/utils/meetingPoint';
 import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
@@ -153,7 +154,7 @@ export const useCommunityStore = create<CommunityState>()(
         } catch (e) {
           // Keep what is already loaded: a failed read is not "there are no clubs".
           logger.warn('[Community] Failed to fetch clubs:', e);
-          set({ clubsError: e instanceof Error ? e.message : 'Could not load clubs' });
+          set({ clubsError: friendlyError(e, 'Could not load clubs') });
         } finally {
           set({ clubsLoading: false });
         }
@@ -203,7 +204,7 @@ export const useCommunityStore = create<CommunityState>()(
           set({ events: events.map(toChallengeEvent), eventsError: null });
         } catch (e) {
           logger.warn('[Community] Failed to fetch events:', e);
-          set({ eventsError: e instanceof Error ? e.message : 'Could not load events' });
+          set({ eventsError: friendlyError(e, 'Could not load events') });
         } finally {
           set({ eventsLoading: false });
         }
