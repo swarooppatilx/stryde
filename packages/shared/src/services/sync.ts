@@ -1,6 +1,7 @@
 import { decodeEventLog } from 'viem';
 import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
+import { getActivitySummaries } from './activitySummaries';
 import { getContracts, getPublicClient } from './client';
 import { type ActivityMetadata, fetchJsonFromIpfs } from './ipfs';
 import { scanLogWindows } from './logScan';
@@ -116,18 +117,40 @@ function withMetadataCids(
   });
 }
 
-/** Resolves each activity's `metadataCid` to its off-chain name/description/photos via IPFS. Best-effort: a failed fetch leaves that activity's fields unset. */
-async function hydrateActivityMetadata(activities: SyncedActivity[]): Promise<SyncedActivity[]> {
+/** Gateway fetches running at once; a feed of 60 athletes' runs must not open 60 connections. */
+const IPFS_CONCURRENCY = 5;
+
+/** Runs `task` over `items` with at most `limit` in flight at a time. */
+async function mapLimited<T>(items: readonly T[], limit: number, task: (item: T) => Promise<void>) {
+  let next = 0;
+  async function worker() {
+    while (next < items.length) await task(items[next++] as T);
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+/**
+ * Resolves each activity's `metadataCid` to its off-chain name/description/photos/route. The Arkiv index
+ * has usually read them already, so one request covers the feed; only CIDs it did not cover go to IPFS,
+ * a few at a time. Best-effort: a failed fetch leaves that activity's fields unset.
+ */
+export async function hydrateActivityMetadata(
+  activities: SyncedActivity[]
+): Promise<SyncedActivity[]> {
   const cids = Array.from(
     new Set(activities.map((a) => a.metadataCid).filter((cid): cid is string => !!cid))
   );
   if (cids.length === 0) return activities;
 
-  const metadataByCid = new Map<string, ActivityMetadata | null>();
-  await Promise.all(
-    cids.map(async (cid) => {
+  const metadataByCid = new Map<string, ActivityMetadata | null>(
+    (await getActivitySummaries()) ?? []
+  );
+  await mapLimited(
+    cids.filter((cid) => !metadataByCid.has(cid)),
+    IPFS_CONCURRENCY,
+    async (cid) => {
       metadataByCid.set(cid, await fetchJsonFromIpfs<ActivityMetadata>(cid));
-    })
+    }
   );
 
   return activities.map((a) => {

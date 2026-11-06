@@ -73,10 +73,18 @@ const matching = (q: EventQuery) =>
       e.kind === q.kind && (!q.who || e.who === q.who) && (q.ref === undefined || e.ref === q.ref)
   );
 
-const app = (overrides: { stale?: boolean } = {}) =>
+const app = (
+  overrides: {
+    stale?: boolean;
+    summaries?: (
+      cids: readonly string[]
+    ) => Promise<Map<string, { route?: string; name?: string }>>;
+  } = {}
+) =>
   createIndexRoutes({
     fresh: async () => ({ syncedBlock: '321', stale: overrides.stale ?? false }),
     events: async (q) => matching(q),
+    ...(overrides.summaries && { summaries: overrides.summaries }),
   });
 
 const get = async (path: string, routes = app()) => {
@@ -197,6 +205,62 @@ describe('GET /activities', () => {
     expect((body.activities as Array<{ metadataCid: string }>).map((a) => a.metadataCid)).toEqual([
       'bafy-route',
     ]);
+  });
+
+  it('adds the card summary to each activity when asked for activities with a route', async () => {
+    const asked: string[][] = [];
+    const routes = app({
+      summaries: async (cids) => {
+        asked.push([...cids]);
+        return new Map([['bafy-route', { route: '72.86,19.06;72.87,19.07', name: 'Evening Run' }]]);
+      },
+    });
+    const { body } = await get('/activities?withRoute=1', routes);
+
+    expect(body.activities as unknown[]).toEqual([
+      expect.objectContaining({
+        metadataCid: 'bafy-route',
+        summary: { route: '72.86,19.06;72.87,19.07', name: 'Evening Run' },
+      }),
+    ]);
+    expect(asked).toEqual([['bafy-route']]);
+  });
+
+  it('leaves summary out for an activity whose metadata has nothing usable', async () => {
+    const { body } = await get(
+      '/activities?withRoute=1',
+      app({ summaries: async () => new Map() })
+    );
+    const [first] = body.activities as Array<Record<string, unknown>>;
+    expect(first).toBeDefined();
+    expect('summary' in (first as object)).toBe(false);
+  });
+
+  it('does not fetch any summaries for a plain activity list', async () => {
+    let called = false;
+    await get(
+      '/activities',
+      app({
+        summaries: async () => {
+          called = true;
+          return new Map();
+        },
+      })
+    );
+    expect(called).toBe(false);
+  });
+
+  it('still answers when the summary lookup fails, just without summaries', async () => {
+    const { status, body } = await get(
+      '/activities?withRoute=1',
+      app({
+        summaries: async () => {
+          throw new Error('gateway down');
+        },
+      })
+    );
+    expect(status).toBe(200);
+    expect((body.activities as unknown[]).length).toBe(1);
   });
 
   it('finds one activity by its hash, which is how a fresh save is confirmed visible', async () => {

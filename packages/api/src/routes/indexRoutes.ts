@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { type ActivitySummary, createActivitySummaryLoader } from '../lib/activitySummaryLoader.js';
 import type { EventQuery } from '../lib/index/arkivMirror.js';
 import { getMirrorRuntime } from '../lib/index/arkivRuntime.js';
 import type { Freshness } from '../lib/index/freshness.js';
@@ -12,10 +13,14 @@ import {
   profilesView,
   territoriesView,
 } from '../lib/index/views.js';
+import { createGatewayFetch } from '../lib/ipfsGatewayFetch.js';
+import { logError } from '../lib/logError.js';
 
 export interface IndexDeps {
   fresh(): Promise<Freshness>;
   events(query: EventQuery): Promise<StoredEvent[]>;
+  /** Card summaries for metadata CIDs; absent where there is no gateway (rows then carry no `summary`). */
+  summaries?(cids: readonly string[]): Promise<Map<string, ActivitySummary>>;
 }
 
 const WALLET = /^0x[0-9a-fA-F]{40}$/;
@@ -137,14 +142,36 @@ export function createIndexRoutes(deps: IndexDeps) {
     if (hash) rows = rows.filter((r) => r.activityHash === hash);
     if (c.req.query('withRoute')) rows = rows.filter((r) => r.metadataCid);
     rows.sort((a, b) => b.timestamp - a.timestamp);
-    return c.json({ activities: rows.slice(0, limit), ...fresh });
+    const page = rows.slice(0, limit);
+    // A feed card needs the route, name, text and photos, and asking for them here (once, cached,
+    // capped) beats every phone fetching every metadata file itself. A lookup failure costs the cards
+    // their extras, never the list.
+    if (c.req.query('withRoute') && deps.summaries) {
+      const cids = page.flatMap((r) => (r.metadataCid ? [r.metadataCid] : []));
+      const found = await deps.summaries(cids).catch((error: unknown) => {
+        logError('[index] Summary lookup failed:', error);
+        return new Map<string, ActivitySummary>();
+      });
+      const withSummaries = page.map((r) => {
+        const summary = r.metadataCid ? found.get(r.metadataCid) : undefined;
+        return summary ? { ...r, summary } : r;
+      });
+      return c.json({ activities: withSummaries, ...fresh });
+    }
+    return c.json({ activities: page, ...fresh });
   });
 
   return routes;
 }
 
 /** The routes over the real mirror; built lazily on the first request. */
+const summaryLoader = createActivitySummaryLoader({
+  fetchJson: createGatewayFetch(),
+  onError: (cid, error) => logError(`[index] Could not read metadata ${cid.slice(0, 12)}:`, error),
+});
+
 export const indexRoutes = createIndexRoutes({
   fresh: () => getMirrorRuntime().fresh.ensure(),
   events: (query) => getMirrorRuntime().mirror.events(query),
+  summaries: (cids) => summaryLoader.summaries(cids),
 });
