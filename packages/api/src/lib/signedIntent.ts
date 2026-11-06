@@ -1,3 +1,4 @@
+import { isHex } from 'viem';
 import { type Address, toAddress } from './address.js';
 import type { IntentError } from './intentError.js';
 
@@ -82,4 +83,35 @@ export function createIntentGuards(fail: (code: GuardCode, message: string) => I
     requireLiveDeadline,
     requireValidSignature,
   };
+}
+
+/** The EIP-712 domain every social intent (follow, like, post, about, report, push) is signed under. Must match the app. */
+export const socialDomain = (chainId: number) =>
+  ({ name: 'Stryde Social', version: '1', chainId }) as const;
+
+/**
+ * Builds the signature check for one intent type from how it is turned into typed data and who must
+ * have signed it. The chain client also accepts smart-wallet (ERC-1271) signatures; text that is not
+ * even hex is simply "not a signature", while anything else that fails (an RPC outage) must surface.
+ */
+export function createIntentVerifier<Intent, TypedData extends object>(
+  typedData: (intent: Intent, chainId: number) => TypedData,
+  signer: (intent: Intent) => `0x${string}`
+) {
+  return (
+    client: {
+      verifyTypedData(
+        params: TypedData & { address: `0x${string}`; signature: `0x${string}` }
+      ): Promise<boolean>;
+    },
+    chainId: number
+  ) =>
+    async (intent: Intent, signature: string): Promise<boolean> => {
+      if (!isHex(signature)) return false;
+      return client.verifyTypedData({
+        address: signer(intent),
+        signature,
+        ...typedData(intent, chainId),
+      });
+    };
 }

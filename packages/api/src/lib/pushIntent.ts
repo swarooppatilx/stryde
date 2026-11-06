@@ -1,5 +1,5 @@
-import { isHex } from 'viem';
 import type { PushIntent } from './pushTokens.js';
+import { createIntentVerifier, socialDomain } from './signedIntent.js';
 
 /** Must match packages/shared/src/services/pushIntent.ts, which the app signs with. */
 const PUSH_TYPES = {
@@ -14,32 +14,15 @@ const PUSH_TYPES = {
 
 export function pushTypedData(intent: PushIntent, chainId: number) {
   return {
-    domain: { name: 'Stryde Social', version: '1', chainId },
+    domain: socialDomain(chainId),
     types: PUSH_TYPES,
     primaryType: 'PushToken' as const,
     message: { ...intent, deadline: BigInt(intent.deadline) },
   };
 }
 
-interface TypedDataVerifier {
-  verifyTypedData(params: {
-    address: `0x${string}`;
-    signature: `0x${string}`;
-    domain: ReturnType<typeof pushTypedData>['domain'];
-    types: typeof PUSH_TYPES;
-    primaryType: 'PushToken';
-    message: ReturnType<typeof pushTypedData>['message'];
-  }): Promise<boolean>;
-}
-
-/** Checks the owner really signed this exact registration. The chain client also accepts smart-wallet (ERC-1271) signatures. */
-export function createPushVerifier(client: TypedDataVerifier, chainId: number) {
-  return async (intent: PushIntent, signature: string): Promise<boolean> => {
-    if (!isHex(signature)) return false;
-    return client.verifyTypedData({
-      address: intent.owner,
-      signature,
-      ...pushTypedData(intent, chainId),
-    });
-  };
-}
+/** Checks the owner really signed this exact intent (see `createIntentVerifier`). */
+export const createPushVerifier = createIntentVerifier(
+  pushTypedData,
+  (intent: PushIntent) => intent.owner
+);
