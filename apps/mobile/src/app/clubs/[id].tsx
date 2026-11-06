@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
+import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
@@ -15,17 +16,20 @@ import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SPORT_ICONS } from '@/constants/activity';
+import { stockImageFor } from '@/constants/stockImages';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
 import { useBalances } from '@/hooks/useBalances';
 import { useChainAction } from '@/hooks/useChainAction';
 import { useClubTreasury } from '@/hooks/useClubTreasury';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useDelivery } from '@/hooks/useOutbox';
 import { useCommunityStore } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
+import { sameAddress, viewerAddress } from '@/utils/address';
 import { Alert } from '@/utils/alert';
 import { confirmLeave } from '@/utils/confirmLeave';
 import { buildDetailDeepLink } from '@/utils/deepLink';
@@ -36,6 +40,19 @@ import { treasuryAmountError } from '@/utils/stakeAlerts';
 
 /** How long typing must pause before an amount is judged, so "0." on the way to "0.05" is not an error. */
 const AMOUNT_PAUSE_MS = 500;
+
+/** One icon-and-text fact in the club header, such as "Running", "2,456 Members" and "Public". */
+function MetaItem({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+  const theme = useTheme();
+  return (
+    <ThemedView style={styles.metaItem}>
+      <Ionicons name={icon} size={16} color={theme.textSecondary} />
+      <ThemedText type="small" themeColor="textSecondary">
+        {text}
+      </ThemedText>
+    </ThemedView>
+  );
+}
 
 const SPORT_ICON_NAME = (sport: ActivityType | 'multi'): keyof typeof Ionicons.glyphMap => {
   if (sport === 'multi') return 'fitness';
@@ -74,7 +91,9 @@ export default function ClubDetailScreen() {
   // Selected, not read through a getter: the screen must update when the list loads or refreshes.
   const club = useCommunityStore((s) => s.clubs.find((c) => c.id === id));
   const isJoined = club ? joinedClubIds.includes(club.id) : false;
-  const isOwner = !!(club && address && club.owner.toLowerCase() === address.toLowerCase());
+  const viewer = viewerAddress(useCurrentUserId(), address);
+  const isOwner = !!(club && sameAddress(club.owner, viewer ?? undefined));
+  const quiet = isOwner || isJoined;
 
   const { balance: treasuryBalance, refresh: refreshTreasury } = useClubTreasury(club?.id);
   const { eth: balanceWei } = useBalances(address);
@@ -264,37 +283,27 @@ export default function ClubDetailScreen() {
           }
         >
           <ThemedView style={styles.hero}>
-            <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
-              <Ionicons
-                name={SPORT_ICON_NAME(club.sportType)}
-                size={28}
-                color={theme.brand.primary}
-              />
-            </ThemedView>
+            <Image
+              source={stockImageFor('club', club.id)}
+              style={styles.cover}
+              contentFit="cover"
+              // Decorative: the title below names the club.
+              accessible={false}
+            />
             <ThemedText type="title">{club.name}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {club.location}
-            </ThemedText>
-          </ThemedView>
-
-          <ThemedView style={[styles.statsRow, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedView style={styles.statItem}>
-              <ThemedText style={[styles.statValue, { color: theme.text }]}>
-                {formatMemberCount(club.memberCount)}
-              </ThemedText>
-              <ThemedText type="caption" themeColor="textSecondary">
-                Members
-              </ThemedText>
+            <ThemedView style={styles.metaRow}>
+              <MetaItem
+                icon={SPORT_ICON_NAME(club.sportType)}
+                text={SPORT_LABEL[club.sportType] || club.sportType}
+              />
+              <MetaItem
+                icon="people-outline"
+                text={`${formatMemberCount(club.memberCount)} ${club.memberCount === 1 ? 'member' : 'members'}`}
+              />
+              {/* Every club on this registry is open to join: there is no private club on-chain. */}
+              <MetaItem icon="globe-outline" text="Public" />
             </ThemedView>
-            <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-            <ThemedView style={styles.statItem}>
-              <ThemedText style={[styles.statValue, { color: theme.text }]}>
-                {SPORT_LABEL[club.sportType] || club.sportType}
-              </ThemedText>
-              <ThemedText type="caption" themeColor="textSecondary">
-                Sport
-              </ThemedText>
-            </ThemedView>
+            {club.location ? <MetaItem icon="location-outline" text={club.location} /> : null}
           </ThemedView>
 
           <ThemedView style={styles.section}>
@@ -390,12 +399,13 @@ export default function ClubDetailScreen() {
             )}
           </ThemedView>
 
+          {/* An owner's button does nothing, so it is drawn like a joined one, not as the main action. */}
           <Tappable
             style={[
               styles.joinBtn,
               {
-                backgroundColor: isJoined ? 'transparent' : theme.brand.primary,
-                borderColor: isJoined ? theme.border : theme.brand.primary,
+                backgroundColor: quiet ? 'transparent' : theme.brand.primary,
+                borderColor: quiet ? theme.border : theme.brand.primary,
               },
             ]}
             onPress={handleJoin}
@@ -405,14 +415,11 @@ export default function ClubDetailScreen() {
             accessibilityLabel={joinAccessibilityLabel(club.name, isOwner, isJoined)}
           >
             {isPending ? (
-              <ActivityIndicator
-                size="small"
-                color={isJoined ? theme.textSecondary : Brand.white}
-              />
+              <ActivityIndicator size="small" color={quiet ? theme.textSecondary : Brand.white} />
             ) : (
               <ThemedText
                 type="smallBold"
-                style={{ color: isJoined ? theme.textSecondary : Brand.white }}
+                style={{ color: quiet ? theme.textSecondary : Brand.white }}
               >
                 {joinButtonLabel(isOwner, isJoined)}
               </ThemedText>
@@ -440,17 +447,16 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
   },
   hero: {
-    alignItems: 'center',
     gap: Spacing.two,
-    paddingVertical: Spacing.four,
+    paddingVertical: Spacing.two,
   },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+  cover: {
+    width: '100%',
+    height: 180,
+    borderRadius: BorderRadius.lg,
   },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   statsRow: {
     flexDirection: 'row',
     borderRadius: BorderRadius.lg,

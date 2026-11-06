@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -17,7 +18,7 @@ import { ShareButton } from '@/components/share-button';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { SPORT_ICONS } from '@/constants/activity';
+import { stockImageFor } from '@/constants/stockImages';
 import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,31 +27,19 @@ import { useChainAction } from '@/hooks/useChainAction';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useDelivery } from '@/hooks/useOutbox';
 import { useCommunityStore } from '@/stores/communityStore';
-import type { ActivityType } from '@/types';
 import { calendarLink } from '@/utils/calendarLink';
 import { confirmLeave } from '@/utils/confirmLeave';
 import { formatDateRange } from '@/utils/dates';
 import { buildDetailDeepLink } from '@/utils/deepLink';
-import { eventStatus } from '@/utils/eventStatus';
+import { eventJoinState, eventStatus } from '@/utils/eventStatus';
 import { formatDistance, formatMemberCount, SPORT_LABEL } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { otherEvents } from '@/utils/otherEvents';
 import { Toast } from '@/utils/toast';
 
-const SPORT_ICON_NAME = (sport: ActivityType | 'multi'): keyof typeof Ionicons.glyphMap => {
-  if (sport === 'multi') return 'fitness';
-  return (SPORT_ICONS[sport] ?? 'walk') as keyof typeof Ionicons.glyphMap;
-};
-
 function joinAccessibilityLabel(title: string, isHost: boolean, isJoined: boolean): string {
   if (isHost) return `You host ${title}`;
   return isJoined ? `Leave ${title}` : `Join ${title}`;
-}
-
-function joinButtonLabel(isHost: boolean, isJoined: boolean, closed: boolean): string {
-  if (isHost) return 'Hosting';
-  if (isJoined) return 'Joined — Tap to Leave';
-  return closed ? 'Event ended' : 'Join Event';
 }
 
 export default function EventDetailScreen() {
@@ -114,9 +103,8 @@ export default function EventDetailScreen() {
   }
 
   const status = eventStatus(event.startDate, event.endDate);
-  // Nobody can join what is over; someone already in can still leave.
-  const closed = status.phase === 'ended' && !isJoined;
-  const muted = isHost || isJoined || closed;
+  const joinState = eventJoinState({ isHost, isJoined, ended: status.phase === 'ended' });
+  const muted = isHost || isJoined || joinState.disabled;
 
   const handleJoin = async () => {
     if (!event) return;
@@ -166,13 +154,12 @@ export default function EventDetailScreen() {
           }
         >
           <ThemedView style={styles.hero}>
-            <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
-              <Ionicons
-                name={SPORT_ICON_NAME(event.sportType)}
-                size={28}
-                color={theme.brand.primary}
-              />
-            </ThemedView>
+            <Image
+              source={stockImageFor('event', event.id)}
+              style={styles.cover}
+              contentFit="cover"
+              accessibilityIgnoresInvertColors
+            />
             <ThemedText type="title">{event.title}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {SPORT_LABEL[event.sportType] || event.sportType}
@@ -185,7 +172,7 @@ export default function EventDetailScreen() {
                 {formatDateRange(event.startDate, event.endDate, { withYear: true })}
               </ThemedText>
               <ThemedText type="caption" themeColor="textSecondary">
-                Duration
+                Dates
               </ThemedText>
             </ThemedView>
           </ThemedView>
@@ -262,9 +249,13 @@ export default function EventDetailScreen() {
             ]}
             onPress={handleJoin}
             activeOpacity={0.7}
-            disabled={joining || isHost || closed}
+            disabled={joining || joinState.disabled}
             accessibilityRole="button"
-            accessibilityLabel={joinAccessibilityLabel(event.title, isHost, isJoined)}
+            accessibilityLabel={
+              joinState.disabled && !isHost
+                ? `${joinState.label}: ${event.title}`
+                : joinAccessibilityLabel(event.title, isHost, isJoined)
+            }
           >
             {joining ? (
               <ActivityIndicator
@@ -276,7 +267,7 @@ export default function EventDetailScreen() {
                 type="smallBold"
                 style={{ color: muted ? theme.textSecondary : Brand.white }}
               >
-                {joinButtonLabel(isHost, isJoined, closed)}
+                {joinState.label}
               </ThemedText>
             )}
           </Tappable>
@@ -290,6 +281,7 @@ export default function EventDetailScreen() {
                 <CommunityCard
                   key={other.id}
                   icon="calendar-outline"
+                  image={stockImageFor('event', other.id)}
                   title={other.title}
                   lines={[
                     eventStatus(other.startDate, other.endDate).label,
@@ -327,17 +319,11 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
     gap: Spacing.four,
   },
+  cover: { width: '100%', aspectRatio: 16 / 9, borderRadius: BorderRadius.lg },
   hero: {
     alignItems: 'center',
     gap: Spacing.two,
     paddingVertical: Spacing.four,
-  },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   statsRow: {
     flexDirection: 'row',
