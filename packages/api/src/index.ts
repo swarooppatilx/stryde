@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { installFileFetchShim } from './lib/fileFetchShim.js';
@@ -7,14 +7,19 @@ import { ConfigError } from './lib/relayErrors.js';
 import { apiKeyGate } from './middleware/apiKey.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { activities } from './routes/activities.js';
+import { agent } from './routes/agent.js';
+import { arkiv } from './routes/arkiv.js';
 import { clubs } from './routes/clubs.js';
 import { health } from './routes/health.js';
+import { humanPass } from './routes/humanPass.js';
 import { indexRoutes } from './routes/indexRoutes.js';
 import { ipfs } from './routes/ipfs.js';
+import { live } from './routes/live.js';
 import { maintenance } from './routes/maintenance.js';
 import { push } from './routes/push.js';
 import { relay } from './routes/relay.js';
 import { social } from './routes/social.js';
+import { uniswap } from './routes/uniswap.js';
 import { world } from './routes/world.js';
 
 // @worldcoin/idkit-core loads its wasm via fetch(file://...) which Node's
@@ -47,7 +52,14 @@ app.use(
   cors({
     origin: allowedOrigins,
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    allowHeaders: ['Content-Type', 'X-API-Key'],
+    allowHeaders: [
+      'Content-Type',
+      'X-API-Key',
+      'Authorization',
+      'X-Admin-Key',
+      'X-Approval-Secret',
+    ],
+    exposeHeaders: ['WWW-Authenticate'],
     credentials: true,
   })
 );
@@ -64,14 +76,26 @@ const ROUTE_GROUPS = [
   { path: '/push', limit: 30, gated: true },
   // A verification polls every 2s for up to 3 minutes, so it needs well over 30 a minute.
   { path: '/world', limit: 120, gated: true },
+  { path: '/arkiv', limit: 60, gated: true },
+  { path: '/uniswap', limit: 30, gated: true },
   { path: '/relay', limit: 30, gated: false },
   { path: '/maintenance', limit: 5, gated: false },
+  // Their own credentials: /human gates itself below (the mock approval page cannot send the key),
+  // /agent uses per-agent bearer tokens, /live is a public follow-along page.
+  { path: '/human', limit: 60, gated: false },
+  { path: '/agent', limit: 60, gated: false },
+  { path: '/live', limit: 60, gated: false },
 ] as const;
 
 for (const { path, limit, gated } of ROUTE_GROUPS) {
   app.use(`${path}/*`, createRateLimiter({ windowMs: 60_000, max: limit, maxKeys: 5_000 }));
   if (gated) app.use(`${path}/*`, apiKeyGate);
 }
+
+// The mock World approval page is opened in a phone browser, which can't send
+// the API key; it only exists when WORLD_OIDC_MOCK is on outside production.
+const isMockApprovalPage = (c: Context) => c.req.path.startsWith('/api/human/mock/');
+app.use('/human/*', async (c, next) => (isMockApprovalPage(c) ? next() : apiKeyGate(c, next)));
 
 app.route('/health', health);
 app.route('/activities', activities);
@@ -83,5 +107,10 @@ app.route('/push', push);
 app.route('/world', world);
 app.route('/relay', relay);
 app.route('/maintenance', maintenance);
+app.route('/human', humanPass);
+app.route('/agent', agent);
+app.route('/arkiv', arkiv);
+app.route('/uniswap', uniswap);
+app.route('/live', live);
 
 export default app;
