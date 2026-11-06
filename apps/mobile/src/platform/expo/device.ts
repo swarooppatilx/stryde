@@ -97,6 +97,9 @@ export const expoPhotoLibrary: PhotoLibrary = {
       allowsEditing: !multiple && !!aspect,
       aspect,
       quality: 0.8,
+      // iPhone photos are often HEIC, which the upload refuses: ask iOS for a JPEG-compatible copy.
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     });
     return { status: 'picked', uris: result.canceled ? [] : result.assets.map((a) => a.uri) };
   },
