@@ -1,7 +1,12 @@
 import { offlineManager } from '@rnmapbox/maps';
 import { ensureMapbox } from '@/services/mapbox';
 import { logger } from '@/utils/logger';
-import { OFFLINE_ZOOM, offlineBounds, offlinePackName } from '@/utils/offlineRegion';
+import {
+  OFFLINE_ZOOM,
+  offlineBounds,
+  offlinePackName,
+  routeIdFromPackName,
+} from '@/utils/offlineRegion';
 import type { RoutePoint } from '@/utils/route';
 
 export interface OfflineMapStatus {
@@ -86,4 +91,24 @@ export async function removeRouteMap(routeId: string): Promise<void> {
     .catch((error: unknown) =>
       logger.warn('[OfflineMaps] Could not remove the offline map', error)
     );
+}
+
+/** Ids of the saved routes whose map is fully on the phone. */
+export async function listDownloadedRouteIds(): Promise<Set<string>> {
+  if (!ensureMapbox()) return new Set();
+  try {
+    const packs = await offlineManager.getPacks();
+    const ids = await Promise.all(
+      packs.map(async (pack) => {
+        const id = routeIdFromPackName(pack.name);
+        if (!id) return null;
+        const status = (await pack.status()) as unknown as ProgressStatus;
+        return toStatus(status).state === 'ready' ? id : null;
+      })
+    );
+    return new Set(ids.filter((id): id is string => id !== null));
+  } catch (error) {
+    logger.warn('[OfflineMaps] Could not list offline maps', error);
+    return new Set();
+  }
 }

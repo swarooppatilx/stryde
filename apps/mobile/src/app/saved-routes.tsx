@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useDownloadedRouteIds } from '@/hooks/useDownloadedRouteIds';
 import { useGoBack } from '@/hooks/useGoBack';
 import { type SavedRoute, useRouteStore } from '@/stores/routeStore';
 import { confirmDeleteRoute } from '@/utils/confirmDeleteRoute';
@@ -22,7 +23,12 @@ import {
   routeSportOptions,
 } from '@/utils/routeLibrary';
 
-function selectedChip(starredOnly: boolean, narrowing: number): 'all' | 'starred' | 'filters' {
+function selectedChip(
+  starredOnly: boolean,
+  narrowing: number,
+  downloadedOnly = false
+): 'all' | 'starred' | 'filters' | 'downloaded' {
+  if (downloadedOnly) return 'downloaded';
   if (starredOnly) return 'starred';
   return narrowing > 0 ? 'filters' : 'all';
 }
@@ -43,12 +49,19 @@ export default function SavedRoutesScreen() {
     difficulty: 'any',
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Routes whose map is on the phone; the offline banner on the map links here with this set.
+  const downloaded = useDownloadedRouteIds();
+  const { downloaded: downloadedParam } = useLocalSearchParams<{ downloaded?: string }>();
+  const [downloadedOnly, setDownloadedOnly] = useState(downloadedParam === '1');
 
-  const shown = useMemo(() => filterSavedRoutes(routes, filters), [routes, filters]);
+  const shown = useMemo(() => {
+    const narrowed = filterSavedRoutes(routes, filters);
+    return downloadedOnly ? narrowed.filter((r) => downloaded.has(r.id)) : narrowed;
+  }, [routes, filters, downloadedOnly, downloaded]);
   const sportOptions = useMemo(() => routeSportOptions(routes), [routes]);
   const narrowing = activeFilterCount(filters);
-  const filtered = narrowing > 0 || filters.starredOnly;
-  const chipValue = selectedChip(filters.starredOnly, narrowing);
+  const filtered = narrowing > 0 || filters.starredOnly || downloadedOnly;
+  const chipValue = selectedChip(filters.starredOnly, narrowing, downloadedOnly);
   const confirmDelete = (route: SavedRoute) =>
     confirmDeleteRoute(route.name, () => remove(route.id));
 
@@ -82,6 +95,9 @@ export default function SavedRoutesScreen() {
               options={[
                 { value: 'all', label: 'All routes' },
                 { value: 'starred', label: 'Starred' },
+                ...(downloaded.size > 0 || downloadedOnly
+                  ? [{ value: 'downloaded' as const, label: 'Downloaded' }]
+                  : []),
                 {
                   value: 'filters',
                   label: narrowing > 0 ? `Filters · ${narrowing}` : 'Filters',
@@ -93,6 +109,7 @@ export default function SavedRoutesScreen() {
                   setFiltersOpen(true);
                   return;
                 }
+                setDownloadedOnly(v === 'downloaded');
                 setFilters({ ...filters, starredOnly: v === 'starred' });
               }}
               contentStyle={styles.chips}
@@ -125,6 +142,7 @@ export default function SavedRoutesScreen() {
               onLongPress={() => confirmDelete(route)}
               onToggleStar={() => toggleStar(route.id)}
               onDelete={() => confirmDelete(route)}
+              downloaded={downloaded.has(route.id)}
             />
           )}
         />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { offlineBounds, offlinePackName } from '@/utils/offlineRegion';
+import { offlineBounds, offlinePackName, routeIdFromPackName } from '@/utils/offlineRegion';
 
 describe('offlineBounds', () => {
   it('pads the route box on every side, north-east corner first', () => {
@@ -26,5 +26,13 @@ describe('offlineBounds', () => {
 describe('offlinePackName', () => {
   it('names a pack after its route', () => {
     expect(offlinePackName('abc')).toBe('route-abc');
+  });
+});
+
+describe('routeIdFromPackName', () => {
+  it('reads back the route id and ignores other packs', () => {
+    expect(routeIdFromPackName(offlinePackName('r1'))).toBe('r1');
+    expect(routeIdFromPackName('city-centre')).toBeNull();
+    expect(routeIdFromPackName(undefined)).toBeNull();
   });
 });

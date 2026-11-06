@@ -27,3 +27,8 @@ export function offlineBounds(
     [west - dLng, south - dLat],
   ];
 }
+
+/** The route id an offline pack was saved for, or null for a pack this app did not name. */
+export function routeIdFromPackName(name: string | undefined): string | null {
+  return name?.startsWith('route-') ? name.slice('route-'.length) || null : null;
+}

@@ -23,6 +23,7 @@ import { MAP_CHROME_BOTTOM, MapChrome } from '@/constants/mapChrome';
 import { BorderRadius, Brand, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
+import { useDownloadedRouteIds } from '@/hooks/useDownloadedRouteIds';
 import { useFitRoute } from '@/hooks/useFitRoute';
 import { useHideTabBar } from '@/hooks/useHideTabBar';
 import { type DistanceFilter, type TimeFilter, useMap } from '@/hooks/useMap';
@@ -109,6 +110,7 @@ export default function MapScreen() {
   // Map-only: every control, the sheet and the tab bar step aside for an uncluttered map.
   const [mapOnly, setMapOnly] = useState(false);
   const [poi, setPoi] = useState<MapPoi | null>(null);
+  const downloadedRoutes = useDownloadedRouteIds();
   useHideTabBar(mapOnly);
   const router = useRouter();
   const { preview, setPreview, hide: hidePreview } = useRoutePreview();
@@ -430,9 +432,21 @@ export default function MapScreen() {
               accessibilityLiveRegion="polite"
             >
               <Ionicons name="cloud-offline-outline" size={16} color={theme.textSecondary} />
-              <ThemedText type="caption" themeColor="textSecondary">
+              <ThemedText type="caption" themeColor="textSecondary" style={styles.offlineText}>
                 You're offline. Your own routes and territory are still here.
               </ThemedText>
+              {downloadedRoutes.size > 0 && (
+                <Tappable
+                  onPress={() => router.push('/saved-routes?downloaded=1')}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="See the routes saved for offline use"
+                >
+                  <ThemedText type="smallBold" style={{ color: theme.accentText }}>
+                    Offline routes
+                  </ThemedText>
+                </Tappable>
+              )}
             </View>
           )}
           {showOthers && !othersLoading && othersTerritories.length === 0 ? (
@@ -610,6 +624,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
+  offlineText: { flex: 1 },
   offlineStrip: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -20,10 +20,19 @@ interface RouteCardProps {
   /** The star on the card's corner; left out, no star shows. */
   onToggleStar?(): void;
   onDelete?(): void;
+  /** The route's map is on the phone, so it works with no signal. */
+  downloaded?: boolean;
 }
 
 /** A saved route as a card: its line on the map, then the facts a runner picks by (sport, difficulty, distance, climb, time). */
-export function RouteCard({ route, onPress, onLongPress, onToggleStar, onDelete }: RouteCardProps) {
+export function RouteCard({
+  route,
+  onPress,
+  onLongPress,
+  onToggleStar,
+  onDelete,
+  downloaded = false,
+}: RouteCardProps) {
   const theme = useTheme();
   const unitSystem = useUnitSystem();
   const difficulty = routeDifficulty(route);
@@ -82,6 +91,19 @@ export function RouteCard({ route, onPress, onLongPress, onToggleStar, onDelete 
           ) : null}
         </View>
         <View style={styles.factsRow}>
+          {downloaded ? (
+            <View
+              style={[
+                styles.pill,
+                styles.offlinePill,
+                { backgroundColor: theme.backgroundSelected },
+              ]}
+              accessibilityLabel="Available offline"
+            >
+              <Ionicons name="cloud-done-outline" size={13} color={theme.brand.success} />
+              <ThemedText type="caption">Offline</ThemedText>
+            </View>
+          ) : null}
           {difficulty ? (
             <View style={[styles.pill, { backgroundColor: theme.backgroundSelected }]}>
               <ThemedText type="caption">{DIFFICULTY_LABEL[difficulty]}</ThemedText>
@@ -103,5 +125,6 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   title: { flex: 1 },
   factsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  offlinePill: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pill: { paddingHorizontal: Spacing.two, paddingVertical: 2, borderRadius: BorderRadius.full },
 });
