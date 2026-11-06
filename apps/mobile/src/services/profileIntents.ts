@@ -1,6 +1,6 @@
 import type { WalletClient } from 'viem';
 import { type Handler, RejectedError } from '@/backends/outbox/outbox';
-import { isApiRefusal } from '@/utils/isApiRefusal';
+import { refuseApiError, refuseContractRevert } from '@/services/refusals';
 import { revertName } from '@/utils/isContractRevert';
 
 export const SET_USERNAME = 'setUsername';
@@ -58,14 +58,6 @@ function needWallet(deps: ProfileIntentDeps): WalletClient {
   return wallet;
 }
 
-/** Turns any contract revert into a final "no"; anything else (network, timeout) is left to retry. */
-function refuseReverts(error: unknown, what: string): never {
-  const name = revertName(error);
-  if (name !== null)
-    throw new RejectedError(`The contract refused the ${what}${name ? ` (${name})` : ''}`);
-  throw error;
-}
-
 export interface ProfileHandlers {
   setUsername: Handler;
   setAvatar: Handler;
@@ -91,7 +83,7 @@ export function createProfileHandlers(deps: ProfileIntentDeps): ProfileHandlers 
           if (current === username) return;
           throw new RejectedError('That username is taken');
         }
-        refuseReverts(error, 'username');
+        refuseContractRevert(error, 'username');
       }
     },
 
@@ -105,7 +97,7 @@ export function createProfileHandlers(deps: ProfileIntentDeps): ProfileHandlers 
         const result = await deps.chain.setAvatar(wallet, cid);
         if (!result.confirmed) throw new Error('The change did not confirm yet');
       } catch (error) {
-        refuseReverts(error, 'photo');
+        refuseContractRevert(error, 'photo');
       }
     },
 
@@ -116,10 +108,7 @@ export function createProfileHandlers(deps: ProfileIntentDeps): ProfileHandlers 
         await deps.saveAbout(wallet, { bio, location });
       } catch (error) {
         // A 4xx is the server saying no for good; anything else (network, 5xx) is worth another go.
-        if (isApiRefusal(error)) {
-          throw new RejectedError(error instanceof Error ? error.message : 'Refused');
-        }
-        throw error;
+        refuseApiError(error);
       }
     },
 

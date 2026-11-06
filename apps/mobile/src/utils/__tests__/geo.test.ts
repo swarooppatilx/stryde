@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Location } from '@/types';
-import { haversineDistance, rejectOutliers, smoothLocations } from '@/utils/geo';
+import {
+  bearingBetween,
+  destinationPoint,
+  haversineDistance,
+  rejectOutliers,
+  smoothLocations,
+} from '@/utils/geo';
 
 function loc(overrides: Partial<Location> & Pick<Location, 'latitude' | 'longitude'>): Location {
   return {
@@ -167,5 +173,43 @@ describe('smoothLocations', () => {
     const smoothed = smoothLocations(points);
     // Middle point should be pulled closer to the accurate neighbors
     expect(smoothed[1]?.latitude).toBeLessThan(2);
+  });
+});
+
+describe('bearingBetween', () => {
+  it('is the compass heading from one point to the next', () => {
+    expect(bearingBetween([73.85, 18.52], [73.85, 18.53])).toBeCloseTo(0, 0);
+    expect(bearingBetween([73.85, 18.52], [73.86, 18.52])).toBeCloseTo(90, 0);
+    expect(bearingBetween([73.85, 18.53], [73.85, 18.52])).toBeCloseTo(180, 0);
+    expect(bearingBetween([73.86, 18.52], [73.85, 18.52])).toBeCloseTo(270, 0);
+  });
+});
+
+describe('destinationPoint', () => {
+  const ONE_DEGREE_OF_LATITUDE_M = 111_195;
+
+  it('goes north for a heading of 0 and east for a quarter turn', () => {
+    const north = destinationPoint(18, 73, ONE_DEGREE_OF_LATITUDE_M, 0);
+    expect(north.latitude).toBeCloseTo(19, 2);
+    expect(north.longitude).toBeCloseTo(73, 5);
+
+    const east = destinationPoint(0, 73, ONE_DEGREE_OF_LATITUDE_M, Math.PI / 2);
+    expect(east.latitude).toBeCloseTo(0, 5);
+    expect(east.longitude).toBeCloseTo(74, 2);
+  });
+
+  it('covers more degrees of longitude per metre away from the equator', () => {
+    const atEquator = destinationPoint(0, 73, 1000, Math.PI / 2);
+    const at60 = destinationPoint(60, 73, 1000, Math.PI / 2);
+    expect((at60.longitude - 73) / (atEquator.longitude - 73)).toBeCloseTo(2, 1);
+  });
+
+  it('lands where haversine says it travelled, for a step of walking size', () => {
+    const next = destinationPoint(18.52, 73.85, 12, Math.PI / 4);
+    expect(haversineDistance(18.52, 73.85, next.latitude, next.longitude)).toBeCloseTo(12, 1);
+  });
+
+  it('stays put for no distance', () => {
+    expect(destinationPoint(18.52, 73.85, 0, 1.2)).toEqual({ latitude: 18.52, longitude: 73.85 });
   });
 });

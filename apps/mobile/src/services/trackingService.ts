@@ -7,7 +7,7 @@ import {
   MAX_FIX_ACCURACY_M,
   MIN_PLAUSIBLE_FIX_TIME_MS,
 } from '@/utils/fixClassifier';
-import { haversineDistance, rejectOutliers, smoothLocations } from '@/utils/geo';
+import { destinationPoint, haversineDistance, rejectOutliers, smoothLocations } from '@/utils/geo';
 import { IncrementalTrack } from '@/utils/incrementalTrack';
 import { logger } from '@/utils/logger';
 import { createMotionDetector } from '@/utils/motionPause';
@@ -472,25 +472,14 @@ export class TrackingService implements ITrackingService {
     const distance = newSteps * this.stepLength;
     const heading = this.motion.getHeading();
 
-    const R = 6371e3;
-    const lat1 =
-      ((this.lastInterpolatedLocation?.latitude ?? this.lastGpsLocation.latitude) * Math.PI) / 180;
-
-    const dLat = (distance * Math.cos(heading)) / R;
-    const dLng = (distance * Math.sin(heading)) / (R * Math.cos(lat1));
-
-    const newLat =
-      (this.lastInterpolatedLocation?.latitude ?? this.lastGpsLocation.latitude) +
-      (dLat * 180) / Math.PI;
-    const newLng =
-      (this.lastInterpolatedLocation?.longitude ?? this.lastGpsLocation.longitude) +
-      (dLng * 180) / Math.PI;
+    const from = this.lastInterpolatedLocation ?? this.lastGpsLocation;
+    const next = destinationPoint(from.latitude, from.longitude, distance, heading);
 
     this.stepsSinceLastGps = steps;
 
     return {
-      latitude: newLat,
-      longitude: newLng,
+      latitude: next.latitude,
+      longitude: next.longitude,
       timestamp: this.clock.now(),
       accuracy: 0,
     };

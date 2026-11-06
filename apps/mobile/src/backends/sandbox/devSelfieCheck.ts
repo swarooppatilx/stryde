@@ -1,7 +1,7 @@
 import type { SelfieCheckResult } from '@/services/worldIdService';
+import { sleep } from '@/utils/retry';
 
 const SHOW_PROGRESS_MS = 600;
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** A stable 32-byte value for a wallet, so the same developer always gets the same "nullifier". */
 function nullifierFor(signal: string): `0x${string}` {

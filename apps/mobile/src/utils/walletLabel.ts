@@ -1,4 +1,4 @@
-import { shortAddress } from '@/utils/challengeForm';
+import { shortAddress } from '@/utils/address';
 
 /** What to call an account on a pill: its ENS name if it has one, else the short address; null with neither. */
 export function walletLabel({

@@ -1,8 +1,7 @@
 import { getSportLabel } from '@/constants/activity';
 import type { ActivityType, Lap, Split } from '@/types';
+import { countRegular } from '@/utils/plural';
 import { METERS_PER_MILE, showsSpeed, type UnitSystem } from './format';
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** What to say aloud when a split finishes, or null when there is nothing honest to say. */
 export function splitCue(
@@ -16,17 +15,17 @@ export function splitCue(
   const imperial = unitSystem === 'imperial';
   const unit = imperial ? 'mile' : 'kilometre';
   const unitMeters = imperial ? METERS_PER_MILE : 1000;
-  const heard = `${plural(split.index, unit)}.${totalMs && totalMs > 0 ? ` Time ${durationWords(totalMs)}.` : ''}`;
+  const heard = `${countRegular(split.index, unit)}.${totalMs && totalMs > 0 ? ` Time ${durationWords(totalMs)}.` : ''}`;
 
   if (showsSpeed(activityType)) {
     const perHour = Math.round(split.distance / unitMeters / (split.movingTime / 3_600_000));
-    return `${heard} Speed ${plural(perHour, unit)} per hour.`;
+    return `${heard} Speed ${countRegular(perHour, unit)} per hour.`;
   }
 
   const seconds = Math.round(split.movingTime / 1000 / (split.distance / unitMeters));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
-  const pace = [plural(minutes, 'minute'), rest > 0 ? plural(rest, 'second') : null]
+  const pace = [countRegular(minutes, 'minute'), rest > 0 ? countRegular(rest, 'second') : null]
     .filter(Boolean)
     .join(' ');
   return `${heard} Pace ${pace} per ${unit}.`;
@@ -54,7 +53,7 @@ function distanceWords(meters: number, unitSystem: UnitSystem): string {
     const miles = meters / METERS_PER_MILE;
     return `${spoken(miles)} ${Number(spoken(miles)) === 1 ? 'mile' : 'miles'}`;
   }
-  if (meters < 1000) return plural(Math.round(meters), 'metre');
+  if (meters < 1000) return countRegular(Math.round(meters), 'metre');
   const km = meters / 1000;
   return `${spoken(km)} ${Number(spoken(km)) === 1 ? 'kilometre' : 'kilometres'}`;
 }
@@ -65,9 +64,9 @@ function durationWords(ms: number): string {
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
   return [
-    hours > 0 ? plural(hours, 'hour') : null,
-    minutes > 0 ? plural(minutes, 'minute') : null,
-    rest > 0 ? plural(rest, 'second') : null,
+    hours > 0 ? countRegular(hours, 'hour') : null,
+    minutes > 0 ? countRegular(minutes, 'minute') : null,
+    rest > 0 ? countRegular(rest, 'second') : null,
   ]
     .filter(Boolean)
     .join(' ');

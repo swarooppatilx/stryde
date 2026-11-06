@@ -1,6 +1,6 @@
 import type { WalletClient } from 'viem';
-import { type Handler, RejectedError } from '@/backends/outbox/outbox';
-import { isApiRefusal } from '@/utils/isApiRefusal';
+import type { Handler } from '@/backends/outbox/outbox';
+import { refuseApiError } from '@/services/refusals';
 
 export const REGISTER_PUSH = 'registerPushToken';
 /** One slot: a newer intent for this phone's token replaces one still waiting. */
@@ -24,10 +24,7 @@ export function createPushRegisterHandler(deps: PushDeps): Handler {
     try {
       await deps.send(wallet, payload as PushRegistration);
     } catch (error) {
-      if (isApiRefusal(error)) {
-        throw new RejectedError(error instanceof Error ? error.message : 'Refused');
-      }
-      throw error;
+      refuseApiError(error);
     }
   };
 }

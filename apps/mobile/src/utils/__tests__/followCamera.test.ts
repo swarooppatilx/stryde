@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  angleDelta,
   buildTarget,
   type CameraTarget,
   clampZoom,
   classifyViewChange,
   MAX_ZOOM,
   MIN_ZOOM,
-  normalizeBearing,
   shouldEase,
   smoothHeading,
   stepZoom,
   TILT_DEGREES,
 } from '@/utils/followCamera';
+import { angleDelta, normalizeBearing } from '@/utils/geo';
 
 const target = (over: Partial<CameraTarget> = {}): CameraTarget => ({
   center: [73.85, 18.52],

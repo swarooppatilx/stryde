@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Share } from 'react-native';
 import { Tappable } from '@/components/tappable';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/utils/haptics';
-import { logger } from '@/utils/logger';
-import { Toast } from '@/utils/toast';
+import { shareMessage } from '@/utils/shareMessage';
 
 /** A header icon that opens the system share sheet with `message` (a name and a link). */
 export function ShareButton({ message, label }: { message: string; label: string }) {
@@ -13,12 +11,7 @@ export function ShareButton({ message, label }: { message: string; label: string
     <Tappable
       onPress={async () => {
         haptics.tap();
-        try {
-          await Share.share({ message });
-        } catch (error) {
-          logger.warn('[Share] Failed', error);
-          Toast.fail("Couldn't open sharing", 1.5);
-        }
+        await shareMessage(message, "Couldn't open sharing");
       }}
       hitSlop={12}
       accessibilityRole="button"

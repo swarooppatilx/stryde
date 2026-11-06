@@ -1,4 +1,5 @@
 import { isAddress } from 'viem';
+import { sameAddress, shortAddress } from '@/utils/address';
 
 interface Opponent {
   wallet: string;
@@ -16,8 +17,7 @@ export function opponentFromQuery(
 ): Opponent | null {
   const wallet = query.trim();
   if (!isAddress(wallet, { strict: false })) return null;
-  const lower = wallet.toLowerCase();
-  if (lower === me.toLowerCase()) return null;
-  if (known.some((o) => o.wallet.toLowerCase() === lower)) return null;
-  return { wallet, username: `${wallet.slice(0, 6)}…${wallet.slice(-4)}` };
+  if (sameAddress(wallet, me)) return null;
+  if (known.some((o) => sameAddress(o.wallet, wallet))) return null;
+  return { wallet, username: shortAddress(wallet) };
 }

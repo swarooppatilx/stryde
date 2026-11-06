@@ -1,3 +1,4 @@
+import { sameAddress } from '@/utils/address';
 import { ordinal } from './plural';
 import { isVisibleToViewer, type SocialActivity } from './socialSelectors';
 import { type WeekStartDay, weekStart } from './trainingLog';
@@ -27,7 +28,7 @@ export function leaderboardView({
 
 /** Where the athlete stands on the board, for people far down a long list; null when they are not on it. */
 export function rankSummary(rows: readonly { wallet: string }[], me: string): string | null {
-  const index = rows.findIndex((row) => row.wallet.toLowerCase() === me.toLowerCase());
+  const index = rows.findIndex((row) => sameAddress(row.wallet, me));
   return index < 0 ? null : `You are ${ordinal(index + 1)} of ${rows.length}`;
 }
 

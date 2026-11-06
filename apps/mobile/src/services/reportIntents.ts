@@ -1,6 +1,6 @@
 import type { WalletClient } from 'viem';
-import { type Handler, RejectedError } from '@/backends/outbox/outbox';
-import { isApiRefusal } from '@/utils/isApiRefusal';
+import type { Handler } from '@/backends/outbox/outbox';
+import { refuseApiError } from '@/services/refusals';
 import type { ReportReason, ReportTargetKind } from '@/utils/reporting';
 
 export const SEND_REPORT = 'sendReport';
@@ -26,10 +26,7 @@ export function createReportHandler(deps: ReportDeps): Handler {
     try {
       await deps.send(wallet, payload as ReportIntent);
     } catch (error) {
-      if (isApiRefusal(error)) {
-        throw new RejectedError(error instanceof Error ? error.message : 'Refused');
-      }
-      throw error;
+      refuseApiError(error);
     }
   };
 }

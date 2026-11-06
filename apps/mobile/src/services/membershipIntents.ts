@@ -1,5 +1,6 @@
 import type { WalletClient } from 'viem';
-import { type Handler, RejectedError } from '@/backends/outbox/outbox';
+import type { Handler } from '@/backends/outbox/outbox';
+import { refuseContractRevert } from '@/services/refusals';
 import { revertName } from '@/utils/isContractRevert';
 
 export const SET_CLUB_MEMBERSHIP = 'setClubMembership';
@@ -37,9 +38,7 @@ function handlerFor(deps: MembershipDeps, join: Send, leave: Send, what: string)
     } catch (error) {
       const name = revertName(error);
       if (name !== null && ALREADY_THERE.has(name)) return;
-      if (name !== null)
-        throw new RejectedError(`The contract refused the ${what}${name ? ` (${name})` : ''}`);
-      throw error;
+      refuseContractRevert(error, what);
     }
   };
 }

@@ -1,6 +1,6 @@
 import type { WalletClient } from 'viem';
-import { type Handler, RejectedError } from '@/backends/outbox/outbox';
-import { isApiRefusal } from '@/utils/isApiRefusal';
+import type { Handler } from '@/backends/outbox/outbox';
+import { apiRefusal, refuseApiError } from '@/services/refusals';
 
 export const CREATE_POST = 'createPost';
 export const DELETE_POST = 'deletePost';
@@ -51,10 +51,8 @@ function needWallet(deps: PostIntentDeps): WalletClient {
  */
 function refuseOrRetry(error: unknown): never {
   const status = (error as { status?: unknown } | null)?.status;
-  if (isApiRefusal(error) || status === 429) {
-    throw new RejectedError(error instanceof Error ? error.message : 'Refused');
-  }
-  throw error;
+  if (status === 429) throw apiRefusal(error);
+  refuseApiError(error);
 }
 
 export interface PostHandlers {

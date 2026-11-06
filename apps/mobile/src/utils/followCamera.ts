@@ -1,4 +1,4 @@
-import { haversineDistance } from './geo';
+import { angleDelta, haversineDistance, normalizeBearing } from './geo';
 import type { FollowMode } from './recordCamera';
 
 type LngLat = [number, number];
@@ -54,16 +54,6 @@ export function clampZoom(zoom: number): number {
 /** One zoom level in (+1) or out (-1), kept inside the clamp. */
 export function stepZoom(zoom: number, direction: 1 | -1): number {
   return clampZoom(zoom + direction * ZOOM_STEP);
-}
-
-export function normalizeBearing(degrees: number): number {
-  return ((degrees % 360) + 360) % 360;
-}
-
-/** The signed shortest turn from one bearing to another, in (-180, 180]. */
-export function angleDelta(from: number, to: number): number {
-  const delta = normalizeBearing(to - from);
-  return delta > 180 ? delta - 360 : delta;
 }
 
 /**

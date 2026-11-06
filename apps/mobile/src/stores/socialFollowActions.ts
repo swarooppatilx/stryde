@@ -4,13 +4,12 @@ import {
   registerOutboxHandler,
   registerRejectionHandler,
 } from '@/backends/outbox/appOutbox';
-import { RejectedError } from '@/backends/outbox/outbox';
 import { getCurrentUserId } from '@/constants/currentUser';
 import { SET_FOLLOW } from '@/constants/outboxKinds';
+import { refuseApiError } from '@/services/refusals';
 import { queuedWrite } from '@/services/wallet';
 import { usePushPrimerStore } from '@/stores/pushPrimerStore';
 import { sameAddress } from '@/utils/address';
-import { isApiRefusal } from '@/utils/isApiRefusal';
 import { logger } from '@/utils/logger';
 import type { SocialUser } from '@/utils/socialSelectors';
 import { Toast } from '@/utils/toast';
@@ -61,10 +60,7 @@ export function createFollowActions(set: SetSlice, get: () => FollowSlice) {
       );
       if (sent === null) throw new Error('Wallet is not ready yet');
     } catch (error) {
-      if (isApiRefusal(error)) {
-        throw new RejectedError(error instanceof Error ? error.message : 'Refused');
-      }
-      throw error;
+      refuseApiError(error);
     }
   });
   registerRejectionHandler(SET_FOLLOW, (entry) => {
