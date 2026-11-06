@@ -83,6 +83,7 @@ export const usePostStore = create<PostState>()(
     {
       name: '@stryde/posts',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

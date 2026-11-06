@@ -22,6 +22,7 @@ export const useRecordUiStore = create<RecordUiState>()(
     {
       name: '@stryde/record-ui',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

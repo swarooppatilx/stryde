@@ -105,6 +105,7 @@ export const useMapPrefsStore = create<MapPrefsState>()(
     {
       name: '@stryde/map-prefs',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

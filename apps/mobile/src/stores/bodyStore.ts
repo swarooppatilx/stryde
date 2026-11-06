@@ -29,6 +29,7 @@ export const useBodyStore = create<BodyState>()(
     {
       name: '@stryde/body',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

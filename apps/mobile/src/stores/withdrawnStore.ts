@@ -21,6 +21,7 @@ export const useWithdrawnStore = create<WithdrawnState>()(
     {
       name: '@stryde/withdrawn-challenges',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )

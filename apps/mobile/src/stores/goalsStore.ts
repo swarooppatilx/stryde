@@ -49,6 +49,7 @@ export const useGoalsStore = create<GoalsState>()(
     {
       name: '@stryde/goals',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
       partialize: (s) => ({ goals: s.goals, seeded: s.seeded, touched: s.touched }),
     }

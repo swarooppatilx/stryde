@@ -67,6 +67,7 @@ export const useBlockStore = create<BlockState>()(
     {
       name: '@stryde/blocked',
       version: 1,
+      migrate: (persisted) => persisted,
       storage: createJSONStorage(() => chainScopedStorageAdapter),
     }
   )
