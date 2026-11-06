@@ -77,9 +77,15 @@ export interface IActivityService {
         | 'elevationGain'
         | 'txHash'
         | 'strdEarned'
+        | 'rewardHold'
         | 'onchainActivityId'
         | 'metadataCid'
         | 'gearId'
+        | 'sweat'
+        | 'steps'
+        | 'segmentEfforts'
+        | 'swarmRef'
+        | 'swarmLink'
       >
     >
   ): void;

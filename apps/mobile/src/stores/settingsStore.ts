@@ -88,6 +88,15 @@ interface SettingsState {
   // user who signs out lands on /login, not back through the full onboarding
   // carousel — that's only for people who have never authenticated before.
   hasOnboarded: boolean;
+  /** Publish a short-lived live location beacon (Arkiv) while recording. */
+  liveBeacon: boolean;
+  /** Encrypt the archived GPX on Swarm so only you can open it. */
+  privateRoutes: boolean;
+  /** Read heart rate/steps from Health Connect or HealthKit after each activity. */
+  healthData: boolean;
+  setLiveBeacon: (enabled: boolean) => void;
+  setPrivateRoutes: (enabled: boolean) => void;
+  setHealthData: (enabled: boolean) => void;
   setGyroscopeAssist: (enabled: boolean) => void;
   setAutoPause: (enabled: boolean) => void;
   setAutoPauseOnFoot: (enabled: boolean) => void;
@@ -128,6 +137,9 @@ const INITIAL_STATE = {
   countdownSeconds: 3 as CountdownSeconds,
   liveStatSlots: DEFAULT_LIVE_STAT_SLOTS,
   preferredSports: [] as ActivityType[],
+  liveBeacon: false,
+  privateRoutes: false,
+  healthData: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -166,12 +178,15 @@ export const useSettingsStore = create<SettingsState>()(
         })),
       setPreferredSports: (sports) => set({ preferredSports: sanitizePreferredSports(sports) }),
       setHasOnboarded: () => set({ hasOnboarded: true }),
+      setLiveBeacon: (enabled) => set({ liveBeacon: enabled }),
+      setPrivateRoutes: (enabled) => set({ privateRoutes: enabled }),
+      setHealthData: (enabled) => set({ healthData: enabled }),
       // Keeps `hasOnboarded`: it is not a preference, and clearing it would send a returning user back through the first-run carousel.
       reset: () => set({ ...INITIAL_STATE, hasOnboarded: get().hasOnboarded }),
     }),
     {
       name: '@stryde/settings',
-      version: 10,
+      version: 11,
       storage: createJSONStorage(() => asyncStorageAdapter, { reviver: isoDateReviver }),
       migrate: (persistedState: unknown, version: number) => {
         let state = persistedState as Record<string, unknown>;
@@ -215,6 +230,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version < 10) {
           state = { ...state, preferredSports: [] };
+        }
+        if (version < 11) {
+          state = { ...state, liveBeacon: false, privateRoutes: false, healthData: false };
         }
         return state;
       },
