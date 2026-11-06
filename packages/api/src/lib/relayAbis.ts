@@ -230,6 +230,13 @@ export const profileRegistryAbi = [
     outputs: [{ name: '', type: 'bool' }],
     stateMutability: 'view',
   },
+  {
+    type: 'function',
+    name: 'isRegistered',
+    inputs: [{ name: 'wallet', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+  },
   { type: 'error', name: 'NotRegistered', inputs: [] },
   { type: 'error', name: 'AlreadyVerified', inputs: [] },
   { type: 'error', name: 'NullifierAlreadyUsed', inputs: [] },

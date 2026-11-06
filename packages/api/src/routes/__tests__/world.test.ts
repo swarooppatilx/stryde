@@ -12,6 +12,10 @@ const mockPublicClient = vi.hoisted(() => ({
   simulateContract: vi.fn(async (request: unknown) => ({ request })),
   estimateFeesPerGas: vi.fn(async () => ({ maxFeePerGas: 1n })),
   waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: 'success' as const }),
+  // A registered profile that is not verified yet, unless a test says otherwise.
+  readContract: vi.fn(async ({ functionName }: { functionName: string }) => {
+    return functionName === 'isRegistered';
+  }),
 }));
 
 // What the next World poll reports; each test sets it before polling.
@@ -239,6 +243,84 @@ describe('WORLD_SKIP_REMOTE_VERIFY', () => {
 
     expect(result.status).toBe('failed');
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+});
+
+describe('mirroring the verification onchain', () => {
+  const nullifier = `0x${'ab'.repeat(32)}`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
+  });
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
+    mockPublicClient.readContract.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const registry = (state: { registered: boolean; verified: boolean }) =>
+    mockPublicClient.readContract.mockImplementation(async ({ functionName }) =>
+      functionName === 'isRegistered' ? state.registered : state.verified
+    );
+
+  it('sends nothing for a wallet that is already verified', async () => {
+    registry({ registered: true, verified: true });
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
+    const world = await loadWorld({ skip: false });
+
+    const result = await startAndPoll(world);
+
+    expect(result.status).toBe('confirmed');
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it('waits for a wallet with no profile instead of sending a transaction that reverts', async () => {
+    registry({ registered: false, verified: false });
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
+    const world = await loadWorld({ skip: false });
+
+    const result = await startAndPoll(world);
+
+    expect(result.status).toBe('confirmed');
+    expect(mockWallet.writeContract).not.toHaveBeenCalled();
+  });
+
+  it('finishes the mirror from the stored pass once the profile exists', async () => {
+    registry({ registered: false, verified: false });
+    pollStatus.current = { type: 'confirmed', result: enrollment(nullifier) };
+    const world = await loadWorld({ skip: false });
+    await startAndPoll(world);
+
+    const early = await world.request(`/pass/${WALLET}/mirror`, { method: 'POST' });
+    expect(await early.json()).toEqual({ outcome: 'not_registered' });
+
+    registry({ registered: true, verified: false });
+    const res = await world.request(`/pass/${WALLET}/mirror`, { method: 'POST' });
+
+    expect(await res.json()).toEqual({ outcome: 'mirrored' });
+    expect(mockWallet.writeContract).toHaveBeenCalledOnce();
+    expect(mockWallet.writeContract.mock.calls[0]?.[0]).toMatchObject({
+      functionName: 'verify',
+      args: [WALLET, nullifier],
+    });
+  });
+
+  it('answers 409 when the wallet holds no pass, so the caller cannot spend relayer gas', async () => {
+    const world = await loadWorld({ skip: false });
+
+    const res = await world.request(`/pass/${WALLET}/mirror`, { method: 'POST' });
+
+    expect(res.status).toBe(409);
     expect(mockWallet.writeContract).not.toHaveBeenCalled();
   });
 });
