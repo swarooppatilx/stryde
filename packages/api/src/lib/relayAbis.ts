@@ -71,10 +71,57 @@ export const moveToEarnTokenAbi = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'isRewarded',
+    inputs: [{ name: 'activityHash', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'balanceOf',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
   { type: 'error', name: 'DuplicateActivityHash', inputs: [] },
   { type: 'error', name: 'ZeroDistance', inputs: [] },
   { type: 'error', name: 'EmptyActivityHash', inputs: [] },
   ...ACCESS_ERRORS,
+] as const;
+
+/** Read-only: the coach and segment routes look up an athlete's recorded activities. */
+export const activityRegistryAbi = [
+  {
+    type: 'function',
+    name: 'getActivity',
+    inputs: [{ name: 'activityId', type: 'uint256' }],
+    outputs: [
+      { name: 'activityHash', type: 'bytes32' },
+      { name: 'owner', type: 'address' },
+      { name: 'timestamp', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getActivityCount',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getUserActivityIds',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'offset', type: 'uint256' },
+      { name: 'limit', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256[]' }],
+    stateMutability: 'view',
+  },
 ] as const;
 
 export const territoryNFTAbi = [
@@ -254,4 +301,5 @@ export const RELAY_ABIS = {
   territoryRegistry: territoryRegistryAbi,
   challengeRegistry: challengeRegistryAbi,
   groupRegistry: groupRegistryAbi,
+  activityRegistry: activityRegistryAbi,
 } as const;
