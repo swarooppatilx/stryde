@@ -87,7 +87,6 @@
   "devDependencies": {
     "@babel/core": "^7.25.0",
     "@biomejs/biome": "catalog:",
-    "@react-native/metro-config": "^0.87.1",
     "@repo/typescript-config": "*",
     "@types/qrcode": "^1.5.6",
     "@types/react": "~19.2.2",
