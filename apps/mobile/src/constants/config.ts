@@ -9,6 +9,7 @@ export const ENV: {
   readonly PRIVY_APP_ID: string;
   readonly PRIVY_CLIENT_ID: string;
   readonly SUBGRAPH_URL: string;
+  readonly SEPOLIA_RPC_URL: string;
   API_URL: string;
   readonly API_CONFIGURED: boolean;
   readonly API_KEY: string;
@@ -25,6 +26,8 @@ export const ENV: {
   PRIVY_APP_ID: process.env.EXPO_PUBLIC_PRIVY_APP_ID || '',
   PRIVY_CLIENT_ID: process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID || '',
   SUBGRAPH_URL: process.env.EXPO_PUBLIC_SUBGRAPH_URL || '',
+  // Empty keeps the public node hard-coded in packages/shared.
+  SEPOLIA_RPC_URL: process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL || '',
   API_URL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
   // The URL above falls back to localhost, so this says whether the app was pointed at a real API.
   API_CONFIGURED: Boolean(process.env.EXPO_PUBLIC_API_URL),

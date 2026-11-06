@@ -1,4 +1,10 @@
-import { services, setChainMode, setIpfsConfig, setLocalRpcUrl } from '@repo/shared';
+import {
+  services,
+  setChainMode,
+  setIpfsConfig,
+  setLocalRpcUrl,
+  setSepoliaRpcUrl,
+} from '@repo/shared';
 import { ENV, getChainMode, getCurrentUserId, getLocalRpcUrl } from '@/constants/config';
 import { DEV_TOOLS } from '@/constants/devTools';
 import { startRelayQueue } from '@/services/relayQueue';
@@ -26,6 +32,7 @@ export function configureBackends(): void {
   if (getChainMode() === 'local') {
     setLocalRpcUrl(getLocalRpcUrl());
   }
+  setSepoliaRpcUrl(ENV.SEPOLIA_RPC_URL);
   setChainMode(getChainMode());
   // A profile with no chain makes every chain and subgraph call fail at once instead of timing out.
   services.client.setChainOffline(PROFILES[getActiveProfileId()].fakeChain);

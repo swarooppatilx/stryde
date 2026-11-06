@@ -5,8 +5,8 @@ const ACTIVITY_RECORDED = parseAbiItem(
   'event ActivityRecorded(uint256 indexed activityId, address indexed owner, bytes32 indexed activityHash, uint8 activityType, uint256 distance, uint256 duration, uint256 timestamp, uint256 territoryArea)'
 );
 
-/** Public Sepolia RPCs reject eth_getLogs spans wider than 50,000 blocks. */
-export const LOG_WINDOW_BLOCKS = 50_000n;
+/** Infura rejects eth_getLogs spans wider than 10,000 blocks. */
+export const LOG_WINDOW_BLOCKS = 10_000n;
 /** Tries at a window that a lagging RPC node says is past its head, and the wait between them. */
 const HEAD_LAG_ATTEMPTS = 4;
 const HEAD_LAG_DELAY_MS = 1000;
