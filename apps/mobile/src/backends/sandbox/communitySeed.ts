@@ -76,8 +76,8 @@ export function mergeCommunitySeed(current: CommunitySlice, seed: CommunitySeed)
   };
 }
 
-/** Dhanya's developer wallet (the second local dev account): an admin of the running club once she joins it. */
-export const SANDBOX_DHANYA = '0x70997970c51812dc3a010c7d01b50e0d17dc79c8';
+/** Dhanya's developer wallet (persona slot 1): an admin of the running club once she joins it. */
+export const SANDBOX_DHANYA = '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc';
 
 /** Who belongs to each seeded club, owner first; the Sandbox has no chain to list them. */
 export const SANDBOX_CLUB_MEMBERS: Readonly<Record<string, readonly string[]>> = {

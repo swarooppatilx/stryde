@@ -24,6 +24,8 @@ export type ClubMembersState =
 /** A club's members, owner first, read from the subgraph; "unavailable" when this network has none. */
 export function useClubMembers(clubId: string | undefined, owner: string | undefined) {
   const [state, setState] = useState<ClubMembersState>({ status: 'loading' });
+  // Joining or leaving changes the list, so read it again when that happens.
+  const joined = useCommunityStore((s) => !!clubId && s.joinedClubIds.includes(clubId));
 
   const load = useCallback(async () => {
     if (!clubId) return;
@@ -44,10 +46,10 @@ export function useClubMembers(clubId: string | undefined, owner: string | undef
     }
   }, [clubId, owner]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reload when the club changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload when the club or your membership changes
   useEffect(() => {
     void load();
-  }, [clubId]);
+  }, [clubId, joined]);
 
   return { state, reload: load };
 }

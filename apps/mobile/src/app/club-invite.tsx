@@ -1,14 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { QrCode } from '@/components/qr-code';
-import { ShareButton } from '@/components/share-button';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
 import { getPlatform } from '@/platform';
@@ -16,6 +15,8 @@ import { useClubStore } from '@/stores/clubStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { buildDetailDeepLink } from '@/utils/deepLink';
 import { formatMemberCount } from '@/utils/format';
+import { haptics } from '@/utils/haptics';
+import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
 
 /** Bring people into a club: a QR code to scan in person, or a link to send. */
@@ -61,7 +62,20 @@ export default function ClubInviteScreen() {
             Scan with a phone camera to open the club in Stryde.
           </ThemedText>
           <View style={styles.actions}>
-            <ShareButton label="Share invite" message={message} />
+            <AppButton
+              icon={<Ionicons name="share-outline" size={18} color={Brand.white} />}
+              onPress={async () => {
+                haptics.tap();
+                try {
+                  await Share.share({ message });
+                } catch (error) {
+                  logger.warn('[ClubInvite] Share failed', error);
+                  Toast.fail("Couldn't open sharing", 1.5);
+                }
+              }}
+            >
+              Share invite
+            </AppButton>
             <AppButton
               variant="secondary"
               onPress={async () => {
