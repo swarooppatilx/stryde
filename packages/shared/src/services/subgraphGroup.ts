@@ -1,6 +1,7 @@
 import { zeroAddress } from 'viem';
 import { getActiveConfig } from './client';
 import type { OnchainGroup } from './group';
+import { indexCall } from './indexApi';
 import { querySubgraph } from './subgraphClient';
 import { paginate } from './subgraphPaginate';
 
@@ -92,7 +93,10 @@ export async function getGroupMembersFromSubgraph(
   groupId: bigint
 ): Promise<`0x${string}`[] | null> {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    const answer = await indexCall<{ members: `0x${string}`[] }>(`group/${groupId}/members`);
+    return answer?.members ?? null;
+  }
 
   const data = await querySubgraph<{ groupMembers: { user: { id: string } }[] }>(
     subgraphUrl,

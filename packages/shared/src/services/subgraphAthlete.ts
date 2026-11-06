@@ -1,6 +1,7 @@
 import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import { getActiveConfig } from './client';
 import { fromFixedPoint } from './fixedPoint';
+import { indexCall } from './indexApi';
 import { HEX_ADDRESS_RE, querySubgraph } from './subgraphClient';
 import type { SyncedActivity } from './sync';
 
@@ -137,7 +138,7 @@ export async function getAthleteComposite(wallet: `0x${string}`): Promise<Athlet
     throw new Error(`Invalid wallet address for subgraph query: ${wallet}`);
   }
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) return athleteFromIndex(wallet);
 
   const data = await querySubgraph<{ profile: AthleteCompositeEntity | null }>(
     subgraphUrl,
@@ -195,6 +196,69 @@ export async function getAthleteComposite(wallet: `0x${string}`): Promise<Athlet
       achievementId: a.achievementId,
       mintedAt: Number(a.mintedAt),
       name: a.definition?.name,
+    })),
+  };
+}
+
+interface IndexedAthlete {
+  wallet: string;
+  profileId: string;
+  username: string;
+  isVerified: boolean;
+  avatarCid: string | null;
+  activities: {
+    activityId: string;
+    activityHash: string;
+    activityType: number;
+    distance: number;
+    duration: number;
+    timestamp: number;
+    territoryArea: number;
+    metadataCid: string | null;
+  }[];
+  territories: AthleteCompositeTerritory[];
+  achievements: { achievementId: string; mintedAt: number }[];
+  contributions: { seasonId: string; distance: number }[];
+}
+
+/** The same composite from the Arkiv index, for chains with no subgraph. Null when the index has no profile for the wallet. */
+async function athleteFromIndex(wallet: `0x${string}`): Promise<AthleteComposite | null> {
+  const answer = await indexCall<{ athlete: IndexedAthlete }>(`athlete/${wallet.toLowerCase()}`);
+  const p = answer?.athlete;
+  if (!p) return null;
+  return {
+    wallet: p.wallet,
+    username: p.username,
+    profileId: BigInt(p.profileId),
+    avatarCid: p.avatarCid ?? undefined,
+    isVerified: p.isVerified,
+    activities: p.activities.map(
+      (a) =>
+        ({
+          activityHash: a.activityHash,
+          owner: p.wallet,
+          activityId: BigInt(a.activityId),
+          activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
+          distance: a.distance,
+          duration: a.duration,
+          territoryArea: a.territoryArea,
+          timestamp: a.timestamp,
+          metadata: '',
+          metadataCid: a.metadataCid ?? undefined,
+        }) satisfies SyncedActivity
+    ),
+    territories: p.territories,
+    // The index does not track whether a season is still running, nor its total: no screen reads them from here.
+    contributions: p.contributions.map((c) => ({
+      distance: c.distance,
+      seasonId: c.seasonId,
+      seasonActive: false,
+      seasonTotalContributions: 0,
+    })),
+    achievements: p.achievements.map((a) => ({
+      id: a.achievementId,
+      achievementId: a.achievementId,
+      mintedAt: a.mintedAt,
     })),
   };
 }

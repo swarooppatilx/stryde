@@ -1,4 +1,5 @@
 import { getActiveConfig } from './client';
+import { indexCall } from './indexApi';
 import { querySubgraph } from './subgraphClient';
 
 interface SeasonParticipantEntity {
@@ -62,6 +63,20 @@ const ACHIEVEMENT_WEIGHT = 500;
  * sybil-resistance signal (see FEEDBACK.md), not a hard requirement. */
 const VERIFIED_SCORE_MULTIPLIER = 1.1;
 
+/** The composite rank: distance, plus territory and achievements at their weights, times the verified bonus. */
+export function weightedScore(input: {
+  distance: number;
+  territoryArea: number;
+  achievementCount: number;
+  isVerified: boolean;
+}): number {
+  const raw =
+    input.distance +
+    input.territoryArea * TERRITORY_AREA_WEIGHT +
+    input.achievementCount * ACHIEVEMENT_WEIGHT;
+  return input.isVerified ? raw * VERIFIED_SCORE_MULTIPLIER : raw;
+}
+
 /** Multi-metric leaderboard (distance + territory area + achievements) for a
  * season, ranked by a weighted composite score. Returns null (rather than
  * throwing) when no subgraph is configured for the active chain mode, so
@@ -70,7 +85,16 @@ export async function getLeaderboardFromSubgraph(
   seasonId: bigint
 ): Promise<SubgraphLeaderboardEntry[] | null> {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    const answer = await indexCall<{ entries: Omit<SubgraphLeaderboardEntry, 'score'>[] }>(
+      `leaderboard/${seasonId}`
+    );
+    return (
+      answer?.entries
+        .map((e) => ({ ...e, score: weightedScore(e) }))
+        .sort((a, b) => b.score - a.score) ?? null
+    );
+  }
 
   const data = await querySubgraph<{ seasonParticipants: SeasonParticipantEntity[] }>(
     subgraphUrl,
@@ -82,8 +106,6 @@ export async function getLeaderboardFromSubgraph(
     const distance = Number(sp.totalContribution);
     const territoryArea = sp.user.territories.reduce((sum, t) => sum + Number(t.area), 0);
     const achievementCount = sp.user.achievements.length;
-    const rawScore =
-      distance + territoryArea * TERRITORY_AREA_WEIGHT + achievementCount * ACHIEVEMENT_WEIGHT;
     return {
       wallet: sp.user.id,
       isVerified: sp.user.isVerified,
@@ -91,7 +113,12 @@ export async function getLeaderboardFromSubgraph(
       distance,
       territoryArea,
       achievementCount,
-      score: sp.user.isVerified ? rawScore * VERIFIED_SCORE_MULTIPLIER : rawScore,
+      score: weightedScore({
+        distance,
+        territoryArea,
+        achievementCount,
+        isVerified: sp.user.isVerified,
+      }),
     } satisfies SubgraphLeaderboardEntry;
   });
 

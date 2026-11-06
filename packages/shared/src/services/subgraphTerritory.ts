@@ -2,6 +2,7 @@ import { ACTIVITY_TYPE_BY_ID } from '../constants';
 import type { ActivityType } from '../types';
 import { getActiveConfig } from './client';
 import { fromFixedPoint } from './fixedPoint';
+import { indexCall } from './indexApi';
 import { querySubgraph } from './subgraphClient';
 
 export interface SubgraphActivityRoute {
@@ -35,7 +36,30 @@ export async function getActivityRoutesFromSubgraph(
   limit = 200
 ): Promise<SubgraphActivityRoute[] | null> {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    const answer = await indexCall<{
+      activities: {
+        activityId: string;
+        user: string;
+        activityType: number;
+        distance: number;
+        timestamp: number;
+        metadataCid: string | null;
+      }[];
+    }>(`activities?withRoute=1&limit=${limit}`);
+    return (
+      answer?.activities
+        .filter((a) => a.metadataCid)
+        .map((a) => ({
+          wallet: a.user.toLowerCase() as `0x${string}`,
+          activityId: BigInt(a.activityId),
+          activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
+          distance: a.distance,
+          timestamp: a.timestamp,
+          metadataCid: a.metadataCid as string,
+        })) ?? null
+    );
+  }
 
   const data = await querySubgraph<{
     activities: {
@@ -100,7 +124,10 @@ export async function getTerritoriesFromSubgraph(
   limit = 1000
 ): Promise<SubgraphTerritory[] | null> {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    const answer = await indexCall<{ territories: SubgraphTerritory[] }>('territories');
+    return answer?.territories.filter((t) => t.isActive).slice(0, limit) ?? null;
+  }
 
   const data = await querySubgraph<{
     territories: {
