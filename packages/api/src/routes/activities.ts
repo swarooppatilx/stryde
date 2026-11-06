@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { keccak256, toBytes } from 'viem';
+import { computeSweatScore, type HeartRateSample } from '../lib/fitness/index.js';
+import { isWalletBanned } from '../lib/humanPass.js';
 
 export const activities = new Hono();
 
@@ -83,12 +85,36 @@ activities.post(
       return c.json({ valid: false, reason: 'duration must be a plausible positive number' }, 400);
     }
 
+    const { wallet, heartRate, startedAt } = body as Record<string, unknown>;
+    if (typeof wallet === 'string' && isWalletBanned(wallet)) {
+      return c.json({ valid: false, reason: 'This athlete is suspended from Stryde.' }, 403);
+    }
+
     const hash = computeActivityHash(
       polyline,
       territoryArea,
       typeof metadata === 'string' ? metadata : ''
     );
 
-    return c.json({ valid: true, hash });
+    // Optional wearable heart-rate trace (Health Connect / HealthKit). Never
+    // blocks validation; it only annotates the result with a sweat score.
+    const samples = (heartRate as { samples?: unknown } | undefined)?.samples;
+    const sweat =
+      Array.isArray(samples) && typeof startedAt === 'number'
+        ? computeSweatScore({
+            samples: samples.filter(
+              (s): s is HeartRateSample =>
+                !!s &&
+                typeof (s as HeartRateSample).timestamp === 'number' &&
+                typeof (s as HeartRateSample).bpm === 'number'
+            ),
+            restingBpm: (heartRate as { restingBpm?: number }).restingBpm,
+            activityStart: startedAt,
+            activityEnd: startedAt + duration * 1000,
+            distanceM: distance,
+          })
+        : null;
+
+    return c.json(sweat ? { valid: true, hash, sweat } : { valid: true, hash });
   }
 );
