@@ -338,12 +338,15 @@ export function toDecimal(value: string): string {
 
 let store: HumanPresenceStore | null = null;
 
+/** Where passes are kept between restarts; null on a host with no disk that outlives the process. */
+export function presenceFile(): string | null {
+  const file =
+    process.env.WORLD_PRESENCE_FILE ?? (process.env.VERCEL ? null : '.data/human-presence.json');
+  return file || null;
+}
+
 export function getHumanPresenceStore(): HumanPresenceStore {
-  if (!store) {
-    const file =
-      process.env.WORLD_PRESENCE_FILE ?? (process.env.VERCEL ? null : '.data/human-presence.json');
-    store = new HumanPresenceStore(file || null);
-  }
+  if (!store) store = new HumanPresenceStore(presenceFile());
   return store;
 }
 

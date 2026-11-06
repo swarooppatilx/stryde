@@ -91,13 +91,13 @@ const ENV_KEYS = [
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
 // world.ts reads its env at import time, so each scenario re-imports it.
-async function loadWorld(env: { skip: boolean; vercelEnv?: string }) {
+async function loadWorld(env: { skip: boolean; vercelEnv?: string; presenceFile?: string }) {
   vi.resetModules();
   process.env.WORLD_RP_SIGNING_KEY = `0x${'11'.repeat(32)}`;
   process.env.WORLD_APP_ID = 'app_test';
   process.env.WORLD_RP_ID = 'rp_test';
   process.env.WORLD_SKIP_REMOTE_VERIFY = env.skip ? 'true' : 'false';
-  process.env.WORLD_PRESENCE_FILE = '';
+  process.env.WORLD_PRESENCE_FILE = env.presenceFile ?? '';
   if (env.vercelEnv) process.env.VERCEL_ENV = env.vercelEnv;
   else delete process.env.VERCEL_ENV;
   const { world } = await import('../world.js');
@@ -403,6 +403,31 @@ describe('WORLD_ENVIRONMENT on the production deployment', () => {
 
     const warned = error.mock.calls.some(([line]) => String(line).includes('WORLD_ENVIRONMENT'));
     expect(warned).toBe(warns);
+  });
+});
+
+describe('Athlete Pass storage', () => {
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
+    vi.restoreAllMocks();
+  });
+
+  const warnsAboutStorage = async (file: string) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await loadWorld({ skip: false, presenceFile: file });
+    return error.mock.calls.some(([line]) => String(line).includes('WORLD_PRESENCE_FILE'));
+  };
+
+  it('warns when passes have nowhere to live between restarts', async () => {
+    expect(await warnsAboutStorage('')).toBe(true);
+  });
+
+  it('is quiet when a file is configured', async () => {
+    expect(await warnsAboutStorage('.data/test-presence.json')).toBe(false);
   });
 });
 

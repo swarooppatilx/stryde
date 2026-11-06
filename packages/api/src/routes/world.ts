@@ -20,6 +20,7 @@ import {
   PresenceError,
   type PresenceTicket,
   type PublicPass,
+  presenceFile,
   rewardGate,
   toPublicPass,
 } from '../lib/humanPresence.js';
@@ -54,6 +55,14 @@ if (IS_PRODUCTION_DEPLOY && WORLD_ENVIRONMENT !== 'production') {
   // Sandbox proofs are free to make, yet each accepted enrollment writes a permanent ProfileRegistry badge.
   console.error(
     `[world] WORLD_ENVIRONMENT is '${WORLD_ENVIRONMENT}' on the production deployment — proofs made by anyone in the World simulator are accepted.`
+  );
+}
+
+if (RP_SIGNING_KEY && !presenceFile()) {
+  // Athlete Passes, the nullifiers that keep one human to one pass, and pending checks all live in this
+  // process: a restart, or another instance answering a poll, forgets them.
+  console.error(
+    '[world] No WORLD_PRESENCE_FILE on a host without a lasting disk — Athlete Passes and pending World checks do not survive a restart, and a second instance cannot see them. Run one instance with a persistent volume until they live in shared storage.'
   );
 }
 
