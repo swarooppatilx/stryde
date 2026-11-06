@@ -160,3 +160,21 @@ describe('isLayerOn', () => {
     expect(isLayerOn(prefs, 'bikeLanes')).toBe(true);
   });
 });
+
+describe('heatmap colour', () => {
+  it('starts classic, remembers a choice, and goes back to classic on reset', () => {
+    expect(useMapPrefsStore.getState().heatmapColor).toBe('classic');
+
+    useMapPrefsStore.getState().setHeatmapColor('sunset');
+    expect(useMapPrefsStore.getState().heatmapColor).toBe('sunset');
+
+    useMapPrefsStore.getState().reset();
+    expect(useMapPrefsStore.getState().heatmapColor).toBe('classic');
+  });
+
+  it('is not a layer: picking a colour does not switch the heatmap on or change the badge', () => {
+    useMapPrefsStore.getState().setHeatmapColor('blue');
+    expect(useMapPrefsStore.getState().showHeatmap).toBe(false);
+    expect(layerBadgeCount(useMapPrefsStore.getState())).toBe(0);
+  });
+});

@@ -16,6 +16,7 @@ import { TerritorySheet } from '@/components/territory-sheet';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { DEFAULT_CENTER } from '@/constants/config';
+import { heatRampFor } from '@/constants/heatmapColors';
 import { MAP_CHROME_BOTTOM, MapChrome } from '@/constants/mapChrome';
 import { BorderRadius, Brand, HEAT_RAMP, OTHERS_TERRITORY_COLOR, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -87,6 +88,7 @@ export default function MapScreen() {
   const stylePref = useMapPrefsStore((s) => s.style);
   const showPoi = useMapPrefsStore((s) => s.showPoi);
   const showBikeLanes = useMapPrefsStore((s) => s.showBikeLanes);
+  const heatmapRamp = heatRampFor(useMapPrefsStore((s) => s.heatmapColor));
   const layersBadge = useMapPrefsStore((s) => layerBadgeCount(s));
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const router = useRouter();
@@ -248,6 +250,7 @@ export default function MapScreen() {
         compassTopOffset={compassTopOffset}
         heatmapPoints={heatmapPoints}
         heatmapVisible={showHeatmap}
+        heatmapRamp={heatmapRamp}
         onTerritoryPress={handleTerritoryPress}
         onZoomChanged={onMapZoomChanged}
       />
@@ -340,8 +343,8 @@ export default function MapScreen() {
           <View style={styles.legend}>
             <MapLegend
               items={[
-                { label: 'Fewer activities', color: HEAT_RAMP[1][1] },
-                { label: 'More', color: HEAT_RAMP[4][1] },
+                { label: 'Fewer activities', color: heatmapRamp[1]?.[1] ?? HEAT_RAMP[1][1] },
+                { label: 'More', color: heatmapRamp[4]?.[1] ?? HEAT_RAMP[4][1] },
               ]}
             />
           </View>

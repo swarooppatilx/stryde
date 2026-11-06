@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useSocialUser } from '@/hooks/useSocialUser';
+import { shortAddress } from '@/utils/address';
 import { formatArea, formatRelativeTime, getDisplayName } from '@/utils/format';
 
 export interface SelectedTerritory {
@@ -38,9 +39,7 @@ export function TerritorySheet({ territory, loading, onClose }: TerritorySheetPr
   const unitSystem = useUnitSystem();
   const router = useRouter();
   const ownerUser = useSocialUser(territory.owner);
-  const ownerLabel = ownerUser
-    ? getDisplayName(ownerUser)
-    : `${territory.owner.slice(0, 6)}…${territory.owner.slice(-4)}`;
+  const ownerLabel = ownerUser ? getDisplayName(ownerUser) : shortAddress(territory.owner);
 
   const heightState = useSharedValue(SHEET_HEIGHT);
   const animatedStyle = useAnimatedStyle(() => ({ height: heightState.value }));

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { HEATMAP_COLOR_OPTIONS } from '@/constants/heatmapColors';
 import { Palette } from '@/constants/palette';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -93,28 +94,42 @@ export function MapLayersSheet({ visible, onClose, layers }: MapLayersSheetProps
                 const option = MAP_LAYER_OPTIONS[layer];
                 const on = isLayerOn(prefs, layer);
                 return (
-                  <Tappable
-                    key={layer}
-                    onPress={() => prefs.setLayer(layer, !on)}
-                    style={styles.row}
-                    accessibilityRole="switch"
-                    accessibilityState={{ checked: on }}
-                    accessibilityLabel={option.label}
-                    accessibilityHint={option.hint}
-                  >
-                    <Ionicons name={option.icon} size={22} color={theme.text} />
-                    <View style={styles.rowText}>
-                      <ThemedText>{option.label}</ThemedText>
-                      <ThemedText type="caption" themeColor="textSecondary">
-                        {option.hint}
-                      </ThemedText>
-                    </View>
-                    <AppSwitch
-                      checked={on}
-                      onChange={(next) => prefs.setLayer(layer, next)}
-                      label={option.label}
-                    />
-                  </Tappable>
+                  <View key={layer}>
+                    <Tappable
+                      onPress={() => prefs.setLayer(layer, !on)}
+                      style={styles.row}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: on }}
+                      accessibilityLabel={option.label}
+                      accessibilityHint={option.hint}
+                    >
+                      <Ionicons name={option.icon} size={22} color={theme.text} />
+                      <View style={styles.rowText}>
+                        <ThemedText>{option.label}</ThemedText>
+                        <ThemedText type="caption" themeColor="textSecondary">
+                          {option.hint}
+                        </ThemedText>
+                      </View>
+                      <AppSwitch
+                        checked={on}
+                        onChange={(next) => prefs.setLayer(layer, next)}
+                        label={option.label}
+                      />
+                    </Tappable>
+                    {layer === 'heatmap' && on && (
+                      <View style={styles.heatColours}>
+                        <ThemedText type="caption" themeColor="textSecondary">
+                          Heatmap colour
+                        </ThemedText>
+                        <ChipRow
+                          options={HEATMAP_COLOR_OPTIONS}
+                          value={prefs.heatmapColor}
+                          onChange={prefs.setHeatmapColor}
+                          contentStyle={styles.chips}
+                        />
+                      </View>
+                    )}
+                  </View>
                 );
               })}
             </View>
@@ -138,6 +153,7 @@ const styles = StyleSheet.create({
   grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2 },
   content: { gap: Spacing.four, paddingBottom: Spacing.two },
   section: { gap: Spacing.two },
+  heatColours: { gap: Spacing.one, paddingLeft: Spacing.five, paddingBottom: Spacing.two },
   tiles: { flexDirection: 'row', gap: Spacing.three },
   tile: {
     alignItems: 'center',

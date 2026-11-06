@@ -192,8 +192,9 @@ export function useMap() {
                   Number.isFinite(c[0]) &&
                   Number.isFinite(c[1])
               );
-            } catch {
-              // best-effort — leave coordinates empty
+            } catch (error) {
+              // Best effort: this route stays off the map, the rest still draw.
+              logger.warn("[Map] Could not load another athlete's route", error);
             }
           }
           return {
