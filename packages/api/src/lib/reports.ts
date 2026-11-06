@@ -74,6 +74,8 @@ export interface ReportStore {
   }): Promise<ReportRecord>;
   /** How many reports this person filed since `since` (unix seconds). */
   countSince(reporter: Address, since: number): Promise<number>;
+  /** Deletes every record this wallet filed, and says how many went (account deletion). */
+  removeAllFor(reporter: Address): Promise<number>;
 }
 
 export interface ReportServiceDeps {

@@ -1,4 +1,4 @@
-import { type Expression, eq } from '@arkiv-network/sdk/query';
+import { type Expression, eq, or } from '@arkiv-network/sdk/query';
 import { addr, bytes, defineSchema, u64 } from '@arkiv-network/sdk/schema';
 import type { Address } from './address.js';
 import {
@@ -76,5 +76,7 @@ export function createArkivFollowStore(
     remove: (entityKey) => entities.remove(entityKey),
     following: (follower) => page(eq('follower', addr(follower))),
     followers: (followee) => page(eq('followee', addr(followee))),
+    removeAllFor: (address) =>
+      entities.removeAll([or(eq('follower', addr(address)), eq('followee', addr(address)))]),
   };
 }

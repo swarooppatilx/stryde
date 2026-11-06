@@ -31,6 +31,11 @@ function memoryStore(): PostStore & { records: PostRecord[] } {
       const index = records.findIndex((r) => r.id === id);
       if (index >= 0) records.splice(index, 1);
     },
+    async removeAllFor(author) {
+      const gone = records.filter((r) => r.author === author);
+      for (const record of gone) records.splice(records.indexOf(record), 1);
+      return gone.length;
+    },
     async recent(authors, limit) {
       return records
         .filter((r) => authors.includes(r.author))

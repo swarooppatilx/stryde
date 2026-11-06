@@ -56,3 +56,48 @@ jobs:
         env:
           EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
         run: yarn dlx eas-cli@25.1.1 build --platform android --profile preview --non-interactive
+
+  build-aab:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: corepack enable
+      - run: yarn install --immutable
+      # A .env written here never reaches the build: EAS uploads the project
+      # like a fresh clone, so the gitignored file is dropped and every
+      # EXPO_PUBLIC_* value ships empty (the Sep 2026 APK hung on boot with no
+      # Privy app ID). Push the values into the EAS "production" environment
+      # that eas.json's production profile reads instead.
+      - name: Sync build env to EAS
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
+          EXPO_PUBLIC_PRIVY_APP_ID: ${{ secrets.EXPO_PUBLIC_PRIVY_APP_ID }}
+          EXPO_PUBLIC_PRIVY_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_PRIVY_CLIENT_ID }}
+          EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
+          EXPO_PUBLIC_WORLD_APP_ID: ${{ secrets.EXPO_PUBLIC_WORLD_APP_ID }}
+          EXPO_PUBLIC_WORLD_RP_ID: ${{ secrets.EXPO_PUBLIC_WORLD_RP_ID }}
+          EXPO_PUBLIC_WORLD_ENVIRONMENT: ${{ secrets.EXPO_PUBLIC_WORLD_ENVIRONMENT }}
+          EXPO_PUBLIC_FACEBOOK_APP_ID: ${{ secrets.EXPO_PUBLIC_FACEBOOK_APP_ID }}
+        run: |
+          # Without these the app can't get past the Privy splash, so fail
+          # the job instead of shipping a dead bundle.
+          for name in EXPO_PUBLIC_PRIVY_APP_ID EXPO_PUBLIC_PRIVY_CLIENT_ID; do
+            if [ -z "${!name}" ]; then echo "::error::secret $name is empty"; exit 1; fi
+          done
+          for name in EXPO_PUBLIC_PRIVY_APP_ID EXPO_PUBLIC_PRIVY_CLIENT_ID EXPO_PUBLIC_API_KEY \
+            EXPO_PUBLIC_WORLD_APP_ID EXPO_PUBLIC_WORLD_RP_ID EXPO_PUBLIC_WORLD_ENVIRONMENT \
+            EXPO_PUBLIC_FACEBOOK_APP_ID; do
+            if [ -z "${!name}" ]; then echo "::warning::secret $name is empty, leaving EAS value as-is"; continue; fi
+            yarn dlx eas-cli@25.1.1 env:create --environment production --name "$name" --value "${!name}" \
+              --visibility plaintext --force --non-interactive
+          done
+      - name: Build AAB
+        working-directory: apps/mobile
+        env:
+          EXPO_ACCESS_TOKEN: ${{ secrets.EXPO_ACCESS_TOKEN }}
+        run: yarn dlx eas-cli@25.1.1 build --platform android --profile production --non-interactive

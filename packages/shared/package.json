@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./constants": "./src/constants.ts",
-    "./contracts": "./src/contracts.ts"
+    "./contracts": "./src/contracts.ts",
+    "./segments": "./src/segments.ts"
   },
   "scripts": {
     "lint": "biome check .",

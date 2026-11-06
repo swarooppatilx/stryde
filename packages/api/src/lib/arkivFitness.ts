@@ -372,3 +372,19 @@ export async function endBeacon(runId: string): Promise<boolean> {
   await getArkivWallet().deleteEntity({ entityKey: row.$key as `0x${string}` });
   return true;
 }
+
+/** Ends every live beacon of this athlete (account deletion); says how many were removed. */
+export async function endBeaconsFor(athlete: `0x${string}`): Promise<number> {
+  const result = await getArkivPublic()
+    .select()
+    .from(Beacons)
+    .where(eq('athlete', addr(athlete)))
+    .createdBy(getArkivWriter())
+    .limit(100)
+    .fetch();
+  const wallet = getArkivWallet();
+  for (const row of result.entities) {
+    await wallet.deleteEntity({ entityKey: row.$key as `0x${string}` });
+  }
+  return result.entities.length;
+}

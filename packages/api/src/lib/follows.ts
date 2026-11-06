@@ -47,6 +47,8 @@ export interface FollowStore {
   remove(entityKey: string): Promise<void>;
   following(follower: Address): Promise<FollowPage>;
   followers(followee: Address): Promise<FollowPage>;
+  /** Deletes every record this wallet is part of, as follower or followee, and says how many went (account deletion). */
+  removeAllFor(address: Address): Promise<number>;
 }
 
 export interface FollowServiceDeps {

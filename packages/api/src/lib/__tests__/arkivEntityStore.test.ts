@@ -195,3 +195,44 @@ describe('createEntityStore writes', () => {
     expect(signer.deleteEntity).toHaveBeenCalledWith({ entityKey: '0xabc' });
   });
 });
+
+describe('createEntityStore removeAll', () => {
+  const liveWallet = (rows: ReturnType<typeof row>[]) => {
+    const signer = wallet();
+    signer.deleteEntity.mockImplementation((async (args: { entityKey: string }) => {
+      const at = rows.findIndex((r) => r.$key === args.entityKey);
+      if (at >= 0) rows.splice(at, 1);
+      return {};
+    }) as never);
+    return signer;
+  };
+
+  it('deletes every match and says how many', async () => {
+    const rows = Array.from({ length: 3 }, (_, i) => row(i));
+    const signer = liveWallet(rows);
+    const store = createEntityStore(fakeNode(rows).publicClient as never, signer as never, Thing);
+
+    expect(await store.removeAll([])).toBe(3);
+    expect(signer.deleteEntity).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps going until nothing is left when one read does not hold them all', async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => row(i));
+    const signer = liveWallet(rows);
+    const store = createEntityStore(fakeNode(rows).publicClient as never, signer as never, Thing);
+
+    expect(await store.removeAll([], 2)).toBe(5);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('only reads what this signer created, and deletes nothing when nothing matches', async () => {
+    const node = fakeNode([]);
+    const signer = wallet();
+
+    expect(
+      await createEntityStore(node.publicClient as never, signer as never, Thing).removeAll([])
+    ).toBe(0);
+    expect(node.calls[0]?.creator).toBe(CREATOR);
+    expect(signer.deleteEntity).not.toHaveBeenCalled();
+  });
+});

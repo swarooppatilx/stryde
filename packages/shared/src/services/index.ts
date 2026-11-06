@@ -1,3 +1,5 @@
+export * as account from './account';
+export * as accountDeleteIntent from './accountDeleteIntent';
 export * as achievement from './achievement';
 export * as activity from './activity';
 export * as challenge from './challenge';

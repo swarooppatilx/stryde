@@ -83,6 +83,8 @@ export function createArkivReportStore(
       return { entityKey, reporter, targetKind, targetId, reason, createdAt };
     },
 
+    removeAllFor: (reporter) => entities.removeAll([eq('reporter', addr(reporter))]),
+
     countSince: (reporter, since) =>
       entities.count([eq('reporter', addr(reporter)), gte('created_at', u64(since))], COUNT_LIMIT),
   };

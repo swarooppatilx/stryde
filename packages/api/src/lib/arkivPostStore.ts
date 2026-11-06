@@ -107,6 +107,8 @@ export function createArkivPostStore(
       return entity ? postFromEntity(entity) : null;
     },
 
+    removeAllFor: (author) => entities.removeAll([eq('author', addr(author))]),
+
     countSince: (author, since) =>
       entities.count([eq('author', addr(author)), gte('created_at', u64(since))]),
   };

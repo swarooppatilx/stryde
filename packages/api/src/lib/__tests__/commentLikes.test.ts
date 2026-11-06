@@ -32,6 +32,11 @@ function memoryStore(): CommentLikeStore & { records: CommentLikeRecord[]; write
       const index = records.findIndex((r) => r.entityKey === entityKey);
       if (index >= 0) records.splice(index, 1);
     },
+    async removeAllFor(liker: string) {
+      const gone = records.filter((r) => r.liker === liker);
+      for (const record of gone) records.splice(records.indexOf(record), 1);
+      return gone.length;
+    },
     async likers(commentId: string) {
       return { entries: records.filter((r) => r.commentId === commentId), truncated: false };
     },

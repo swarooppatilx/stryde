@@ -52,6 +52,8 @@ export interface PushTokenStore {
     registeredAt: number;
   }): Promise<PushTokenRecord>;
   remove(entityKey: string): Promise<void>;
+  /** Deletes every record this wallet registered, and says how many went (account deletion). */
+  removeAllFor(owner: Address): Promise<number>;
 }
 
 export interface PushTokenServiceDeps {
