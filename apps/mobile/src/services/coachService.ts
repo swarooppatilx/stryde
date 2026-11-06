@@ -8,6 +8,11 @@ export interface ZeroGReceipt {
   requestId: string | null;
   model: string;
   costUsdMicro: number | null;
+  /** The router's attestation check: true / false when it reported one. Absent on older receipts. */
+  teeVerified?: boolean | null;
+  /** The provider floor the call was sent with; `standard` means no TEE guarantee. */
+  trustMode?: 'standard' | 'verified' | 'private' | null;
+  provider?: string | null;
 }
 
 export type CoachPlanType = 'rest' | 'recovery' | 'easy' | 'tempo' | 'intervals' | 'long' | 'cross';

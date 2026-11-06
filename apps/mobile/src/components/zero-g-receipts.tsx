@@ -8,11 +8,14 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { shortRequestId, type ZeroGReceipt } from '@/services/coachService';
 import { Toast } from '@/utils/toast';
+import { totalCost, trustChip } from '@/utils/zeroGTrust';
 
 /** "Ran on 0G": the model and router request id behind each result; tap to copy the full id. */
 export function ZeroGReceipts({ receipts }: { receipts: readonly ZeroGReceipt[] }) {
   const theme = useTheme();
   if (receipts.length === 0) return null;
+  const trust = trustChip(receipts);
+  const cost = totalCost(receipts);
   return (
     <ThemedView style={styles.list}>
       {receipts.map((r, i) => (
@@ -34,6 +37,30 @@ export function ZeroGReceipts({ receipts }: { receipts: readonly ZeroGReceipt[] 
           </ThemedText>
         </Tappable>
       ))}
+      {trust || cost ? (
+        <ThemedView style={styles.chips}>
+          {trust ? (
+            <ThemedView style={styles.row} accessible accessibilityLabel={trust.label}>
+              <Ionicons
+                name={trust.tone === 'verified' ? 'shield-checkmark' : 'shield-outline'}
+                size={12}
+                color={trust.tone === 'verified' ? theme.successText : theme.warningText}
+              />
+              <ThemedText
+                type="caption"
+                style={{ color: trust.tone === 'verified' ? theme.successText : theme.warningText }}
+              >
+                {trust.label}
+              </ThemedText>
+            </ThemedView>
+          ) : null}
+          {cost ? (
+            <ThemedText type="caption" themeColor="textSecondary">
+              {cost}
+            </ThemedText>
+          ) : null}
+        </ThemedView>
+      ) : null}
     </ThemedView>
   );
 }
@@ -41,4 +68,5 @@ export function ZeroGReceipts({ receipts }: { receipts: readonly ZeroGReceipt[] 
 const styles = StyleSheet.create({
   list: { gap: Spacing.half },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  chips: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, flexWrap: 'wrap' },
 });
