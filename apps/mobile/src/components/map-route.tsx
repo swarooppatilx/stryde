@@ -424,6 +424,9 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
       {...(styleFailed
         ? { styleJSON: offlineStyleJSON }
         : { styleURL: mapboxStyleUrl(dark, mapType) })}
+      // Android: a GLSurfaceView drew over the app's animated sheets (the Map tab's sheet vanished);
+      // a TextureView composites with the views around it.
+      surfaceView={false}
       compassEnabled
       compassPosition={{ top: compassTopOffset, right: Spacing.three }}
       scaleBarEnabled={false}
