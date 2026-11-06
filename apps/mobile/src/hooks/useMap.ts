@@ -76,6 +76,7 @@ export function useMap() {
   const heatmapSource = useMapPrefsStore((s) => s.heatmapSource);
   const heatmapPeriod = useMapPrefsStore((s) => s.heatmapPeriod);
   const heatmapColor = useMapPrefsStore((s) => s.heatmapColor);
+  const heatmapRange = useMapPrefsStore((s) => s.heatmapRange);
   // Other athletes' activities feed both their route lines and the community heatmap.
   const wantOthers = showOthers || (showHeatmap && heatmapSource === 'community');
   const setLayer = useMapPrefsStore((s) => s.setLayer);
@@ -287,8 +288,16 @@ export function useMap() {
               coordinates: r.coordinates,
               timestampMs: r.timestamp === undefined ? undefined : r.timestamp * 1000,
             }));
-    return heatCells(routes.filter((r) => inHeatmapPeriod(r, heatmapPeriod, now)));
-  }, [showHeatmap, heatmapSource, heatmapPeriod, activities, othersRoutes, sportFilter]);
+    return heatCells(routes.filter((r) => inHeatmapPeriod(r, heatmapPeriod, now, heatmapRange)));
+  }, [
+    showHeatmap,
+    heatmapSource,
+    heatmapPeriod,
+    heatmapRange,
+    activities,
+    othersRoutes,
+    sportFilter,
+  ]);
 
   const recenter = useCallback(() => {
     if (location) {

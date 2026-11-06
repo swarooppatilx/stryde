@@ -38,6 +38,20 @@ describe('inHeatmapPeriod', () => {
   });
 });
 
+describe('custom date range', () => {
+  it('keeps routes between the chosen days', () => {
+    const range = { fromMs: NOW - 10 * 86_400_000, toMs: NOW };
+    const at = (daysAgo: number) => ({
+      coordinates: [PUNE],
+      timestampMs: NOW - daysAgo * 86_400_000,
+    });
+    expect(inHeatmapPeriod(at(5), 'custom', NOW, range)).toBe(true);
+    expect(inHeatmapPeriod(at(20), 'custom', NOW, range)).toBe(false);
+    // No range chosen yet: nothing is left out.
+    expect(inHeatmapPeriod(at(20), 'custom', NOW, null)).toBe(true);
+  });
+});
+
 describe('heatCells', () => {
   it('counts distinct activities through each spot', () => {
     const street: [number, number][] = [

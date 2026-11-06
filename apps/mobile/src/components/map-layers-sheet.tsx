@@ -25,6 +25,7 @@ import {
 import { MAP_LAYER_OPTIONS } from '@/utils/mapLayerOptions';
 import { MAP_STYLE_LABELS } from '@/utils/recordIsland';
 import { AppSwitch } from './app-switch';
+import { DayField } from './day-field';
 import { ChipRow } from './filter-chips';
 import { Tappable } from './tappable';
 import { ThemedText } from './themed-text';
@@ -43,6 +44,18 @@ const MAP_TYPES: ReadonlyArray<{
   { value: 'satellite', label: 'Satellite', icon: 'earth-outline' },
   { value: 'hybrid', label: 'Hybrid', icon: 'layers-outline' },
 ];
+
+const startOfDay = (day: Date) =>
+  new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+const endOfDay = (day: Date) => startOfDay(day) + 86_400_000 - 1;
+/** The last `n` days, today included. */
+const lastDays = (n: number) => {
+  const today = new Date();
+  return {
+    fromMs: startOfDay(new Date(today.getTime() - (n - 1) * 86_400_000)),
+    toMs: endOfDay(today),
+  };
+};
 
 const optionsOf = <T extends string>(labels: Record<T, string>) =>
   (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
@@ -184,9 +197,59 @@ export function MapLayersSheet({ visible, onClose, layers, previewCenter }: MapL
                     <ChipRow
                       options={HEAT_PERIODS}
                       value={prefs.heatmapPeriod}
-                      onChange={(heatmapPeriod) => prefs.setHeatmap({ heatmapPeriod })}
+                      onChange={(heatmapPeriod) =>
+                        prefs.setHeatmap({
+                          heatmapPeriod,
+                          // "Dates" starts on the last 30 days until the athlete picks others.
+                          ...(heatmapPeriod === 'custom' &&
+                            !prefs.heatmapRange && { heatmapRange: lastDays(30) }),
+                        })
+                      }
                       contentStyle={styles.chips}
                     />
+                    {prefs.heatmapPeriod === 'custom' && prefs.heatmapRange && (
+                      <View style={styles.dates}>
+                        <View style={styles.dateField}>
+                          <ThemedText type="caption" themeColor="textSecondary">
+                            From
+                          </ThemedText>
+                          <DayField
+                            label="Heatmap from"
+                            value={new Date(prefs.heatmapRange.fromMs)}
+                            maximum={new Date(prefs.heatmapRange.toMs)}
+                            onChange={(day) =>
+                              prefs.setHeatmap({
+                                heatmapRange: {
+                                  fromMs: startOfDay(day),
+                                  toMs: prefs.heatmapRange?.toMs ?? endOfDay(new Date()),
+                                },
+                              })
+                            }
+                          />
+                        </View>
+                        <View style={styles.dateField}>
+                          <ThemedText type="caption" themeColor="textSecondary">
+                            To
+                          </ThemedText>
+                          <DayField
+                            label="Heatmap to"
+                            value={new Date(prefs.heatmapRange.toMs)}
+                            maximum={new Date()}
+                            onChange={(day) =>
+                              prefs.setHeatmap({
+                                heatmapRange: {
+                                  fromMs: Math.min(
+                                    prefs.heatmapRange?.fromMs ?? startOfDay(day),
+                                    startOfDay(day)
+                                  ),
+                                  toMs: endOfDay(day),
+                                },
+                              })
+                            }
+                          />
+                        </View>
+                      </View>
+                    )}
                     <ChipRow
                       options={HEAT_COLORS}
                       value={prefs.heatmapColor}
@@ -261,6 +324,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chips: { paddingHorizontal: 0 },
+  dates: { flexDirection: 'row', gap: Spacing.two },
+  dateField: { flex: 1, gap: Spacing.one },
   heatOptions: { gap: Spacing.two, paddingLeft: 22 + Spacing.three, paddingBottom: Spacing.two },
   row: {
     minHeight: 56,

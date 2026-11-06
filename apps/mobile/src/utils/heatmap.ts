@@ -3,7 +3,7 @@ import { isAfterDark } from '@/utils/sun';
 /** Whose activities the heatmap is built from. */
 export type HeatmapSource = 'personal' | 'community';
 /** Which of them: everything, the last seven days, or only those recorded after dark. */
-export type HeatmapPeriod = 'all' | 'weekly' | 'night';
+export type HeatmapPeriod = 'all' | 'weekly' | 'night' | 'custom';
 
 export const HEATMAP_SOURCE_LABELS: Record<HeatmapSource, string> = {
   personal: 'Personal',
@@ -13,7 +13,14 @@ export const HEATMAP_PERIOD_LABELS: Record<HeatmapPeriod, string> = {
   all: 'All time',
   weekly: 'Weekly',
   night: 'Night',
+  custom: 'Dates',
 };
+
+/** From the start of the first day to the end of the last, in ms since 1970. */
+export interface HeatmapRange {
+  fromMs: number;
+  toMs: number;
+}
 
 const WEEK_MS = 7 * 86_400_000;
 
@@ -24,11 +31,17 @@ export interface HeatRoute {
 }
 
 /** Whether a route belongs on the heatmap for the period. Night is judged where and when it started. */
-export function inHeatmapPeriod(route: HeatRoute, period: HeatmapPeriod, nowMs: number): boolean {
+export function inHeatmapPeriod(
+  route: HeatRoute,
+  period: HeatmapPeriod,
+  nowMs: number,
+  range?: HeatmapRange | null
+): boolean {
   if (period === 'all') return true;
   const t = route.timestampMs;
   if (t === undefined || !Number.isFinite(t)) return false;
   if (period === 'weekly') return nowMs - t <= WEEK_MS && t <= nowMs;
+  if (period === 'custom') return range ? t >= range.fromMs && t <= range.toMs : true;
   const start = route.coordinates[0];
   return start ? isAfterDark(t, start[1], start[0]) : false;
 }
