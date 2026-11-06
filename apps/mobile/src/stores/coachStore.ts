@@ -1,12 +1,17 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { CoachDebrief, CoachPlan, CoachReview, ZeroGReceipt } from '@/services/coachService';
+import type { CoachFacts } from '@/utils/coachFacts';
 import { chainScopedStorageAdapter } from '@/utils/storage';
 
 export interface SavedPlan {
   /** Local day the plan is for, `YYYY-MM-DD`. */
   day: string;
   plan: CoachPlan;
+  /** What the safety rules changed in the coach's plan; absent when nothing was. */
+  adjusted?: string[];
+  /** The numbers the plan was built from, shown above it. */
+  facts?: CoachFacts;
   receipts: ZeroGReceipt[];
   createdAt: number;
 }

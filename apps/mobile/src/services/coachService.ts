@@ -60,12 +60,20 @@ export async function requestPlan(
   history: CoachRun[],
   today: string,
   facts?: CoachFacts
-): Promise<{ plan: CoachPlan; receipts: ZeroGReceipt[] }> {
-  const body = await apiFetch<{ plan: CoachPlan; zeroG: ZeroGReceipt[] }>('/coach/plan', {
+): Promise<{ plan: CoachPlan; adjusted?: string[]; receipts: ZeroGReceipt[] }> {
+  const body = await apiFetch<{
+    plan: CoachPlan;
+    adjusted?: string[];
+    zeroG: ZeroGReceipt[];
+  }>('/coach/plan', {
     method: 'POST',
     body: JSON.stringify({ wallet, history, today, ...(facts ? { facts } : {}) }),
   });
-  return { plan: body.plan, receipts: body.zeroG };
+  return {
+    plan: body.plan,
+    ...(body.adjusted?.length ? { adjusted: body.adjusted } : {}),
+    receipts: body.zeroG,
+  };
 }
 
 const IMAGE_EXT: Record<string, string> = {

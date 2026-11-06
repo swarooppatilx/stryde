@@ -19,6 +19,7 @@ import { Alert } from '@/utils/alert';
 import { coachFacts } from '@/utils/coachFacts';
 import { localDay, recentHistory } from '@/utils/coachRun';
 import { haptics } from '@/utils/haptics';
+import { factsLine, PRIVACY_LINE, planHeadline } from '@/utils/planCardText';
 
 /** Today's session, written on 0G from the last two weeks of runs and what the athlete said about them. */
 export function CoachPlanCard({ wallet }: { wallet: string | null | undefined }) {
@@ -50,7 +51,7 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
         new Date()
       );
       const result = await requestPlan(wallet, history, today, facts);
-      useCoachStore.getState().savePlan({ day: today, ...result, createdAt: Date.now() });
+      useCoachStore.getState().savePlan({ day: today, ...result, facts, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
       Alert.alert(
@@ -74,6 +75,24 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
       {saved ? (
         <>
           <ThemedText type="sectionTitle">{saved.plan.title}</ThemedText>
+          {planHeadline(saved.plan) ? (
+            <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
+              {planHeadline(saved.plan)}
+            </ThemedText>
+          ) : null}
+          {factsLine(saved.facts) ? (
+            <ThemedText type="caption" themeColor="textSecondary">
+              {factsLine(saved.facts)}
+            </ThemedText>
+          ) : null}
+          {saved.adjusted?.length ? (
+            <ThemedView style={styles.row}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={theme.brand.primary} />
+              <ThemedText type="caption" style={styles.flex}>
+                Adjusted for safety: {saved.adjusted.join(' ')}
+              </ThemedText>
+            </ThemedView>
+          ) : null}
           {saved.plan.summary ? <ThemedText type="small">{saved.plan.summary}</ThemedText> : null}
           <ThemedView style={styles.steps}>
             {saved.plan.steps.map((step, i) => (
@@ -96,6 +115,9 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
             </ThemedText>
           ) : null}
           <ZeroGReceipts receipts={saved.receipts} />
+          <ThemedText type="caption" themeColor="textSecondary">
+            {PRIVACY_LINE}
+          </ThemedText>
           <AppButton
             size="small"
             variant="ghost"
@@ -111,6 +133,9 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
           <ThemedText type="small" themeColor="textSecondary">
             Your coach reads your last two weeks and your voice debriefs, then writes one session
             for today. A new one every morning.
+          </ThemedText>
+          <ThemedText type="caption" themeColor="textSecondary">
+            {PRIVACY_LINE}
           </ThemedText>
           <AppButton
             onPress={generate}
