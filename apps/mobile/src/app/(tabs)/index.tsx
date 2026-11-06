@@ -80,7 +80,12 @@ import { mergeByTime, type PostEntry, postAuthors, postsForScope } from '@/utils
 import { DEFAULT_SETTINGS } from '@/utils/profile';
 import { shouldRefreshOnReconnect } from '@/utils/reconnectRefresh';
 import { withoutReportedIds } from '@/utils/reporting';
-import { FEED_SCOPES, type FeedScope, filterFeed } from '@/utils/socialFeed';
+import {
+  FEED_SCOPES,
+  type FeedScope,
+  filterFeed,
+  withoutMutedFromOthers,
+} from '@/utils/socialFeed';
 import { Toast } from '@/utils/toast';
 import type { WeekStartDay } from '@/utils/trainingLog';
 import { unsyncedActivities } from '@/utils/unsyncedActivities';
@@ -209,14 +214,17 @@ export default function HomeScreen() {
   const reportedActivities = useReportedHidden().activities;
   const hiddenFromHome = useBlockStore((s) => s.hiddenFromHome);
   const feed = filterFeed(
-    withoutReportedIds(
-      withoutHidden(
-        visibleActivities(Object.values(socialActivities), me, following),
-        (a) => a.userId,
-        hidden
+    withoutMutedFromOthers(
+      withoutReportedIds(
+        withoutHidden(
+          visibleActivities(Object.values(socialActivities), me, following),
+          (a) => a.userId,
+          hidden
+        ),
+        (a) => a.id,
+        [...reportedActivities, ...hiddenFromHome]
       ),
-      (a) => a.id,
-      [...reportedActivities, ...hiddenFromHome]
+      me
     ),
     scope,
     me,

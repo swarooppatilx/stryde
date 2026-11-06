@@ -72,7 +72,9 @@ export function postAuthors(
   following: ReadonlySet<string>,
   knownAthletes: readonly string[]
 ): string[] {
-  const ordered = [viewerId, ...following, ...knownAthletes].map((a) => a.toLowerCase());
+  const ordered = [viewerId, ...following, ...knownAthletes]
+    .filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a))
+    .map((a) => a.toLowerCase());
   return [...new Set(ordered)].slice(0, MAX_AUTHORS);
 }
 

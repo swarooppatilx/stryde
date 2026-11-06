@@ -90,6 +90,11 @@ describe('postAuthors', () => {
     expect(authors).toEqual([ME.toLowerCase(), A.toLowerCase(), B.toLowerCase()]);
   });
 
+  it('leaves out a signed-out viewer, which is not a wallet the server would accept', () => {
+    // The signed-out id is the string 'current'; sending it made the server answer 400 on every cold start.
+    expect(postAuthors('current', new Set(), [A])).toEqual([A.toLowerCase()]);
+  });
+
   it('never asks about more authors than the server accepts at once', () => {
     const many = Array.from(
       { length: 300 },
