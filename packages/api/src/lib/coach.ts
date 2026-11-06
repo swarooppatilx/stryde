@@ -1,4 +1,5 @@
 /** Prompts and parsing for the Stryde Coach, which runs its inference on 0G. */
+import { type CoachFacts, describeFacts } from './coachFacts.js';
 
 export type Sport = 'run' | 'walk' | 'ride' | 'hike' | string;
 
@@ -14,15 +15,44 @@ export interface RunSummary {
   /** The athlete's own words from a voice debrief, already summarised. */
   debrief?: string;
   effort?: number;
+  /** How hard it was, as the phone read it from the debrief, marks and heart rate. */
+  signal?: RunSignal;
+  feel?: RunFeel;
+  avgHr?: number;
 }
+
+export const RUN_SIGNALS = ['easy', 'moderate', 'hard'] as const;
+export const RUN_FEELS = ['great', 'good', 'ok', 'bad', 'terrible'] as const;
+export type RunSignal = (typeof RUN_SIGNALS)[number];
+export type RunFeel = (typeof RUN_FEELS)[number];
 
 export interface WorkoutStep {
   label: string;
   detail: string;
 }
 
+export const PLAN_TYPES = [
+  'rest',
+  'recovery',
+  'easy',
+  'tempo',
+  'intervals',
+  'long',
+  'cross',
+] as const;
+export const PLAN_EFFORTS = ['rest', 'easy', 'moderate', 'hard'] as const;
+
+export type PlanType = (typeof PLAN_TYPES)[number];
+export type PlanEffort = (typeof PLAN_EFFORTS)[number];
+
 export interface DailyPlan {
   title: string;
+  /** What kind of session it is; checked against the athlete's load before it is shown. */
+  type: PlanType;
+  /** Target distance, or null for rest and time-based sessions. */
+  distanceKm: number | null;
+  durationMin: number | null;
+  effort: PlanEffort;
   summary: string;
   steps: WorkoutStep[];
   why: string;
@@ -65,6 +95,9 @@ export function describeRun(run: RunSummary): string {
   ];
   if (run.elevationGainM) parts.push(`+${Math.round(run.elevationGainM)} m`);
   if (run.effort) parts.push(`effort ${run.effort}/10`);
+  if (run.signal) parts.push(`${run.signal} session`);
+  if (run.feel) parts.push(`felt ${run.feel}`);
+  if (run.avgHr) parts.push(`avg HR ${run.avgHr}`);
   if (run.debrief) parts.push(`athlete said: "${run.debrief.slice(0, 200)}"`);
   return parts.join(' · ');
 }
@@ -84,7 +117,12 @@ export function extractJson(text: string): Record<string, unknown> | null {
 
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
-export function planMessages(history: RunSummary[], today: string, goal?: string) {
+export function planMessages(
+  history: RunSummary[],
+  today: string,
+  goal?: string,
+  facts?: CoachFacts | null
+) {
   const log = history.length
     ? history.map((r) => `- ${describeRun(r)}`).join('\n')
     : '- No activities recorded yet.';
@@ -94,15 +132,32 @@ export function planMessages(history: RunSummary[], today: string, goal?: string
       content:
         "You are Stryde Coach, a running and walking coach. Plan exactly one session for today from the athlete's recent log. " +
         'Respect recovery: after a hard or long day suggest easy or rest. Keep it achievable for the volume you see. ' +
-        'Reply with JSON only: {"title": string (max 6 words), "summary": string (one sentence), ' +
+        (facts
+          ? 'You are given the athlete\'s measured facts: stay inside them, and cite at least two of their numbers in "why". '
+          : '') +
+        'Reply with JSON only: {"title": string (max 6 words), ' +
+        `"type": one of ${PLAN_TYPES.join('|')}, ` +
+        '"distanceKm": number or null, "durationMin": number or null, ' +
+        `"effort": one of ${PLAN_EFFORTS.join('|')}, ` +
+        '"summary": string (one sentence), ' +
         '"steps": [{"label": string, "detail": string}] (2-5 steps with distances or minutes and target pace or effort), ' +
         '"why": string (one sentence that cites their recent log)}.',
     },
     {
       role: 'user' as const,
-      content: `Today is ${today}.${goal ? ` Goal: ${goal}.` : ''}\nRecent log (newest first):\n${log}`,
+      content: `Today is ${today}.${goal ? ` Goal: ${goal}.` : ''}${facts ? `\nFacts:\n${describeFacts(facts)}` : ''}\nRecent log (newest first):\n${log}`,
     },
   ];
+}
+
+/** A plan figure: absent or null is fine, a number must be positive and believable. `false` means reject. */
+function planAmount(value: unknown, max: number, decimals: number): number | null | false {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > max) {
+    return false;
+  }
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) / scale;
 }
 
 export function parsePlan(text: string): DailyPlan | null {
@@ -118,8 +173,23 @@ export function parsePlan(text: string): DailyPlan | null {
         .slice(0, 6)
     : [];
   const title = str(json.title, 60);
-  if (!title || steps.length === 0) return null;
-  return { title, summary: str(json.summary, 240), steps, why: str(json.why, 240) };
+  const type = PLAN_TYPES.find((t) => t === json.type);
+  const effort = PLAN_EFFORTS.find((e) => e === json.effort);
+  const distanceKm = planAmount(json.distanceKm, 60, 1);
+  const durationMin = planAmount(json.durationMin, 300, 0);
+  if (!title || steps.length === 0 || !type || !effort) return null;
+  if (distanceKm === false || durationMin === false) return null;
+  const resting = type === 'rest';
+  return {
+    title,
+    type,
+    distanceKm: resting ? null : distanceKm,
+    durationMin: resting ? null : durationMin,
+    effort: resting ? 'rest' : effort,
+    summary: str(json.summary, 240),
+    steps,
+    why: str(json.why, 240),
+  };
 }
 
 export function debriefMessages(transcript: string, run: RunSummary) {
@@ -549,6 +619,9 @@ export function toRunSummary(value: unknown): RunSummary | null {
   }
   const elevation = Number(v.elevationGainM);
   const effort = Number(v.effort);
+  const signal = RUN_SIGNALS.find((x) => x === v.signal);
+  const feel = RUN_FEELS.find((x) => x === v.feel);
+  const avgHr = num(v.avgHr, 30, 250);
   return {
     activityType: str(v.activityType, 20) || 'run',
     distanceM,
@@ -559,6 +632,9 @@ export function toRunSummary(value: unknown): RunSummary | null {
     ...(str(v.place, 80) ? { place: str(v.place, 80) } : {}),
     ...(str(v.debrief, 400) ? { debrief: str(v.debrief, 400) } : {}),
     ...(Number.isInteger(effort) && effort >= 1 && effort <= 10 ? { effort } : {}),
+    ...(signal ? { signal } : {}),
+    ...(feel ? { feel } : {}),
+    ...(avgHr === undefined ? {} : { avgHr: Math.round(avgHr) }),
   };
 }
 

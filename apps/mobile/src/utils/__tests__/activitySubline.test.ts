@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity } from '@/types';
 import { activitySubline } from '@/utils/activitySubline';
+import { formatWeekdayDay } from '@/utils/dates';
 
 const NOW = new Date(2026, 10, 6, 15, 0);
 const at = (daysAgo: number) => new Date(2026, 10, 6 - daysAgo, 8, 0).getTime();
@@ -29,8 +30,10 @@ describe('activitySubline', () => {
     expect(activitySubline(make({ createdAt: new Date(at(1)) }), 'metric', NOW)).toMatch(
       /^Yesterday · /
     );
+    // The weekday line follows the device locale ("Mon, Nov 2" or "Mon, 2 Nov"), so compare with the formatter.
     const older = activitySubline(make({ createdAt: new Date(at(4)) }), 'metric', NOW);
-    expect(older).toMatch(/^Mon, Nov 2 · /);
+    expect(older.startsWith(`${formatWeekdayDay(new Date(at(4)))} · `)).toBe(true);
+    expect(older).toMatch(/^Mon, /);
   });
 
   it('shows a whole-number speed for a ride', () => {

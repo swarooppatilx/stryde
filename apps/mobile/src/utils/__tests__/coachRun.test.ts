@@ -32,6 +32,7 @@ describe('toCoachRun', () => {
       startedAt: new Date(NOW - DAY).toISOString(),
       debrief: 'Heavy legs.',
       effort: 7,
+      signal: 'hard',
     });
   });
 
@@ -94,6 +95,42 @@ describe('recentHistory', () => {
       'Felt great',
       '2026-11-03',
     ]);
+  });
+});
+
+describe('recentHistory: signal, feel and heart rate', () => {
+  it('drops commutes along with mocked activities', () => {
+    const history = recentHistory(
+      [activity('c', 1, { isCommute: true }), activity('a', 2)],
+      {},
+      NOW
+    );
+    expect(history).toHaveLength(1);
+  });
+
+  it('carries the signal, feel and average heart rate', () => {
+    const [run] = recentHistory(
+      [activity('a', 1, { effort: 'hard', feel: 'bad', heartRate: { avg: 161.4, max: 183 } })],
+      {},
+      NOW
+    );
+    expect(run).toMatchObject({ signal: 'hard', feel: 'bad', avgHr: 161 });
+  });
+
+  it('prefers the debrief for signal and feel, mapping tough to bad', () => {
+    const [run] = recentHistory(
+      [activity('a', 1, { effort: 'easy', feel: 'great' })],
+      { a: { summary: 'Brutal', effort: 8, feel: 'tough' } },
+      NOW
+    );
+    expect(run).toMatchObject({ signal: 'hard', feel: 'bad', effort: 8 });
+  });
+
+  it('adds nothing when the log has no signal', () => {
+    const [run] = recentHistory([activity('a', 1)], {}, NOW);
+    expect(run).not.toHaveProperty('signal');
+    expect(run).not.toHaveProperty('feel');
+    expect(run).not.toHaveProperty('avgHr');
   });
 });
 
