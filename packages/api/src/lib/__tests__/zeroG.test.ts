@@ -281,6 +281,33 @@ describe('chat: fallback and cooldown', () => {
     expect(modelOf(4)).toBe('0gm-1.0-35b-a3b');
   });
 
+  it('treats an empty reply (all tokens spent thinking) as a provider failure', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        reply({
+          choices: [{ message: { content: '' }, finish_reason: 'length' }],
+          x_0g_trace: { request_id: 'think' },
+        })
+      )
+      .mockResolvedValueOnce(chatOk('the answer'));
+    const { text, receipt } = await ask();
+    expect(text).toBe('the answer');
+    expect(receipt.model).toBe('glm-5.3');
+    // And the thinker sits out, so the next call goes straight to the model that answers.
+    fetchMock.mockResolvedValueOnce(chatOk('again'));
+    await ask();
+    expect(modelOf(2)).toBe('glm-5.3');
+  });
+
+  it('fails when the only model answers with nothing', async () => {
+    process.env.ZEROG_CHAT_MODEL = 'only-thinker';
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () => reply({ choices: [{ message: { content: '  ' } }] }));
+    const result = expect(ask()).rejects.toMatchObject({ status: 502, code: 'empty_response' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await result;
+  });
+
   it('does not fall back on errors another model would repeat', async () => {
     fetchMock.mockResolvedValueOnce(failure(402, 'no balance', 'pay_no_balance'));
     await expect(ask()).rejects.toMatchObject({ status: 402, requestId: 'req_fail_402' });

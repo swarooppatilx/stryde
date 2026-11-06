@@ -340,10 +340,13 @@ export async function chat(
       model,
       lastChance
     );
-    return {
-      text: stripThinking(body.choices?.[0]?.message?.content ?? ''),
-      receipt: { ...receipt, model: body.model || receipt.model },
-    };
+    const text = stripThinking(body.choices?.[0]?.message?.content ?? '').trim();
+    // A reasoning model can spend the whole token budget thinking and answer 200 with nothing:
+    // that is a provider failure, so the next model gets the call.
+    if (!text) {
+      throw new ZeroGError('0G returned an empty reply', 502, 'empty_response', receipt.requestId);
+    }
+    return { text, receipt: { ...receipt, model: body.model || receipt.model } };
   });
 }
 

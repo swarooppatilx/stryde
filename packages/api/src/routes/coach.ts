@@ -146,7 +146,7 @@ coach.post('/plan', async (c) => {
 
   try {
     const messages = planMessages(history, today, goal, facts);
-    const first = await chat(messages, { maxTokens: 500 });
+    const first = await chat(messages, { maxTokens: 700 });
     const receipts: ZeroGReceipt[] = [first.receipt];
     let plan = parsePlan(first.text);
     if (!plan) {
@@ -179,7 +179,7 @@ coach.post('/plan', async (c) => {
               content: `That plan breaks these safety limits: ${stated}. Reply again with JSON only: a plan inside the limits.`,
             },
           ],
-          { maxTokens: 500 }
+          { maxTokens: 700 }
         );
         receipts.push(retry.receipt);
         const second = parsePlan(retry.text);
