@@ -10,6 +10,7 @@ export const ENV: {
   readonly PRIVY_CLIENT_ID: string;
   readonly SUBGRAPH_URL: string;
   API_URL: string;
+  readonly API_CONFIGURED: boolean;
   readonly API_KEY: string;
   readonly CHAIN_MODE: ChainMode;
   readonly USE_SMART_WALLET: boolean;
@@ -17,6 +18,7 @@ export const ENV: {
   readonly WORLD_RP_ID: string;
   readonly WORLD_ENVIRONMENT: WorldIdEnvironment;
   readonly MAPBOX_ACCESS_TOKEN: string;
+  readonly WEB_URL: string;
 } = {
   APP_NAME: process.env.EXPO_PUBLIC_APP_NAME || 'Stryde',
   APP_ENV: process.env.EXPO_PUBLIC_APP_ENV || 'development',
