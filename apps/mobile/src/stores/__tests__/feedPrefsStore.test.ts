@@ -45,4 +45,14 @@ describe('feed preferences', () => {
     const merged = merge?.({ order: 'following_first' }, useFeedPrefsStore.getState());
     expect(merged).toMatchObject({ order: 'following_first', dismissedCards: [] });
   });
+
+  it('keeps the chosen order when upgrading from the first saved version', async () => {
+    const { name, storage } = useFeedPrefsStore.persist.getOptions();
+    await storage?.setItem(name ?? '', { state: { order: 'following_first' }, version: 1 });
+
+    await useFeedPrefsStore.persist.rehydrate();
+
+    expect(useFeedPrefsStore.getState().order).toBe('following_first');
+    expect(useFeedPrefsStore.getState().dismissedCards).toEqual([]);
+  });
 });
