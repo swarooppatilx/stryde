@@ -113,6 +113,7 @@ export async function runPostActivityPipeline(input: {
           }),
       ...(result.swarmRef ? { swarmRef: result.swarmRef } : {}),
       ...(result.swarmLink ? { swarmLink: result.swarmLink } : {}),
+      ...(result.archiveKey ? { swarmArchiveKey: result.archiveKey } : {}),
     });
     return result;
   } catch (error) {

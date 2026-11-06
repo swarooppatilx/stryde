@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { Linking, StyleSheet, TouchableOpacity } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -9,9 +9,11 @@ import { BorderRadius, Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useViemWallet } from '@/hooks/useViemWallet';
 import { hasSessionForActivity, runPostActivityPipeline } from '@/services/activityPipeline';
+import { ARKIV_EXPLORER, routeArchiveGpx } from '@/services/arkivService';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { Activity } from '@/types';
 import { formatDurationLong } from '@/utils/format';
+import { shareGpx } from '@/utils/share';
 import { Toast } from '@/utils/toast';
 
 /** Wearable "Proof of Sweat", Arkiv segment efforts and the Swarm archive for one activity. */
@@ -20,7 +22,9 @@ export function ActivityProofCard({ activity }: { activity: Activity }) {
   const router = useRouter();
   const healthData = useSettingsStore((s) => s.healthData);
   const [syncing, setSyncing] = useState(false);
-  const { address: athlete } = useViemWallet();
+  const [downloading, setDownloading] = useState(false);
+  const { wallet, address: athlete } = useViemWallet();
+  const isPrivate = Boolean(activity.swarmRef && !activity.swarmLink);
   const canResync = healthData && hasSessionForActivity(activity.id);
   const hasContent =
     activity.sweat || activity.segmentEfforts?.length || activity.swarmRef || canResync;
@@ -41,6 +45,26 @@ export function ActivityProofCard({ activity }: { activity: Activity }) {
     if (!result) Toast.fail('Could not reach the Stryde API', 2);
     else if (result.sweat.sampleCount === 0)
       Toast.info('No heart-rate data from your watch yet', 2);
+  };
+
+  const download = async () => {
+    const archiveKey = activity.swarmArchiveKey;
+    if (!archiveKey) return;
+    if (isPrivate && !(wallet && athlete)) {
+      Toast.info('Connect your wallet to open a private route', 2);
+      return;
+    }
+    setDownloading(true);
+    try {
+      const auth = isPrivate && wallet && athlete ? { wallet, address: athlete } : null;
+      const { gpx } = await routeArchiveGpx(archiveKey, auth);
+      await shareGpx(activity.name || activity.id, gpx);
+    } catch (error) {
+      console.warn('[proof] Swarm download failed:', error);
+      Toast.fail('Could not fetch the route from Swarm', 2);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const noSweatNote = canResync ? (
@@ -103,20 +127,81 @@ export function ActivityProofCard({ activity }: { activity: Activity }) {
       ))}
 
       {activity.swarmRef && (
-        <ThemedView style={styles.row}>
-          <Ionicons name="archive-outline" size={18} color={theme.textSecondary} />
-          <ThemedText type="caption" themeColor="textSecondary" style={styles.copy}>
-            {activity.swarmLink
-              ? 'GPX archived on Swarm'
-              : 'Private GPX archived on Swarm (encrypted)'}
-          </ThemedText>
+        <ThemedView style={styles.copy}>
+          <ThemedView style={styles.row}>
+            <Ionicons name="archive-outline" size={18} color={theme.textSecondary} />
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.copy}>
+              {isPrivate
+                ? 'Private GPX archived on Swarm (encrypted, only you can open it)'
+                : 'GPX archived on Swarm'}
+            </ThemedText>
+          </ThemedView>
+          <ThemedView style={styles.actions}>
+            {activity.swarmLink && (
+              <ArchiveAction
+                label="Open on Swarm"
+                onPress={() => void Linking.openURL(activity.swarmLink as string)}
+              />
+            )}
+            {activity.swarmArchiveKey && (
+              <ArchiveAction
+                label="View on Arkiv"
+                onPress={() =>
+                  void Linking.openURL(`${ARKIV_EXPLORER}/entity/${activity.swarmArchiveKey}`)
+                }
+              />
+            )}
+            {activity.swarmArchiveKey && (
+              <ArchiveAction
+                label={downloading ? 'Downloading…' : 'Download GPX'}
+                onPress={() => void download()}
+                disabled={downloading}
+              />
+            )}
+          </ThemedView>
         </ThemedView>
       )}
     </ThemedView>
   );
 }
 
+function ArchiveAction({
+  label,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      style={[styles.action, { borderColor: theme.brand.primary }]}
+    >
+      <ThemedText type="caption" style={{ color: theme.brand.primary }}>
+        {label}
+      </ThemedText>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    backgroundColor: 'transparent',
+  },
+  action: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
   card: {
     borderRadius: BorderRadius.md,
     padding: Spacing.three,

@@ -92,7 +92,7 @@ function sessionToken(auth: HumanAuth): Promise<string> {
   return opening.promise;
 }
 
-async function humanFetch<T>(
+export async function humanFetch<T>(
   auth: HumanAuth,
   path: string,
   init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> } = {}

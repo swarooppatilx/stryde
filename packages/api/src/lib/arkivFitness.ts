@@ -1,8 +1,23 @@
-import { createPublicClient, createWalletClient, ExpirationTime } from '@arkiv-network/sdk';
+import {
+  createPublicClient,
+  createWalletClient,
+  ExpirationTime,
+  NoEntityFoundError,
+} from '@arkiv-network/sdk';
 import { rabdi } from '@arkiv-network/sdk/chains';
 import { and, asc, eq, startsWith } from '@arkiv-network/sdk/query';
-import { addr, bool, dec, defineSchema, i32, key, str, u64 } from '@arkiv-network/sdk/schema';
-import { http } from 'viem';
+import {
+  addr,
+  bool,
+  bytes,
+  dec,
+  defineSchema,
+  i32,
+  key,
+  str,
+  u64,
+} from '@arkiv-network/sdk/schema';
+import { hexToString, http, stringToHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
 /**
@@ -40,6 +55,24 @@ export const Efforts = defineSchema('stryde_effort', {
   swarmRef: str().optional(),
 });
 
+/**
+ * One per recorded activity: the GPX lives on Swarm and this entity is how anyone finds it.
+ * A public route holds the plain Swarm reference; a private one holds it sealed (`enc:v1:`),
+ * because an encrypted Swarm reference carries its own decryption key and entities are public.
+ */
+export const RouteArchives = defineSchema('stryde_route_archive', {
+  athlete: addr().indexed(),
+  activityId: u64().indexed(),
+  recordedAt: u64().indexed(),
+  swarmRef: str().optional(),
+  /** A sealed reference is ~220 chars, over the 128-byte `str` limit, so it is stored as bytes. */
+  sealedRef: bytes().optional(),
+  encrypted: bool().indexed(),
+  distanceM: u64(),
+  pointCount: u64(),
+  contentType: str(),
+});
+
 export const Beacons = defineSchema('stryde_beacon', {
   runId: str().indexed(),
   athlete: addr().indexed(),
@@ -56,6 +89,7 @@ export const BEACON_TTL_MINUTES = 10;
 export const EFFORT_TTL_DAYS = 120;
 // Rabdi caps entity lifetime at 7,884,000 blocks (~182 days at 2s blocks).
 export const SEGMENT_TTL_DAYS = 180;
+export const ARCHIVE_TTL_DAYS = 180;
 
 type ArkivPublic = ReturnType<typeof createPublicClient>;
 type ArkivWallet = ReturnType<typeof createWalletClient>;
@@ -295,6 +329,119 @@ export async function athleteEfforts(athlete: `0x${string}`, limit = 50): Promis
     .limit(limit)
     .fetch();
   return result.entities.map((row) => effortFromRow(row as unknown as Record<string, unknown>));
+}
+
+export async function getEffort(effortKey: `0x${string}`): Promise<EffortRecord | null> {
+  const row = await getStrydeEntity(effortKey, Efforts);
+  return row ? effortFromRow(row) : null;
+}
+
+export interface RouteArchiveRecord {
+  key: `0x${string}`;
+  athlete: string;
+  activityId: number;
+  recordedAt: number;
+  swarmRef: string;
+  encrypted: boolean;
+  distanceM: number;
+  pointCount: number;
+  contentType: string;
+  owner: string;
+  expiresAt: number | null;
+}
+
+export async function createRouteArchive(input: {
+  athlete: `0x${string}`;
+  activityId: number;
+  recordedAt: number;
+  swarmRef: string;
+  encrypted: boolean;
+  distanceM: number;
+  pointCount: number;
+  contentType: string;
+}): Promise<{ key: `0x${string}`; txHash: `0x${string}` }> {
+  const wallet = getArkivWallet();
+  const { entityKey, txHash } = await wallet.createEntity(
+    RouteArchives,
+    {
+      athlete: addr(input.athlete),
+      activityId: u64(BigInt(input.activityId)),
+      recordedAt: u64(BigInt(input.recordedAt)),
+      swarmRef: input.encrypted ? undefined : input.swarmRef,
+      sealedRef: input.encrypted ? bytes(stringToHex(input.swarmRef)) : undefined,
+      encrypted: input.encrypted,
+      distanceM: u64(BigInt(Math.max(0, Math.round(input.distanceM)))),
+      pointCount: u64(BigInt(input.pointCount)),
+      contentType: input.contentType,
+    },
+    { expiration: ExpirationTime.fromDays(ARCHIVE_TTL_DAYS) }
+  );
+  // Arkiv reverts a transfer to the current owner (TransferToSelf).
+  if (input.athlete.toLowerCase() !== getArkivWriter().toLowerCase()) {
+    await wallet.changeOwnership({ entityKey, newOwner: input.athlete });
+  }
+  return { key: entityKey, txHash };
+}
+
+function archiveFromRow(row: Record<string, unknown>): RouteArchiveRecord {
+  const v = (name: string) => (row[name] as { value: unknown } | undefined)?.value;
+  const sealed = v('sealedRef');
+  return {
+    key: row.$key as `0x${string}`,
+    athlete: String(v('athlete') ?? ''),
+    activityId: Number(v('activityId') ?? 0),
+    recordedAt: Number(v('recordedAt') ?? 0),
+    swarmRef: sealed ? hexToString(sealed as `0x${string}`) : String(v('swarmRef') ?? ''),
+    encrypted: Boolean(v('encrypted')),
+    distanceM: Number(v('distanceM') ?? 0),
+    pointCount: Number(v('pointCount') ?? 0),
+    contentType: String(v('contentType') ?? ''),
+    owner: String(row.$owner ?? ''),
+    expiresAt: row.$expiresAt === undefined ? null : Number(row.$expiresAt),
+  };
+}
+
+/**
+ * One entity by key, or null when it is missing, expired or was not written by Stryde:
+ * anyone can create an entity with our schema names.
+ */
+async function getStrydeEntity(
+  entityKey: `0x${string}`,
+  schema: typeof RouteArchives | typeof Efforts
+): Promise<Record<string, unknown> | null> {
+  let row: Record<string, unknown>;
+  try {
+    row = (await getArkivPublic().getEntity(entityKey, schema)) as unknown as Record<
+      string,
+      unknown
+    >;
+  } catch (error) {
+    if (error instanceof NoEntityFoundError) return null;
+    throw error;
+  }
+  const creator = String(row.$creator ?? '').toLowerCase();
+  return creator === getArkivWriter().toLowerCase() ? row : null;
+}
+
+export async function getRouteArchive(
+  archiveKey: `0x${string}`
+): Promise<RouteArchiveRecord | null> {
+  const row = await getStrydeEntity(archiveKey, RouteArchives);
+  return row ? archiveFromRow(row) : null;
+}
+
+export async function athleteRouteArchives(
+  athlete: `0x${string}`,
+  limit = 50
+): Promise<RouteArchiveRecord[]> {
+  const result = await getArkivPublic()
+    .select()
+    .from(RouteArchives)
+    .where(eq('athlete', addr(athlete)))
+    .createdBy(getArkivWriter())
+    .limit(limit)
+    .fetch();
+  return result.entities.map((row) => archiveFromRow(row as unknown as Record<string, unknown>));
 }
 
 async function findBeaconRow(runId: string) {
