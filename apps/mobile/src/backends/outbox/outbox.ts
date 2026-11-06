@@ -170,7 +170,9 @@ export function createOutbox(deps: OutboxDeps): Outbox {
       commit(Array.isArray(parsed) ? parsed.filter(isEntry) : []);
       const backlog = formatBacklog(items, clock.now());
       if (backlog) logger.info(backlog);
-    } catch {
+    } catch (error) {
+      // Unreadable or corrupt storage starts the queue empty; say so, since queued deliveries are lost with it.
+      logger.warn('[Outbox] Could not read the saved queue, starting empty', error);
       commit([]);
     }
   }

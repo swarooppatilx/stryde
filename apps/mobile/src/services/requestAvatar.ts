@@ -1,5 +1,6 @@
 import type { PhotoLibrary } from '@/platform/ports';
 import type { SetAvatarIntent } from '@/services/profileIntents';
+import { logger } from '@/utils/logger';
 
 export interface AvatarDeps {
   pick: PhotoLibrary['pick'];
@@ -20,7 +21,8 @@ export async function requestAvatar(deps: AvatarDeps): Promise<AvatarRequest> {
     const result = await deps.pick({ aspect: [1, 1] });
     if (result.status === 'denied') return 'denied';
     uri = result.uris[0];
-  } catch {
+  } catch (error) {
+    logger.warn('[Avatar] Could not pick a photo', error);
     return 'failed';
   }
   if (!uri) return 'cancelled';
