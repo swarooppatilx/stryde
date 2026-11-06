@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity } from '@/types';
-import { filterActivities, needsPrivacyChange, toggleId } from '@/utils/activityList';
+import {
+  alreadyPublicCount,
+  filterActivities,
+  needsPrivacyChange,
+  toggleId,
+} from '@/utils/activityList';
 
 const make = (id: string, patch: Partial<Activity> = {}): Activity =>
   ({
@@ -80,5 +85,21 @@ describe('needsPrivacyChange', () => {
     ];
     expect(needsPrivacyChange(list, ['a', 'b', 'c'], 'only_me')).toEqual(['b', 'c']);
     expect(needsPrivacyChange(list, ['a', 'b', 'c'], 'everyone')).toEqual(['a', 'b']);
+  });
+});
+
+describe('alreadyPublicCount', () => {
+  const list = [
+    make('a', { onchainActivityId: '7' }),
+    make('b'),
+    make('c', { onchainActivityId: '9', privacy: 'only_me' }),
+  ];
+
+  it('counts the chosen activities that are already in the public record', () => {
+    expect(alreadyPublicCount(list, ['a', 'b', 'c'])).toBe(2);
+  });
+
+  it('ignores activities that were not chosen', () => {
+    expect(alreadyPublicCount(list, ['b'])).toBe(0);
   });
 });

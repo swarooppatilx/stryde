@@ -44,3 +44,19 @@ describe('confirmOnlyMe', () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 });
+
+describe('confirmOnlyMe with activities already shared', () => {
+  it('says a copy already in the public record stays there', () => {
+    confirmOnlyMe(vi.fn(), 2);
+
+    expect(message()).toContain('2 are already in the public record');
+    expect(message()).toContain('cannot be taken back');
+    expect(message()).not.toMatch(BANNED_USER_WORDS);
+  });
+
+  it('says nothing extra when none were shared', () => {
+    confirmOnlyMe(vi.fn(), 0);
+
+    expect(message()).not.toContain('public record');
+  });
+});

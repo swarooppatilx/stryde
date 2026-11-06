@@ -18,6 +18,7 @@ import { deleteActivity } from '@/services/activityDeletion';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ActivityPrivacy, ActivityType } from '@/types';
 import {
+  alreadyPublicCount,
   DATE_RANGES,
   type DateRange,
   filterActivities,
@@ -78,7 +79,7 @@ export default function ActivitiesScreen() {
       Toast.success(`Updated ${countOf(ids.length, 'activity', 'activities')}`, 1.5);
       stopSelecting();
     };
-    if (privacy === 'only_me') confirmOnlyMe(apply);
+    if (privacy === 'only_me') confirmOnlyMe(apply, alreadyPublicCount(activities, ids));
     else apply();
   };
 

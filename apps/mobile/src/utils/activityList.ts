@@ -61,3 +61,11 @@ export function needsPrivacyChange(
     .filter((a) => ids.includes(a.id) && (a.privacy ?? 'everyone') !== privacy)
     .map((a) => a.id);
 }
+
+/** How many of the chosen activities already have a copy in the public record. */
+export function alreadyPublicCount(
+  activities: readonly Activity[],
+  ids: readonly string[]
+): number {
+  return activities.filter((a) => ids.includes(a.id) && a.onchainActivityId).length;
+}
