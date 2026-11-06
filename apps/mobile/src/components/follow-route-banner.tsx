@@ -19,7 +19,9 @@ interface FollowRouteBannerProps {
 export function FollowRouteBanner({ view, onStop, style }: FollowRouteBannerProps) {
   const theme = useTheme();
   const unitSystem = useUnitSystem();
-  const { progress, offRoute } = view;
+  const { progress } = view;
+  // With no position yet there is nothing to be off of: the banner just waits.
+  const offRoute = view.offRoute && progress !== null;
   const tone = offRoute ? theme.brand.danger : theme.backgroundElement;
   const textColor = offRoute ? Palette.white : theme.text;
 
