@@ -1,4 +1,5 @@
 import { getActiveConfig } from './client';
+import { indexCall } from './indexApi';
 import { paginate } from './subgraphPaginate';
 
 interface ProfileAvatarEntity {
@@ -17,7 +18,17 @@ interface ProfileEntity {
  * without treating "not deployed here" as an error. */
 export async function getProfileAvatarsFromSubgraph(): Promise<Map<string, string> | null> {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    const answer = await indexCall<{
+      profiles: { wallet: string; avatarCid: string | null }[];
+    }>('profiles');
+    if (!answer) return null;
+    return new Map(
+      answer.profiles
+        .filter((profile) => profile.avatarCid)
+        .map((profile) => [profile.wallet.toLowerCase(), profile.avatarCid as string])
+    );
+  }
 
   const profiles = await paginate<ProfileAvatarEntity>({
     url: subgraphUrl,
@@ -43,7 +54,12 @@ export async function getProfilesFromSubgraph(): Promise<
   { wallet: string; username: string; isVerified: boolean }[] | null
 > {
   const { subgraphUrl } = getActiveConfig();
-  if (!subgraphUrl) return null;
+  if (!subgraphUrl) {
+    const answer = await indexCall<{
+      profiles: { wallet: string; username: string; isVerified: boolean }[];
+    }>('profiles');
+    return answer?.profiles ?? null;
+  }
 
   const profiles = await paginate<ProfileEntity>({
     url: subgraphUrl,

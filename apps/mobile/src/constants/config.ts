@@ -25,7 +25,11 @@ export const ENV: {
   PRIVY_APP_ID: process.env.EXPO_PUBLIC_PRIVY_APP_ID || '',
   PRIVY_CLIENT_ID: process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID || '',
   SUBGRAPH_URL: process.env.EXPO_PUBLIC_SUBGRAPH_URL || '',
-  API_URL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
+  // Android emulators cannot reach the host through localhost. Physical devices should set
+  // EXPO_PUBLIC_API_URL to the machine's LAN address (or use adb reverse for port 3000).
+  API_URL:
+    process.env.EXPO_PUBLIC_API_URL ||
+    (Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://127.0.0.1:3000'),
   // The URL above falls back to localhost, so this says whether the app was pointed at a real API.
   API_CONFIGURED: Boolean(process.env.EXPO_PUBLIC_API_URL),
   API_KEY: process.env.EXPO_PUBLIC_API_KEY || '',
