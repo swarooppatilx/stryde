@@ -103,6 +103,15 @@ export function formatDurationLong(ms: number): string {
   return `${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 }
 
+/** A stopwatch reading: "12:34" under an hour, "1:02:03" after; short enough to stay large on the recording screen. */
+export function formatClock(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
 /** Heading for a pace figure: "Pace /km" or "Pace /mi". */
 export function paceLabel(unitSystem: UnitSystem = 'metric'): string {
   return unitSystem === 'imperial' ? 'Pace /mi' : 'Pace /km';

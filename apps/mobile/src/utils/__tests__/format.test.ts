@@ -4,6 +4,7 @@ import { formatDay } from '@/utils/dates';
 import {
   activityTitle,
   formatArea,
+  formatClock,
   formatDistance,
   formatDuration,
   formatDurationLong,
@@ -54,6 +55,14 @@ describe('formatDuration', () => {
   it('formats hours and minutes', () => {
     expect(formatDuration(3600000)).toBe('1h 0m');
     expect(formatDuration(5400000)).toBe('1h 30m');
+  });
+});
+
+describe('formatClock', () => {
+  it('drops the hours until there are some', () => {
+    expect(formatClock(0)).toBe('0:00');
+    expect(formatClock(754_000)).toBe('12:34');
+    expect(formatClock(3_723_000)).toBe('1:02:03');
   });
 });
 

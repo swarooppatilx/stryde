@@ -86,7 +86,7 @@ export function RecordIsland({
                 type="titleSmall"
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.6}
+                minimumFontScale={0.8}
                 style={styles.value}
               >
                 {field.value(data, unitSystem)}

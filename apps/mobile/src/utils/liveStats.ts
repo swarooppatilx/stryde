@@ -3,8 +3,8 @@ import type { LiveWatch } from '@/services/watchRecording';
 import type { ActivityType, Lap, Split } from '@/types';
 import {
   formatArea,
+  formatClock,
   formatDistance,
-  formatDurationLong,
   formatElevation,
   formatPace,
   formatSpeed,
@@ -128,7 +128,7 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     label: () => 'Time',
     icon: 'time-outline',
     families: BOTH,
-    value: (d) => (finite(d.duration) ? formatDurationLong(d.duration) : DASH),
+    value: (d) => (finite(d.duration) ? formatClock(d.duration) : DASH),
   },
   distance: {
     id: 'distance',
@@ -245,8 +245,7 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     label: () => 'Lap time',
     icon: 'flag-outline',
     families: BOTH,
-    value: (d) =>
-      finite(d.currentLap.duration) ? formatDurationLong(d.currentLap.duration) : DASH,
+    value: (d) => (finite(d.currentLap.duration) ? formatClock(d.currentLap.duration) : DASH),
   },
   lapDistance: {
     id: 'lapDistance',

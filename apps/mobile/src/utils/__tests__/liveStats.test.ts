@@ -59,7 +59,7 @@ describe('liveStatFamily', () => {
 
 describe('field values', () => {
   it('formats time, distance and climb in metric and imperial', () => {
-    expect(field('time').value(moving, 'metric')).toBe('00:25:00');
+    expect(field('time').value(moving, 'metric')).toBe('25:00');
     expect(field('distance').value(moving, 'metric')).toBe('5.00km');
     expect(field('distance').value(moving, 'imperial')).toBe('3.11mi');
     expect(field('climb').value(moving, 'metric')).toBe('42m');
@@ -136,7 +136,7 @@ describe('field values', () => {
 
 describe('lap and elevation fields', () => {
   it('shows the running lap: time, distance and pace or speed', () => {
-    expect(field('lapTime').value(moving, 'metric')).toBe('00:03:00');
+    expect(field('lapTime').value(moving, 'metric')).toBe('3:00');
     expect(field('lapDistance').value(moving, 'metric')).toBe('600m');
     expect(field('lapDistance').value(moving, 'imperial')).toBe('1969ft');
     expect(field('lapPace').value(moving, 'metric')).toBe('5:00/km');
@@ -160,7 +160,7 @@ describe('lap and elevation fields', () => {
   });
 
   it('shows dashes at the start of a lap', () => {
-    expect(field('lapTime').value(justStarted, 'metric')).toBe('00:00:00');
+    expect(field('lapTime').value(justStarted, 'metric')).toBe('0:00');
     expect(field('lapDistance').value(justStarted, 'metric')).toBe('0m');
     expect(field('lapPace').value(justStarted, 'metric')).toBe('--:--');
   });

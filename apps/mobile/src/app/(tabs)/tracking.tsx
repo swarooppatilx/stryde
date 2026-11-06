@@ -29,6 +29,7 @@ import { BorderRadius, Brand, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useBackHandler } from '@/hooks/useBackHandler';
+import { useFinishWhenWatchEnds } from '@/hooks/useFinishWhenWatchEnds';
 import { useFollowCamera, useSmoothedHeading } from '@/hooks/useFollowCamera';
 import { useFollowRoute } from '@/hooks/useFollowRoute';
 import { useGpsPreview } from '@/hooks/useGpsPreview';
@@ -409,6 +410,7 @@ export default function TrackingScreen() {
   // The handler below outlives renders, so it reads the latest finish through a ref.
   const finishRef = useRef(finishActivity);
   finishRef.current = finishActivity;
+  useFinishWhenWatchEnds(snapshot.watch?.state, isSessionActive, finishActivity);
   // Back on a live recording asks instead of leaving: the tab bar is hidden then, so Back was the way out.
   useBackHandler(() => {
     if (backWhileRecording({ locked, finishing: finishing.current }) === 'ask') {
