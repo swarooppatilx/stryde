@@ -102,6 +102,8 @@ export interface ActivityStream {
   alt?: number[];
   /** Pedometer cadence per second since the first step sample; absent while motion sensors are off. */
   cadence?: { t: number[]; spm: number[] };
+  /** Running or cycling power from a watch: seconds since the start and watts at each. */
+  power?: { t: number[]; w: number[] };
 }
 
 export interface Activity {
@@ -145,6 +147,10 @@ export interface Activity {
   heartRate?: { avg: number; max: number };
   /** Calories as the watch measured them (kcal); preferred over the estimate. */
   caloriesBurned?: number;
+  /** Average running or cycling power (watts), when a watch measured it. */
+  avgPower?: number;
+  /** Recorded with an Apple Watch streaming its heart rate, distance and cadence live. */
+  recordedWithWatch?: boolean;
   image?: string;
   images?: string[];
   description?: string;

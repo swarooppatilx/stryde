@@ -10,6 +10,7 @@ import {
   type Speaker,
   type Subscription,
 } from '@/platform';
+import type { WatchLink } from '@/platform/ports';
 import type { AccuracyMode } from '@/stores/settingsStore';
 import type { ActivityStream, ActivityType, BestEffort, Lap, Location, Ring, Split } from '@/types';
 import type { FixRejections, ITerritoryService, ITrackingService } from '@/types/services';
@@ -37,11 +38,22 @@ import { downsampleRoute, type RoutePoint } from '@/utils/route';
 import { computeSplits } from '@/utils/splits';
 import { round, type TrackingTrace } from '@/utils/trackingTrace';
 import { isTrackTraceOn, trackTrace } from '@/utils/trackTrace';
+import {
+  cadenceOf,
+  caloriesOf,
+  heartRateOf,
+  powerOf,
+  scaleTrack,
+  watchCoverage,
+  watchDistanceOf,
+  watchDistanceScale,
+} from '@/utils/watchSamples';
 import { ensureForegroundLocation } from './locationPermission';
 import { territoryService } from './territoryService';
 import { getTimeToIndexed } from './timeToIndexed';
 import { trackingService } from './trackingService';
 import { trackingTrace } from './trackingTrace';
+import { createWatchRecording, type LiveWatch, watchSportOf } from './watchRecording';
 
 /** Least distance a GPS-measured activity must cover to be worth saving. */
 
@@ -70,6 +82,8 @@ export interface SessionOptions {
   announceActions?: boolean;
   /** Units the announcement is spoken in; metric when absent. */
   unitSystem?: UnitSystem;
+  /** Start the paired Apple Watch's workout and use its heart rate, distance, cadence, power and calories. */
+  useWatch?: boolean;
 }
 
 /** Everything the tracking screen shows; a new object whenever any of it changes. */
@@ -101,6 +115,8 @@ export interface SessionSnapshot {
   splits: Split[];
   /** Metres climbed so far; null while the phone gives no usable altitude. */
   elevationGain: number | null;
+  /** The watch's live numbers; null when no watch is part of this recording. */
+  watch: LiveWatch | null;
 }
 
 export interface SessionSummary {
@@ -122,6 +138,11 @@ export interface SessionSummary {
   laps: Lap[];
   /** Fastest 1 km / 5 km / 10 km; only for pace sports (a ride is judged on speed). */
   bestEfforts: BestEffort[];
+  /** From the watch, when one recorded alongside. */
+  heartRate?: { avg: number; max: number };
+  caloriesBurned?: number;
+  avgPower?: number;
+  recordedWithWatch?: boolean;
 }
 
 export type StartResult =
@@ -169,6 +190,8 @@ export interface TrackingSessionDeps {
    * a fix every 3 s while the background service gets one a second.
    */
   liveBackground?: boolean;
+  /** The paired watch, when the platform has one. */
+  watch?: WatchLink;
 }
 
 /** Seconds per kilometre, or null before there is distance to divide by. */
@@ -199,6 +222,7 @@ const IDLE_SNAPSHOT: SessionSnapshot = {
   recent: { distance: 0, durationMs: 0 },
   splits: [],
   elevationGain: null,
+  watch: null,
 };
 
 const GPS_OFF_MESSAGE = 'Turn on device location (GPS) to track this activity.';
@@ -296,6 +320,18 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
   /** Newest fix handed to the tracker from the queue. */
   let released = 0;
   let pulling = false;
+  /** Pause or resume pressed on the watch; the session's own methods, set once they exist. */
+  let followWatch: (state: 'paused' | 'running') => void = () => {};
+  const watch = deps.watch
+    ? createWatchRecording(deps.watch, {
+        onChange: () => {
+          if (status === 'idle') return;
+          measure();
+          emit();
+        },
+        onRemote: (state) => followWatch(state),
+      })
+    : null;
 
   let snapshot = IDLE_SNAPSHOT;
   let liveSplits: { finished: number; list: Split[] } = { finished: 0, list: [] };
@@ -360,6 +396,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
           : IDLE_SNAPSHOT.recent,
       splits: status === 'idle' ? IDLE_SNAPSHOT.splits : finishedSplits(),
       elevationGain: status === 'idle' ? null : climbSoFar(),
+      watch: status === 'idle' ? null : (watch?.live() ?? null),
     };
     // A paused run stays awake too: it is about to be resumed or reviewed. Only a change is passed on,
     // not every position update.
@@ -435,6 +472,18 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     spokenHalves = 0;
     pending = [];
     released = 0;
+    watch?.reset();
+  }
+
+  /** GPS distance stretched to the watch's, while the watch streams steadily and agrees (see watchDistanceScale). */
+  function watchScale(gpsDistance: number, movingMs: number): number {
+    if (!watch) return 1;
+    const samples = watch.samples();
+    return watchDistanceScale(
+      gpsDistance,
+      watchDistanceOf(samples),
+      watchCoverage(samples, movingMs)
+    );
   }
 
   const merging = () => deps.liveBackground === true && !backgroundOff;
@@ -503,9 +552,10 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       : tracking.getDistance();
     const stepping =
       status === 'tracking' && options !== null && MOTION_PAUSE_SPORTS.has(options.activityType);
-    const live = stepping ? tracked + tracking.getInterpolatedStepDistance() : tracked;
-    distance = status === 'idle' ? live : Math.max(distance, live);
+    const gps = stepping ? tracked + tracking.getInterpolatedStepDistance() : tracked;
     duration = tracking.getDuration();
+    const live = gps * watchScale(gps, duration);
+    distance = status === 'idle' ? live : Math.max(distance, live);
   }
 
   /** Adds locations the tracker accepted since the last check to the route, polygon and start marker. */
@@ -665,7 +715,50 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
     absorbNewLocations();
   }
 
-  return {
+  function expireStaleWatch(): void {
+    watch?.checkStale(Date.now());
+  }
+
+  /** Starts the watch's workout when the athlete asked for it and the sport is one the watch records. */
+  function connectWatch(): void {
+    if (!watch || !options?.useWatch) return;
+    const sport = watchSportOf(options.activityType);
+    if (sport) watch.connect(sport);
+  }
+
+  /** The watch's heart rate, cadence, power and calories for the summary; the phone's cadence when it had none. */
+  function watchSummary(
+    stream: ActivityStream | undefined,
+    startedAt: number | undefined,
+    scale: number
+  ) {
+    const samples = watch?.samples() ?? [];
+    if (samples.length === 0 || startedAt === undefined) {
+      return { stream: withCadence(stream, stepSamples) };
+    }
+    const hr = heartRateOf(samples, startedAt);
+    const cadence = cadenceOf(samples, startedAt);
+    const power = powerOf(samples, startedAt);
+    const scaled = stream && {
+      ...stream,
+      ...(stream.d && scale !== 1 ? { d: stream.d.map((m) => m * scale) } : {}),
+    };
+    const withWatch = scaled && {
+      ...scaled,
+      ...(hr ? { heartRate: hr.series } : {}),
+      ...(power ? { power: power.series } : {}),
+    };
+    return {
+      stream:
+        cadence && withWatch ? { ...withWatch, cadence } : withCadence(withWatch, stepSamples),
+      ...(hr ? { heartRate: hr.summary } : {}),
+      ...(power ? { avgPower: power.avg } : {}),
+      caloriesBurned: caloriesOf(samples),
+      recordedWithWatch: true,
+    };
+  }
+
+  const session: TrackingSession = {
     getSnapshot: () => snapshot,
 
     subscribe(listener) {
@@ -715,6 +808,8 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         }
       }
       if (status === 'tracking') startBackground();
+      // The watch workout keeps going while the app is closed: listen to it again.
+      if (options.useWatch && watch && watchSportOf(activityType)) watch.reattach();
 
       measure();
       applyMotion();
@@ -754,6 +849,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         }
 
         startBackground();
+        connectWatch();
         applyMotion();
         measure();
         emit();
@@ -800,6 +896,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         );
       status = 'paused';
       autoPaused = false;
+      watch?.pause();
       applyMotion();
       measure();
       emit();
@@ -826,6 +923,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         };
       }
       startBackground();
+      watch?.resume();
       applyMotion();
       measure();
       emit();
@@ -837,6 +935,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       if (status === 'idle') return { ok: false, error: 'No activity in progress.' };
 
       stopWatching();
+      await watch?.end();
       await background.stop();
       await drainBackground();
       deps.recordRejections?.(tracking.getRejections());
@@ -848,7 +947,13 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         : tracking.generatePolyline();
       // The headline distance is measured along the smoothed track, so the splits and efforts are cut from
       // that same track: on raw fixes GPS jitter made them add up to far more than the distance shown.
-      const cleaned = smoothLocations(locations);
+      // With a watch that streamed throughout, distances follow the watch: the track is stretched to match.
+      const scale = watchScale(
+        options?.useGyroscope ? tracking.getInterpolatedDistance() : tracking.getDistance(),
+        duration
+      );
+      const cleaned = scaleTrack(smoothLocations(locations), scale);
+      const fromWatch = watchSummary(computeStream(locations), locations[0]?.timestamp, scale);
       const summaryTerritory = territory.getEnclosedPolygon(locations);
       const summary: SessionSummary = {
         startedAt: locations[0]?.timestamp,
@@ -859,7 +964,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         territory: summaryTerritory,
         territoryArea: summaryTerritory ? territory.getPolygonArea(summaryTerritory) : 0,
         splits: computeSplits(cleaned, options?.splitMeters ?? 1000),
-        stream: withCadence(computeStream(locations), stepSamples),
+        ...fromWatch,
         ...climbOf(locations),
         laps: lapsFromMarks(lapMarks, { distance, duration }),
         bestEfforts:
@@ -956,6 +1061,7 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
         });
       }
       if (status === 'tracking') tracking.checkSignalLoss();
+      expireStaleWatch();
       syncStatusFromTracker();
       if (status === 'tracking' && options?.useGyroscope) {
         const stepPoint = tracking.generateInterpolatedPoint();
@@ -998,6 +1104,14 @@ export function createTrackingSession(deps: TrackingSessionDeps): TrackingSessio
       applyMotion();
     },
   };
+
+  // Pause or resume pressed on the watch: the phone follows, as if pressed here.
+  followWatch = (state) => {
+    if (state === 'paused' && status === 'tracking') void session.pause();
+    if (state === 'running' && status === 'paused') void session.resume();
+  };
+
+  return session;
 }
 
 /** The app-wide session, built on first use from the installed platform. */
@@ -1016,5 +1130,6 @@ export const trackingSession: TrackingSession = lazyService((platform) =>
     liveBackground: true,
     recordRejections: (counts) => getTimeToIndexed().log.record('record.rejections', { counts }),
     trace: trackingTrace,
+    watch: platform.watch,
   })
 );

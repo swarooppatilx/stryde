@@ -123,6 +123,10 @@ export interface PostRunInput {
   heartRate?: { avg: number; max: number };
   /** Energy the device measured, which the app prefers over its own estimate. */
   caloriesBurned?: number;
+  /** Average power (watts) a watch measured. */
+  avgPower?: number;
+  /** Recorded with an Apple Watch streaming live. */
+  recordedWithWatch?: boolean;
   territory: Ring | null;
   territoryArea: number;
   photos: string[];
@@ -313,6 +317,8 @@ export async function savePostRun(input: PostRunInput, deps: PostRunDeps): Promi
     elevationLoss: input.elevationLoss,
     heartRate: input.heartRate,
     caloriesBurned: input.caloriesBurned,
+    avgPower: input.avgPower,
+    recordedWithWatch: input.recordedWithWatch || undefined,
     hideRouteEnds: input.hideRouteEnds ?? false,
     hideRoute: input.hideRoute || undefined,
     mutedFromFeeds: input.mutedFromFeeds || undefined,

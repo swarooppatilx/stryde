@@ -26,6 +26,12 @@ export function recordedRunParams(
     ...(summary.elevationLoss === undefined
       ? {}
       : { elevationLoss: String(summary.elevationLoss) }),
+    ...(summary.heartRate ? { heartRate: JSON.stringify(summary.heartRate) } : {}),
+    ...(summary.caloriesBurned === undefined
+      ? {}
+      : { caloriesBurned: String(summary.caloriesBurned) }),
+    ...(summary.avgPower === undefined ? {} : { avgPower: String(summary.avgPower) }),
+    ...(summary.recordedWithWatch ? { watch: '1' } : {}),
     activityType,
     ...(summary.territory ? { territory: JSON.stringify(summary.territory) } : {}),
   };

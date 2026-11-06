@@ -24,6 +24,12 @@ export type SaveActivityParams = {
   elevationLoss?: string;
   bestEfforts?: string;
   laps?: string;
+  /** From the watch, when one recorded alongside: `{avg,max}` JSON, kcal and watts. */
+  heartRate?: string;
+  caloriesBurned?: string;
+  avgPower?: string;
+  /** '1' when an Apple Watch streamed during the recording. */
+  watch?: string;
   activityType?: ActivityType;
   photos?: string;
 };
@@ -67,6 +73,16 @@ export function useSaveActivityParams() {
     [params.laps]
   );
 
+  const heartRate = useMemo(
+    () =>
+      parseJsonParam<{ avg: number; max: number } | undefined>(
+        params.heartRate,
+        'heart rate',
+        undefined
+      ),
+    [params.heartRate]
+  );
+
   const isFromTracking = params.recorded === '1' || !!params.polyline;
   return {
     runId,
@@ -84,6 +100,10 @@ export function useSaveActivityParams() {
     laps,
     elevationGain: optionalNumber(params.elevationGain),
     elevationLoss: optionalNumber(params.elevationLoss),
+    heartRate: isFromTracking ? heartRate : undefined,
+    caloriesBurned: isFromTracking ? optionalNumber(params.caloriesBurned) : undefined,
+    avgPower: isFromTracking ? optionalNumber(params.avgPower) : undefined,
+    recordedWithWatch: isFromTracking && params.watch === '1' ? true : undefined,
     mocked: isFromTracking && params.mocked === '1',
     noTerritory: isFromTracking && params.noTerritory === '1',
     startedAt: isFromTracking ? optionalNumber(params.startedAt) : undefined,
