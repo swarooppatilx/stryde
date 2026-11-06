@@ -87,6 +87,16 @@ export default function SettingsListScreen() {
           onPress={() => router.push('/profile-edit')}
         />
         <SettingsRow
+          icon="shield-checkmark-outline"
+          title={isVerified ? 'World ID Athlete Pass' : 'Verify with World ID'}
+          subtitle={
+            isVerified
+              ? 'Verified via World ID Selfie Check'
+              : 'Get your Athlete Pass with a World ID Selfie Check'
+          }
+          onPress={() => router.push('/verify')}
+        />
+        <SettingsRow
           icon="body-outline"
           title="Body and heart rate"
           subtitle={latestWeight === null ? 'No weight saved' : `${latestWeight} kg`}

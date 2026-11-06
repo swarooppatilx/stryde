@@ -7,12 +7,13 @@ describe('devToolsConfig', () => {
     expect(devToolsConfig('')).toEqual({ enabled: true, defaultProfile: 'live' });
   });
 
-  it('opens on the sandbox when the flag says so', () => {
+  it('opens on the sandbox or local profile when the flag says so', () => {
     expect(devToolsConfig('sandbox')).toEqual({ enabled: true, defaultProfile: 'sandbox' });
+    expect(devToolsConfig('local')).toEqual({ enabled: true, defaultProfile: 'local' });
   });
 
   it('ignores any other value for the profile', () => {
     expect(devToolsConfig('1')).toEqual({ enabled: true, defaultProfile: 'live' });
-    expect(devToolsConfig('local')).toEqual({ enabled: true, defaultProfile: 'live' });
+    expect(devToolsConfig('unknown')).toEqual({ enabled: true, defaultProfile: 'live' });
   });
 });

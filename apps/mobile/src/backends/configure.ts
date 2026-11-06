@@ -1,5 +1,5 @@
-import { services, setChainMode, setIpfsConfig } from '@repo/shared';
-import { ENV, getChainMode, getCurrentUserId } from '@/constants/config';
+import { services, setChainMode, setIpfsConfig, setLocalRpcUrl } from '@repo/shared';
+import { ENV, getChainMode, getCurrentUserId, getLocalRpcUrl } from '@/constants/config';
 import { DEV_TOOLS } from '@/constants/devTools';
 import { startRelayQueue } from '@/services/relayQueue';
 import { getActiveProfileId } from './activeProfile';
@@ -22,6 +22,9 @@ let configured = false;
 export function configureBackends(): void {
   if (configured) return;
   configured = true;
+  if (getChainMode() === 'local') {
+    setLocalRpcUrl(getLocalRpcUrl());
+  }
   setChainMode(getChainMode());
   // A profile with no chain makes every chain and subgraph call fail at once instead of timing out.
   services.client.setChainOffline(PROFILES[getActiveProfileId()].fakeChain);

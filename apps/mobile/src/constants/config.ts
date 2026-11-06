@@ -3,7 +3,21 @@ import { Platform } from 'react-native';
 import { activeChainMode } from '@/backends/activeProfile';
 import type { WorldIdEnvironment } from '@/types/worldId';
 
-export const ENV = {
+export const ENV: {
+  readonly APP_NAME: string;
+  readonly APP_ENV: string;
+  readonly PRIVY_APP_ID: string;
+  readonly PRIVY_CLIENT_ID: string;
+  readonly SUBGRAPH_URL: string;
+  API_URL: string;
+  readonly API_KEY: string;
+  readonly CHAIN_MODE: ChainMode;
+  readonly USE_SMART_WALLET: boolean;
+  readonly WORLD_APP_ID: string;
+  readonly WORLD_RP_ID: string;
+  readonly WORLD_ENVIRONMENT: WorldIdEnvironment;
+  readonly MAPBOX_ACCESS_TOKEN: string;
+} = {
   APP_NAME: process.env.EXPO_PUBLIC_APP_NAME || 'Stryde',
   APP_ENV: process.env.EXPO_PUBLIC_APP_ENV || 'development',
   PRIVY_APP_ID: process.env.EXPO_PUBLIC_PRIVY_APP_ID || '',
@@ -19,10 +33,20 @@ export const ENV = {
   WORLD_ENVIRONMENT: (process.env.EXPO_PUBLIC_WORLD_ENVIRONMENT || 'sandbox') as WorldIdEnvironment,
   // Public (pk.) token for the Mapbox maps SDK; without it the map shows its offline fallback.
   MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '',
-} as const;
+};
+
+let resolvedLocalRpcUrl: string | null = null;
+
+export function setDevHost(host: string): void {
+  ENV.API_URL = `http://${host}:3000`;
+  resolvedLocalRpcUrl = `http://${host}:8545`;
+}
 
 export function getLocalRpcUrl(): string {
-  if (Platform.OS === 'android') return process.env.EXPO_PUBLIC_RPC_URL || 'http://10.0.0.2:8545';
+  if (resolvedLocalRpcUrl) return resolvedLocalRpcUrl;
+  const configured = process.env.EXPO_PUBLIC_RPC_URL;
+  if (configured && !configured.includes('sepolia')) return configured;
+  if (Platform.OS === 'android') return 'http://10.0.2.2:8545';
   return 'http://127.0.0.1:8545';
 }
 

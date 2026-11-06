@@ -43,6 +43,15 @@ echo "$OUTPUT"
 PROFILE_ADDRESS=$(echo "$OUTPUT" | grep -oE 'ProfileRegistry deployed at: 0x[a-fA-F0-9]{40}' | grep -oE '0x[a-fA-F0-9]{40}')
 CONTRACT_ADDRESSES+=("profileRegistry=$PROFILE_ADDRESS")
 
+# Seed the pre-configured developer personas (Dhanya = slot 1, Aadhira = slot 2)
+# so their wallets exist on ProfileRegistry for on-chain actions and World ID verify().
+cast send "$PROFILE_ADDRESS" "register(string)" "dhanya_runs" \
+  --rpc-url "$ANVIL_RPC" \
+  --private-key "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" >/dev/null 2>&1 || true
+cast send "$PROFILE_ADDRESS" "register(string)" "aadhira_rides" \
+  --rpc-url "$ANVIL_RPC" \
+  --private-key "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6" >/dev/null 2>&1 || true
+
 echo ""
 echo "--- ActivityRegistry ---"
 OUTPUT=$(forge script script/DeployActivityRegistry.s.sol \

@@ -11,7 +11,14 @@
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.stryde.app",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["instagram-stories", "instagram"],
+        "LSApplicationQueriesSchemes": [
+          "instagram-stories",
+          "instagram",
+          "worldapp",
+          "worldappsandbox",
+          "worldid",
+          "worldidsandbox"
+        ],
         "NSHealthShareUsageDescription": "Stryde reads heart rate, distance, cadence, power and calories from your Apple Watch while you record.",
         "NSHealthUpdateUsageDescription": "Stryde saves the workouts you record with your Apple Watch to Apple Health.",
         "UIBackgroundModes": ["location", "workout-processing"]
