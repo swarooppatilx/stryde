@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   chunkWaypoints,
+  directionsFailure,
   directionsUrl,
   fetchSnappedLine,
+  fetchSnappedRoute,
   parseDirections,
   profileFor,
 } from '@/services/directions';
@@ -128,5 +130,32 @@ describe('fetchSnappedLine', () => {
         fetchImpl: failing as unknown as typeof fetch,
       })
     ).toBeNull();
+  });
+});
+
+describe('failure reasons', () => {
+  it('reads Mapbox error codes', () => {
+    expect(directionsFailure({ code: 'Ok' })).toBeNull();
+    expect(directionsFailure({ code: 'NoSegment' }, 422)).toBe('unreachable-point');
+    expect(directionsFailure({ code: 'NoRoute' })).toBe('no-route');
+    expect(
+      directionsFailure(
+        { code: 'InvalidInput', message: 'Route exceeds maximum distance limitation' },
+        422
+      )
+    ).toBe('too-far');
+  });
+
+  it('reports no connection as offline', async () => {
+    const failing = vi.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const result = await fetchSnappedRoute(
+      [
+        [0, 0],
+        [1, 1],
+      ],
+      'walking',
+      { token: 'pk.x', fetchImpl: failing as unknown as typeof fetch }
+    );
+    expect(result).toEqual({ ok: false, reason: 'offline' });
   });
 });

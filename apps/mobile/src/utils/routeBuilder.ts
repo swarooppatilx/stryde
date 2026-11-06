@@ -61,3 +61,13 @@ export function moveWaypoint(
   if (index < 0 || index >= points.length) return [...points];
   return points.map((p, i) => (i === index ? point : p));
 }
+
+/** Drops one waypoint; the route closes the gap between its neighbours. */
+export function removeWaypoint(points: readonly RoutePoint[], index: number): RoutePoint[] {
+  return points.filter((_, i) => i !== index);
+}
+
+/** Makes this waypoint the finish, dropping every point after it. */
+export function endAt(points: readonly RoutePoint[], index: number): RoutePoint[] {
+  return index < 0 ? [...points] : points.slice(0, index + 1);
+}

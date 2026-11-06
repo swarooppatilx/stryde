@@ -96,6 +96,8 @@ export interface MapRouteProps {
   onMapPress?: (lngLat: [number, number]) => void;
   /** A draggable marker was dropped at [lng, lat]. */
   onMarkerDragEnd?: (id: string, lngLat: [number, number]) => void;
+  /** A draggable marker was tapped. */
+  onMarkerPress?: (id: string) => void;
   /** A tap on a labelled place of the base map (café, toilets, viewpoint…); takes the tap from `onMapPress`. */
   onPoiPress?: (poi: MapPoi) => void;
   /** A long press, at [lng, lat]. */
@@ -292,6 +294,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   onMapPress,
   onPoiPress,
   onMarkerDragEnd,
+  onMarkerPress,
   onMapLongPress,
   initialCenter = [73.851074, 18.524209],
   initialZoom = 15,
@@ -324,6 +327,9 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
 }: MapRouteProps) {
   const nativeCameraRef = useRef<CameraRef>(null);
   const mapViewRef = useRef<MapView>(null);
+  // A tapped annotation stays "selected" natively and would not report a second tap: rebuild
+  // the annotations after each one.
+  const [markerTaps, setMarkerTaps] = useState(0);
   useImperativeHandle(cameraRef, () => createMapCamera(nativeCameraRef), []);
 
   // A live route grows by one point per fix; only a longer line or a new last point is new geometry.
@@ -775,11 +781,15 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
         marker.draggable ? (
           <PointAnnotation
             // Android draws an annotation's view once, as a picture: a new look needs a new annotation.
-            key={`${marker.id}-${marker.icon ?? ''}-${marker.color}`}
+            key={`${marker.id}-${marker.icon ?? ''}-${marker.color}-${markerTaps}`}
             id={marker.id}
             coordinate={[marker.coordinate[0], marker.coordinate[1]]}
             anchor={{ x: 0.5, y: 0.5 }}
             draggable
+            onSelected={() => {
+              setMarkerTaps((n) => n + 1);
+              onMarkerPress?.(marker.id);
+            }}
             onDragEnd={(feature) => {
               const [lng, lat] = feature.geometry.coordinates;
               onMarkerDragEnd?.(marker.id, [lng as number, lat as number]);

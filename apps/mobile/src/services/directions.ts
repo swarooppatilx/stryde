@@ -61,16 +61,31 @@ export interface DirectionsOptions {
   signal?: AbortSignal;
 }
 
+/** Why the paths could not be followed, in terms the builder can explain. */
+export type SnapFailure = 'unreachable-point' | 'no-route' | 'too-far' | 'offline' | 'unknown';
+
+export type SnapResult = { ok: true; line: SnappedLine } | { ok: false; reason: SnapFailure };
+
+/** Reads Mapbox's error code (and message) into a reason; null when the response is a success. */
+export function directionsFailure(json: unknown, httpStatus = 200): SnapFailure | null {
+  const body = (json ?? {}) as { code?: string; message?: string };
+  if (httpStatus < 400 && body.code === 'Ok') return null;
+  if (body.code === 'NoSegment') return 'unreachable-point';
+  if (body.code === 'NoRoute') return 'no-route';
+  if (/distance|too (long|far)/i.test(body.message ?? '')) return 'too-far';
+  return 'unknown';
+}
+
 /**
  * The path a runner or rider would take through the waypoints, following footpaths, trails or
- * roads. Null when any piece cannot be routed (no token, offline, or no path between two points).
+ * roads, or the reason there is none.
  */
-export async function fetchSnappedLine(
+export async function fetchSnappedRoute(
   points: readonly RoutePoint[],
   profile: DirectionsProfile,
   { token, fetchImpl = fetch, signal }: DirectionsOptions
-): Promise<SnappedLine | null> {
-  if (!token || points.length < 2) return null;
+): Promise<SnapResult> {
+  if (!token || points.length < 2) return { ok: false, reason: 'unknown' };
   const pieces: SnappedLine[] = [];
   for (const chunk of chunkWaypoints(points)) {
     const controller = new AbortController();
@@ -78,12 +93,18 @@ export async function fetchSnappedLine(
     signal?.addEventListener('abort', abort);
     const timer = setTimeout(abort, TIMEOUT_MS);
     try {
-      const response = await fetchImpl(directionsUrl(chunk, profile, token), {
-        signal: controller.signal,
-      });
-      if (!response.ok) return null;
-      const piece = parseDirections(await response.json());
-      if (!piece) return null;
+      let response: Response;
+      try {
+        response = await fetchImpl(directionsUrl(chunk, profile, token), {
+          signal: controller.signal,
+        });
+      } catch {
+        return { ok: false, reason: 'offline' };
+      }
+      const json = await response.json().catch(() => null);
+      const failure = directionsFailure(json, response.status);
+      const piece = failure ? null : parseDirections(json);
+      if (!piece) return { ok: false, reason: failure ?? 'unknown' };
       pieces.push(piece);
     } finally {
       clearTimeout(timer);
@@ -91,8 +112,21 @@ export async function fetchSnappedLine(
     }
   }
   return {
-    // Each piece starts where the last ended: drop the repeated joint.
-    coordinates: pieces.flatMap((p, i) => (i === 0 ? p.coordinates : p.coordinates.slice(1))),
-    distance: pieces.reduce((sum, p) => sum + p.distance, 0),
+    ok: true,
+    line: {
+      // Each piece starts where the last ended: drop the repeated joint.
+      coordinates: pieces.flatMap((p, i) => (i === 0 ? p.coordinates : p.coordinates.slice(1))),
+      distance: pieces.reduce((sum, p) => sum + p.distance, 0),
+    },
   };
+}
+
+/** The snapped line, or null when it could not be routed. */
+export async function fetchSnappedLine(
+  points: readonly RoutePoint[],
+  profile: DirectionsProfile,
+  options: DirectionsOptions
+): Promise<SnappedLine | null> {
+  const result = await fetchSnappedRoute(points, profile, options);
+  return result.ok ? result.line : null;
 }

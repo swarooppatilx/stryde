@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ENV } from '@/constants/config';
-import { type DirectionsProfile, fetchSnappedLine } from '@/services/directions';
+import { type DirectionsProfile, fetchSnappedRoute, type SnapFailure } from '@/services/directions';
 import type { RoutePoint } from '@/utils/route';
 import { waypointsDistance } from '@/utils/routeBuilder';
 
@@ -11,6 +11,8 @@ export interface SnappedRoute {
   line: RoutePoint[];
   distance: number;
   status: SnapStatus;
+  /** Why the paths could not be followed, when `status` is 'failed'. */
+  failure?: SnapFailure;
 }
 
 const DEBOUNCE_MS = 350;
@@ -31,7 +33,7 @@ export function useSnappedRoute(
     line: RoutePoint[];
     distance: number;
   } | null>(null);
-  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ key: string; reason: SnapFailure } | null>(null);
   const wanted = snap && points.length >= 2 && !!ENV.MAPBOX_ACCESS_TOKEN;
 
   useEffect(() => {
@@ -43,22 +45,22 @@ export function useSnappedRoute(
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetchSnappedLine(points, profile, {
+      fetchSnappedRoute(points, profile, {
         token: ENV.MAPBOX_ACCESS_TOKEN,
         signal: controller.signal,
       })
-        .then((snapped) => {
+        .then((result) => {
           if (controller.signal.aborted) return;
-          if (!snapped) {
-            setFailedKey(key);
+          if (!result.ok) {
+            setFailed({ key, reason: result.reason });
             return;
           }
-          const routed = { line: snapped.coordinates, distance: snapped.distance };
+          const routed = { line: result.line.coordinates, distance: result.line.distance };
           cache.current.set(key, routed);
           setResult({ key, ...routed });
         })
         .catch(() => {
-          if (!controller.signal.aborted) setFailedKey(key);
+          if (!controller.signal.aborted) setFailed({ key, reason: 'unknown' });
         });
     }, DEBOUNCE_MS);
     return () => {
@@ -73,7 +75,7 @@ export function useSnappedRoute(
   if (!wanted) return { ...straight, status: 'straight' };
   if (result?.key === key)
     return { line: result.line, distance: result.distance, status: 'snapped' };
-  if (failedKey === key) return { ...straight, status: 'failed' };
+  if (failed?.key === key) return { ...straight, status: 'failed', failure: failed.reason };
   return result
     ? { line: result.line, distance: result.distance, status: 'loading' }
     : { ...straight, status: 'loading' };

@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActionSheet, type SheetAction } from '@/components/action-sheet';
 import { AppButton } from '@/components/button';
 import { ChipRow } from '@/components/filter-chips';
 import { type MapMarker, MapRoute } from '@/components/map-route';
@@ -20,11 +21,13 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { useRouteElevation } from '@/hooks/useRouteElevation';
 import { useSnappedRoute } from '@/hooks/useSnappedRoute';
 import { getPlatform } from '@/platform';
-import { profileFor } from '@/services/directions';
+import { profileFor, type SnapFailure } from '@/services/directions';
 import { generateLoops, headingWords, type LoopSuggestion } from '@/services/loopGenerator';
+import { placeAt } from '@/services/placeSearch';
 import { resolveMapStyle, useMapPrefsStore } from '@/stores/mapPrefsStore';
 import { useRouteStore } from '@/stores/routeStore';
 import type { ActivityType } from '@/types';
+import { Alert } from '@/utils/alert';
 import { formatDistance, formatElevation, toPolyline } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { LOOP_DISTANCES } from '@/utils/loopRoutes';
@@ -32,8 +35,10 @@ import type { RoutePoint } from '@/utils/route';
 import {
   addWaypoint,
   clearWaypoints,
+  endAt,
   moveWaypoint,
   outAndBack,
+  removeWaypoint,
   reverseWaypoints,
   sampleAlong,
   undoWaypoint,
@@ -66,6 +71,23 @@ const SAMPLE_STEP_M = 100;
 const ELEVATION_DELAY_MS = 700;
 /** A flat route's profile spans at least this many metres, so a kerb is not drawn as a hill. */
 const ELEVATION_MIN_RANGE_M = 30;
+
+/** What to tell the athlete when the line could not follow the paths. */
+const SNAP_FAILURE_TEXT: Record<SnapFailure, string> = {
+  'unreachable-point': 'A point is too far from any path; showing straight lines',
+  'no-route': "There's no path between these points; showing straight lines",
+  'too-far': 'These points are too far apart to route; showing straight lines',
+  offline: "You're offline, so the route can't follow paths yet",
+  unknown: "Couldn't follow the paths here; showing straight lines",
+};
+
+/** Default route names read "<place> run", "<place> ride". */
+const SPORT_NOUN: Partial<Record<ActivityType, string>> = {
+  run: 'run',
+  ride: 'ride',
+  walk: 'walk',
+  hike: 'hike',
+};
 
 /** The loop presets to offer for a sport; anything else gets the running ones. */
 function loopSportOf(sport: ActivityType): keyof typeof LOOP_DISTANCES {
@@ -153,7 +175,7 @@ export default function RouteBuilderScreen() {
   const [warnedFailure, setWarnedFailure] = useState(false);
   if (snapped.status === 'failed' && !warnedFailure) {
     setWarnedFailure(true);
-    Toast.info("Couldn't follow the paths here; showing straight lines", 2);
+    Toast.info(SNAP_FAILURE_TEXT[snapped.failure ?? 'unknown'], 3);
   } else if (snapped.status === 'snapped' && warnedFailure) {
     setWarnedFailure(false);
   }
@@ -213,9 +235,84 @@ export default function RouteBuilderScreen() {
     setPoints(loop.waypoints);
   };
 
+  // Tapping a point offers to move, end at or remove it; "move" takes the next tap on the map.
+  const [pointMenu, setPointMenu] = useState<number | null>(null);
+  const [movingIndex, setMovingIndex] = useState<number | null>(null);
+  const handleMapTap = (point: RoutePoint) => {
+    if (movingIndex !== null) {
+      haptics.selection();
+      setPoints((current) => moveWaypoint(current, movingIndex, point));
+      setMovingIndex(null);
+      return;
+    }
+    addPoint(point);
+  };
+  const pointActions = ((): SheetAction[] => {
+    if (pointMenu === null) return [];
+    const index = pointMenu;
+    const actions: SheetAction[] = [
+      { label: 'Move this point', icon: 'move-outline', onPress: () => setMovingIndex(index) },
+    ];
+    if (index > 0 && index < points.length - 1) {
+      actions.push({
+        label: 'End the route here',
+        icon: 'flag-outline',
+        onPress: () => setPoints((c) => endAt(c, index)),
+      });
+    }
+    actions.push({
+      label: 'Remove this point',
+      icon: 'trash-outline',
+      destructive: true,
+      onPress: () => setPoints((c) => removeWaypoint(c, index)),
+    });
+    return actions;
+  })();
+
+  const confirmClear = () =>
+    Alert.alert('Clear this route?', 'Every point you added will be removed.', [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: () => setPoints(clearWaypoints()) },
+    ]);
+  const confirmLeave = () => {
+    if (points.length === 0) {
+      goBack();
+      return;
+    }
+    Alert.alert('Leave without saving?', 'This route has not been saved yet.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Leave', style: 'destructive', onPress: goBack },
+    ]);
+  };
+  // A new sport re-routes the line along different paths; check before reshaping it.
+  const changeSport = (next: ActivityType) => {
+    if (next === sport) return;
+    if (!snap || points.length < 2 || profileFor(next) === profileFor(sport)) {
+      setSport(next);
+      return;
+    }
+    Alert.alert('Change the sport?', 'The route will be redrawn along paths for the new sport.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Change', onPress: () => setSport(next) },
+    ]);
+  };
+
   const startSave = () => {
     setName(`Route of ${formatDistance(distance, unitSystem)}`);
     setSaving(true);
+    // A friendlier default once the start's place name is known: "Shaniwar Peth run".
+    const start = points[0];
+    if (start) {
+      void placeAt(getPlatform().geocoder, start[1], start[0]).then((place) => {
+        if (!/^-?\d/.test(place.name)) {
+          setName((current) =>
+            current.startsWith('Route of ')
+              ? `${place.name} ${SPORT_NOUN[sport] ?? 'route'}`
+              : current
+          );
+        }
+      });
+    }
   };
   const confirmSave = () => {
     const saved = save({
@@ -238,6 +335,7 @@ export default function RouteBuilderScreen() {
   })();
 
   const hint = (() => {
+    if (movingIndex !== null) return 'Tap the map where this point should go.';
     if (points.length === 0) return 'Tap the map to set your start.';
     if (points.length === 1) return 'Tap again to add the next point. Drag a point to move it.';
     return snap
@@ -365,7 +463,7 @@ export default function RouteBuilderScreen() {
             size="small"
             fullWidth={false}
             disabled={points.length === 0}
-            onPress={() => setPoints(clearWaypoints())}
+            onPress={confirmClear}
           >
             Clear
           </AppButton>
@@ -386,8 +484,12 @@ export default function RouteBuilderScreen() {
           initialCenter={center}
           initialZoom={15}
           showUserLocation={false}
-          onMapPress={addPoint}
-          onMapLongPress={addPoint}
+          onMapPress={handleMapTap}
+          onMapLongPress={handleMapTap}
+          onMarkerPress={(id) => {
+            const index = Number(id.replace('point-', ''));
+            if (Number.isInteger(index)) setPointMenu(index);
+          }}
           onMarkerDragEnd={(id, point) => {
             const index = Number(id.replace('point-', ''));
             if (Number.isInteger(index))
@@ -400,7 +502,7 @@ export default function RouteBuilderScreen() {
       )}
       <View style={[styles.top, { top: insets.top + MapChrome.edge }]}>
         <Tappable
-          onPress={goBack}
+          onPress={confirmLeave}
           style={[styles.round, theme.shadows.raised, { backgroundColor: theme.backgroundElement }]}
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -442,7 +544,12 @@ export default function RouteBuilderScreen() {
           },
         ]}
       >
-        <ChipRow options={SPORTS} value={sport} onChange={setSport} contentStyle={styles.chips} />
+        <ChipRow
+          options={SPORTS}
+          value={sport}
+          onChange={changeSport}
+          contentStyle={styles.chips}
+        />
         <View style={styles.statsRow}>
           <View style={styles.stat}>
             <ThemedText type="sectionTitle">{formatDistance(distance, unitSystem)}</ThemedText>
@@ -486,6 +593,12 @@ export default function RouteBuilderScreen() {
 
         {panelBody()}
       </View>
+      <ActionSheet
+        visible={pointMenu !== null}
+        title={pointMenu === 0 ? 'Start point' : 'Route point'}
+        actions={pointActions}
+        onClose={() => setPointMenu(null)}
+      />
     </ThemedView>
   );
 }
