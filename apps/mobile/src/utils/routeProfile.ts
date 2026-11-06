@@ -1,4 +1,4 @@
-import { climbAndDescent } from '@/utils/elevation';
+import { climbAndDescent } from '@/services/elevationService';
 import type { RoutePoint } from '@/utils/route';
 import { waypointsDistance } from '@/utils/routeBuilder';
 
@@ -26,6 +26,12 @@ export function routeProfile(
     elevations.length === line.length
       ? line.map((_, i) => waypointsDistance(line.slice(0, i + 1)))
       : elevations.map((_, i) => (i / (elevations.length - 1)) * total);
-  const { gain, loss } = climbAndDescent(elevations, { resetOnJump: false });
-  return { values: [...elevations], times, total, gain: Math.round(gain), loss: Math.round(loss) };
+  const { ascent, descent } = climbAndDescent(elevations);
+  return {
+    values: [...elevations],
+    times,
+    total,
+    gain: Math.round(ascent),
+    loss: Math.round(descent),
+  };
 }

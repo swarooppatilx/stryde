@@ -18,7 +18,7 @@ describe('versusAverage', () => {
   it('gives a ride the difference in speed', () => {
     expect(versusAverage('ride', { distance: 1000, duration: 150_000 }, average, 'metric')).toEqual(
       {
-        text: '+12.0 km/h',
+        text: '+12 km/h',
         faster: true,
       }
     );

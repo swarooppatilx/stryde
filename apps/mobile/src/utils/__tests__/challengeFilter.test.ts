@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CHALLENGE_STATUS_LABEL,
   type ChallengeFilter,
+  challengeActions,
   challengeStatusColor,
   challengeTimeLeft,
   matchesChallengeFilter,
   orderChallenges,
+  SETTLE_WINDOW_SECONDS,
 } from '@/utils/challengeFilter';
 
 const ME = '0xAAA0000000000000000000000000000000000001';
@@ -120,5 +122,81 @@ describe('challengeTimeLeft', () => {
     expect(challengeTimeLeft(at(3), 2, now)).toBeNull();
     expect(challengeTimeLeft(at(3), 3, now)).toBeNull();
     expect(challengeTimeLeft(0, 1, now)).toBeNull();
+  });
+});
+
+// The contract (ChallengeRegistry.sol) decides these: accept before the deadline, settle after it and
+// inside SETTLE_WINDOW, reclaim of an accepted challenge only once that window has closed.
+describe('challengeActions', () => {
+  const DEADLINE = 1_000_000;
+  const base = {
+    deadline: DEADLINE,
+    isChallenger: false,
+    isOpponent: false,
+    isWinner: false,
+    hasWithdrawn: false,
+  };
+  const OPEN = 0;
+  const ACCEPTED = 1;
+  const SETTLED = 2;
+  const CANCELLED = 3;
+  const before = DEADLINE - 10;
+  const insideWindow = DEADLINE + 10;
+  const afterWindow = DEADLINE + SETTLE_WINDOW_SECONDS + 10;
+
+  it('mirrors the contract settle window of seven days', () => {
+    expect(SETTLE_WINDOW_SECONDS).toBe(7 * 24 * 60 * 60);
+  });
+
+  it('lets the invited opponent accept an open challenge before its deadline, not after', () => {
+    const input = { ...base, status: OPEN, isOpponent: true };
+    expect(challengeActions({ ...input, now: before })).toEqual(['accept']);
+    expect(challengeActions({ ...input, now: insideWindow })).toEqual([]);
+  });
+
+  it('lets the challenger cancel an open challenge before its deadline and reclaim after it', () => {
+    const input = { ...base, status: OPEN, isChallenger: true };
+    expect(challengeActions({ ...input, now: before })).toEqual(['cancel']);
+    expect(challengeActions({ ...input, now: insideWindow })).toEqual(['reclaim']);
+    expect(challengeActions({ ...input, now: insideWindow, hasWithdrawn: true })).toEqual([]);
+  });
+
+  it('offers nothing on an accepted challenge before its deadline: settling would revert', () => {
+    const input = { ...base, status: ACCEPTED, isChallenger: true };
+    expect(challengeActions({ ...input, now: before })).toEqual([]);
+  });
+
+  it('offers settle to either side once the deadline has passed, inside the settle window', () => {
+    expect(
+      challengeActions({ ...base, status: ACCEPTED, isChallenger: true, now: insideWindow })
+    ).toEqual(['settle']);
+    expect(
+      challengeActions({ ...base, status: ACCEPTED, isOpponent: true, now: insideWindow })
+    ).toEqual(['settle']);
+  });
+
+  it('offers reclaim only after the settle window closed with nobody settling', () => {
+    const input = { ...base, status: ACCEPTED, isOpponent: true };
+    expect(challengeActions({ ...input, now: afterWindow })).toEqual(['reclaim']);
+    expect(challengeActions({ ...input, now: afterWindow, hasWithdrawn: true })).toEqual([]);
+  });
+
+  it('shows nothing to a bystander on an accepted challenge at any time', () => {
+    for (const now of [before, insideWindow, afterWindow]) {
+      expect(challengeActions({ ...base, status: ACCEPTED, now })).toEqual([]);
+    }
+  });
+
+  it('lets only the winner withdraw a settled challenge, once', () => {
+    const input = { ...base, status: SETTLED, isChallenger: true, now: insideWindow };
+    expect(challengeActions({ ...input, isWinner: true })).toEqual(['withdrawWinnings']);
+    expect(challengeActions({ ...input, isWinner: true, hasWithdrawn: true })).toEqual([]);
+    expect(challengeActions({ ...input, isWinner: false })).toEqual([]);
+  });
+
+  it('offers a cancelled challenge’s stake back to the challenger once', () => {
+    const input = { ...base, status: CANCELLED, isChallenger: true, now: before };
+    expect(challengeActions(input)).toEqual(['reclaim']);
+    expect(challengeActions({ ...input, hasWithdrawn: true })).toEqual([]);
   });
 });

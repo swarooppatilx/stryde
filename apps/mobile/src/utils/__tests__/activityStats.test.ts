@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityStream, ActivityType } from '@/types';
-import { activityStats, sportFamily, sportStatSet } from '@/utils/activityStats';
+import {
+  activityStats,
+  applyHiddenStats,
+  isStatHidden,
+  parseHiddenStats,
+  sportFamily,
+  sportStatSet,
+} from '@/utils/activityStats';
 
 const run = (over: Partial<Parameters<typeof activityStats>[0]> = {}) => ({
   activityType: 'run' as ActivityType,
@@ -224,5 +231,52 @@ describe('max elevation', () => {
     const feet = activityStats(run({ elevationGain: 42, maxElevation: 100 }), 'imperial');
 
     expect(feet.find((s) => s.label === 'Max elevation')?.value).toMatch(/ft/);
+  });
+});
+
+describe('applyHiddenStats', () => {
+  const stats = activityStats(run(), 'metric');
+
+  it('drops pace for other people when the author hid it', () => {
+    expect(labels(applyHiddenStats(stats, ['pace'], false))).toEqual(['Distance', 'Time']);
+  });
+
+  it('drops speed too, since it is the same figure for a ride', () => {
+    const ride = activityStats(run({ activityType: 'ride' }), 'metric');
+    expect(labels(ride)).toContain('Speed');
+    expect(labels(applyHiddenStats(ride, ['pace'], false))).not.toContain('Speed');
+  });
+
+  it('never hides anything from the owner', () => {
+    expect(applyHiddenStats(stats, ['pace'], true)).toEqual(stats);
+  });
+
+  it('leaves the stats alone when nothing is hidden', () => {
+    expect(applyHiddenStats(stats, undefined, false)).toEqual(stats);
+    expect(applyHiddenStats(stats, [], false)).toEqual(stats);
+  });
+
+  it('does not touch the stats when only the start time is hidden', () => {
+    expect(applyHiddenStats(stats, ['start_time'], false)).toEqual(stats);
+  });
+});
+
+describe('isStatHidden', () => {
+  it('is true only for another viewer and a hidden stat', () => {
+    expect(isStatHidden('start_time', ['start_time'], false)).toBe(true);
+    expect(isStatHidden('start_time', ['start_time'], true)).toBe(false);
+    expect(isStatHidden('pace', ['start_time'], false)).toBe(false);
+    expect(isStatHidden('pace', undefined, false)).toBe(false);
+  });
+});
+
+describe('parseHiddenStats', () => {
+  it('keeps the stats the app knows, once each, and gives undefined for none', () => {
+    expect(parseHiddenStats(['pace', 'pace', 'start_time', 'heart_rate'])).toEqual([
+      'pace',
+      'start_time',
+    ]);
+    expect(parseHiddenStats(['heart_rate'])).toBeUndefined();
+    expect(parseHiddenStats(undefined)).toBeUndefined();
   });
 });

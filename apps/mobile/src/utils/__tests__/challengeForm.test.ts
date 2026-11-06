@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { opponentLabel, parseDecimal, validateChallenge } from '@/utils/challengeForm';
+import {
+  opponentLabel,
+  parseDecimal,
+  stakeShortfall,
+  validateChallenge,
+} from '@/utils/challengeForm';
 
 describe('parseDecimal', () => {
   it.each([
@@ -96,5 +101,21 @@ describe('opponentLabel', () => {
   it('shows the short address once when there is no name, or the name is the address', () => {
     expect(opponentLabel('', wallet)).toBe('0x1111…1111');
     expect(opponentLabel('0x1111…1111', wallet)).toBe('0x1111…1111');
+  });
+});
+
+describe('stakeShortfall', () => {
+  it('is null when the wallet covers the stake exactly', () => {
+    expect(stakeShortfall(10n ** 15n, 10n ** 15n)).toBeNull();
+  });
+
+  it('names the stake and the balance when the wallet is short', () => {
+    expect(stakeShortfall(0n, 10n ** 15n)).toBe(
+      'Matching this stake takes 0.001 ETH and your wallet has 0 ETH.'
+    );
+  });
+
+  it('is null while the balance is still loading, so a slow read does not block accepting', () => {
+    expect(stakeShortfall(null, 10n ** 15n)).toBeNull();
   });
 });

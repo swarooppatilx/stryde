@@ -55,10 +55,11 @@ export function versusAverage(
   if (!usable(stretch) || !usable(average)) return null;
 
   if (showsSpeed(activityType)) {
-    const diff = kmhOrMph(stretch, unitSystem) - kmhOrMph(average, unitSystem);
+    const diff =
+      Math.round(kmhOrMph(stretch, unitSystem)) - Math.round(kmhOrMph(average, unitSystem));
     const unit = unitSystem === 'imperial' ? 'mph' : 'km/h';
     return {
-      text: `${diff >= 0 ? '+' : '-'}${Math.abs(diff).toFixed(1)} ${unit}`,
+      text: `${diff >= 0 ? '+' : '-'}${Math.abs(diff)} ${unit}`,
       faster: diff > 0,
     };
   }

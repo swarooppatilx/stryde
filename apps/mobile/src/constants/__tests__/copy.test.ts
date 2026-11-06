@@ -65,6 +65,7 @@ describe('screen copy', () => {
   it('talks about challenge stakes without the ticker', () => {
     expect(COMMUNITY_COPY.challengesEmpty).toContain('stake');
     expect(COMMUNITY_COPY.challengesSandbox).toContain('Sandbox');
+    expect(COMMUNITY_COPY.challengesEmptyTitle).toBe('Check back for Upcoming & New Challenges');
     expect(COMMUNITY_COPY.challengesEmpty).not.toMatch(BANNED_USER_WORDS);
   });
 

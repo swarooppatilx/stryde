@@ -7,6 +7,7 @@ import {
   formatMonthYear,
   formatTimeOfDay,
   formatWeekdayDay,
+  formatWhen,
   latestBirthday,
   parseCalendarDay,
   toCalendarDay,
@@ -81,5 +82,19 @@ describe('calendar days (birthdays)', () => {
 
   it('round-trips', () => {
     expect(toCalendarDay(parseCalendarDay('1987-12-31'))).toBe('1987-12-31');
+  });
+});
+
+describe('formatWhen', () => {
+  const when = new Date(2026, 9, 6, 7, 42);
+
+  it('gives the day and the time of day', () => {
+    expect(formatWhen(when, false, 'en-US')).toBe(
+      `${formatWeekdayDay(when, 'en-US')} at ${formatTimeOfDay(when, 'en-US')}`
+    );
+  });
+
+  it('gives only the day when the start time is hidden', () => {
+    expect(formatWhen(when, true, 'en-US')).toBe(formatWeekdayDay(when, 'en-US'));
   });
 });

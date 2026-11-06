@@ -18,6 +18,12 @@ describe('routeProfile', () => {
     expect(p?.loss).toBe(10);
   });
 
+  it('counts a small hill from the smooth ground lookup, which has no sensor noise', () => {
+    const p = routeProfile(line, [10, 15, 11]);
+    expect(p?.gain).toBe(5);
+    expect(p?.loss).toBe(4);
+  });
+
   it('spaces fewer elevations than points evenly over the length', () => {
     const p = routeProfile(line, [0, 100]);
     expect(p?.times).toHaveLength(2);

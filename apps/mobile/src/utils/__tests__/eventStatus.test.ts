@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventStatus } from '@/utils/eventStatus';
+import { eventJoinState, eventStatus } from '@/utils/eventStatus';
 
 const day = (d: number, h = 12) => new Date(2026, 2, d, h, 0);
 
@@ -30,6 +30,38 @@ describe('eventStatus', () => {
     expect(eventStatus(start, end, day(10, 6))).toEqual({
       phase: 'upcoming',
       label: 'Starts today',
+    });
+  });
+});
+
+describe('eventJoinState', () => {
+  it('lets someone join an event that has not ended, and leave one they joined', () => {
+    expect(eventJoinState({ isHost: false, isJoined: false, ended: false })).toEqual({
+      label: 'Join Event',
+      disabled: false,
+    });
+    expect(eventJoinState({ isHost: false, isJoined: true, ended: false })).toEqual({
+      label: 'Joined — Tap to Leave',
+      disabled: false,
+    });
+  });
+
+  it('closes an ended event for everyone: nobody joins it, and leaving it would only spend a transaction', () => {
+    expect(eventJoinState({ isHost: false, isJoined: false, ended: true })).toEqual({
+      label: 'Event ended',
+      disabled: true,
+    });
+    expect(eventJoinState({ isHost: false, isJoined: true, ended: true })).toEqual({
+      label: 'You took part',
+      disabled: true,
+    });
+  });
+
+  it('shows the host as hosting, ended or not', () => {
+    expect(eventJoinState({ isHost: true, isJoined: true, ended: false }).label).toBe('Hosting');
+    expect(eventJoinState({ isHost: true, isJoined: true, ended: true })).toEqual({
+      label: 'Hosting',
+      disabled: true,
     });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextStepsAfterSave } from '@/utils/nextSteps';
+import { nextStepsAfterSave, postSaveActions } from '@/utils/nextSteps';
 
 const recorded = { privacy: 'everyone' as const, isManual: false, images: undefined };
 
@@ -57,5 +57,19 @@ describe('nextStepsAfterSave', () => {
 
   it('offers nothing on someone else’s activity', () => {
     expect(nextStepsAfterSave(recorded, false)).toEqual([]);
+  });
+});
+
+describe('postSaveActions', () => {
+  it('makes Share the primary action beside View activity when it is offered', () => {
+    expect(postSaveActions(['share', 'addPhoto'])).toEqual({
+      shareIsPrimary: true,
+      addPhoto: true,
+    });
+  });
+
+  it('leaves View activity primary when nothing can be shared', () => {
+    expect(postSaveActions(['addPhoto'])).toEqual({ shareIsPrimary: false, addPhoto: true });
+    expect(postSaveActions([])).toEqual({ shareIsPrimary: false, addPhoto: false });
   });
 });

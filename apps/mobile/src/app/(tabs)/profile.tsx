@@ -3,14 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  Share,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AboutLines } from '@/components/about-lines';
 import { AchievementBadge } from '@/components/achievement-badge';
@@ -58,8 +51,8 @@ import { buildProfileDeepLink } from '@/utils/deepLink';
 import { chooseEnsIdentity } from '@/utils/ensIdentity';
 import { formatArea, formatDistance, formatDuration, getDisplayName } from '@/utils/format';
 import { weeklyTargets } from '@/utils/goals';
-import { logger } from '@/utils/logger';
 import { activityCountLine } from '@/utils/profileSubline';
+import { shareMessage } from '@/utils/shareMessage';
 import { Toast } from '@/utils/toast';
 
 const TABS = ['Progress', 'Activities', 'More'] as const;
@@ -153,18 +146,13 @@ export default function ProfileScreen() {
 
   const memberSince = createdAt ? formatMonthYear(createdAt) : null;
 
-  const shareProfile = async () => {
-    try {
-      await Share.share({
-        message: walletAddress
-          ? `${displayName} on Stryde\n${buildProfileDeepLink(walletAddress)}`
-          : `${displayName} on Stryde`,
-      });
-    } catch (error) {
-      logger.error('[Profile] Share failed', error);
-      Toast.fail('Could not share your profile', 1);
-    }
-  };
+  const shareProfile = () =>
+    shareMessage(
+      walletAddress
+        ? `${displayName} on Stryde\n${buildProfileDeepLink(walletAddress)}`
+        : `${displayName} on Stryde`,
+      'Could not share your profile'
+    );
 
   const achievementItems = unlockedAchievements.map((a) => {
     const minted = mintedAchievementIds.has(a.id);
@@ -220,6 +208,11 @@ export default function ProfileScreen() {
               icon="trophy-outline"
               label="Leaderboard"
               onPress={() => router.push('/leaderboard')}
+            />
+            <TopBarAction
+              icon="search-outline"
+              label="Search"
+              onPress={() => router.push('/search')}
             />
             <TopBarAction
               icon="settings-outline"
