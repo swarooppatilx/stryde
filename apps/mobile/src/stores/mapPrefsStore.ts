@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { SportFilter } from '@/components/filter-chips';
+import type { HeatmapColor } from '@/constants/heatmapColors';
 import type { DistanceFilter, TimeFilter } from '@/hooks/useMap';
 import type { FollowMode } from '@/utils/recordCamera';
 import { chainScopedStorageAdapter } from '@/utils/storage';
@@ -19,6 +20,8 @@ interface MapPrefsState {
   time: TimeFilter;
   distance: DistanceFilter;
   style: MapStylePref;
+  /** The colour ramp of the heatmap layer. */
+  heatmapColor: HeatmapColor;
   /** How the Record map follows the athlete: remembered between recordings. */
   recordFollowMode: FollowMode;
   setLayer: (layer: MapLayer, on: boolean) => void;
@@ -26,6 +29,7 @@ interface MapPrefsState {
   setTime: (time: TimeFilter) => void;
   setDistance: (distance: DistanceFilter) => void;
   setStyle: (style: MapStylePref) => void;
+  setHeatmapColor: (color: HeatmapColor) => void;
   setRecordFollowMode: (mode: FollowMode) => void;
   /** Opens every filter again; layers stay as they are. */
   clearFilters: () => void;
@@ -40,6 +44,7 @@ const DEFAULTS = {
   showPoi: true,
   showBikeLanes: false,
   style: 'auto',
+  heatmapColor: 'classic',
   recordFollowMode: 'north',
   ...OPEN_FILTERS,
 } as const;
@@ -63,6 +68,7 @@ export const useMapPrefsStore = create<MapPrefsState>()(
       setTime: (time) => set({ time }),
       setDistance: (distance) => set({ distance }),
       setStyle: (style) => set({ style }),
+      setHeatmapColor: (heatmapColor) => set({ heatmapColor }),
       setRecordFollowMode: (recordFollowMode) => set({ recordFollowMode }),
       clearFilters: () => set({ ...OPEN_FILTERS }),
       reset: () => set({ ...DEFAULTS }),

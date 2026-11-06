@@ -22,6 +22,12 @@ export const formatWeekdayDay = (value: Input, locale?: string) =>
 export const formatTimeOfDay = (value: Input, locale?: string) =>
   new Date(value).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 
+/** "Tue, Oct 6 at 7:42 AM", or just the day when the author hid their start time. */
+export const formatWhen = (value: Input, hideTime: boolean, locale?: string) =>
+  hideTime
+    ? formatWeekdayDay(value, locale)
+    : `${formatWeekdayDay(value, locale)} at ${formatTimeOfDay(value, locale)}`;
+
 /** A moment with its day and time, e.g. a challenge deadline. */
 export const formatDateTime = (value: Input, locale?: string) =>
   `${formatDayYear(value, locale)} at ${formatTimeOfDay(value, locale)}`;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { User } from '@/types';
 import { formatDay } from '@/utils/dates';
 import {
+  activityTitle,
   formatArea,
   formatDistance,
   formatDuration,
@@ -93,9 +94,9 @@ describe('speed for sports that are measured in it', () => {
 
   it('formats km/h and mph from distance and time', () => {
     // 25 km in 1 h
-    expect(formatSpeed(25_000, 3_600_000)).toBe('25.0 km/h');
+    expect(formatSpeed(25_000, 3_600_000)).toBe('25 km/h');
     // 16.0934 km in 1 h is 10 mph
-    expect(formatSpeed(16_093.4, 3_600_000, 'imperial')).toBe('10.0 mph');
+    expect(formatSpeed(16_093.4, 3_600_000, 'imperial')).toBe('10 mph');
   });
 
   it('shows a placeholder before there is any time or distance', () => {
@@ -111,7 +112,7 @@ describe('speed for sports that are measured in it', () => {
   });
 
   it('picks the right figure and heading for the sport', () => {
-    expect(formatPaceOrSpeed('ride', 20_000, 3_600_000)).toBe('20.0 km/h');
+    expect(formatPaceOrSpeed('ride', 20_000, 3_600_000)).toBe('20 km/h');
     expect(formatPaceOrSpeed('run', 1000, 300_000)).toBe('5:00/km');
     expect(paceOrSpeedLabel('ride')).toBe('Speed km/h');
     expect(paceOrSpeedLabel('ride', 'imperial')).toBe('Speed mph');
@@ -329,5 +330,23 @@ describe('bad stored values', () => {
     expect(formatPace(-100, 600_000)).toBe('--:--');
     expect(formatPace(1000, Number.NaN)).toBe('--:--');
     expect(formatPace(1000, Number.POSITIVE_INFINITY)).toBe('--:--');
+  });
+});
+
+describe('activityTitle', () => {
+  it('keeps the name the athlete gave', () => {
+    expect(
+      activityTitle({
+        name: 'River loop',
+        activityType: 'run',
+        createdAt: new Date(2026, 10, 5, 22),
+      })
+    ).toBe('River loop');
+  });
+
+  it("falls back to the default title when another athlete's name is not loaded or is blank", () => {
+    const createdAt = new Date(2026, 10, 5, 22, 10);
+    expect(activityTitle({ name: undefined, activityType: 'run', createdAt })).toBe('Night Run');
+    expect(activityTitle({ name: '  ', activityType: 'ride', createdAt })).toBe('Night Ride');
   });
 });

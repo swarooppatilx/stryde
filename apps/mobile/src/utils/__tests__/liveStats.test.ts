@@ -69,10 +69,10 @@ describe('field values', () => {
   it('gives a run its pace and a ride its speed, per kilometre or mile', () => {
     expect(field('avgPace').value(moving, 'metric')).toBe('5:00/km');
     expect(field('avgPace').value(moving, 'imperial')).toBe('8:02/mi');
-    expect(field('avgSpeed').value(moving, 'metric')).toBe('12.0 km/h');
-    expect(field('avgSpeed').value(moving, 'imperial')).toBe('7.5 mph');
+    expect(field('avgSpeed').value(moving, 'metric')).toBe('12 km/h');
+    expect(field('avgSpeed').value(moving, 'imperial')).toBe('7 mph');
     expect(field('currentPace').value(moving, 'metric')).toBe('5:00/km');
-    expect(field('currentSpeed').value(moving, 'metric')).toBe('12.0 km/h');
+    expect(field('currentSpeed').value(moving, 'metric')).toBe('12 km/h');
   });
 
   it('labels the averages with their unit, as the screen always has', () => {
@@ -88,7 +88,7 @@ describe('field values', () => {
     expect(field('lastSplitPace').label('metric')).toBe('Last km');
     expect(field('lastSplitSpeed').label('imperial')).toBe('Last mi');
     expect(field('lastLapPace').value(moving, 'metric')).toBe('4:30/km');
-    expect(field('lastLapSpeed').value(moving, 'metric')).toBe('13.3 km/h');
+    expect(field('lastLapSpeed').value(moving, 'metric')).toBe('13 km/h');
     expect(field('laps').value(moving, 'metric')).toBe('2');
   });
 
@@ -140,7 +140,7 @@ describe('lap and elevation fields', () => {
     expect(field('lapDistance').value(moving, 'metric')).toBe('600m');
     expect(field('lapDistance').value(moving, 'imperial')).toBe('1969ft');
     expect(field('lapPace').value(moving, 'metric')).toBe('5:00/km');
-    expect(field('lapSpeed').value(moving, 'metric')).toBe('12.0 km/h');
+    expect(field('lapSpeed').value(moving, 'metric')).toBe('12 km/h');
     expect(field('lapPace').label('metric')).toBe('Lap Pace /km');
     expect(field('lapSpeed').label('imperial')).toBe('Lap Speed mph');
   });
@@ -176,9 +176,9 @@ describe('stale readings', () => {
   });
 
   it('reads current speed as zero once the GPS speed is older than 3 s', () => {
-    expect(field('currentSpeed').value(at(3000), 'metric')).toBe('12.0 km/h');
-    expect(field('currentSpeed').value(at(3001), 'metric')).toBe('0.0 km/h');
-    expect(field('currentSpeed').value(at(3001), 'imperial')).toBe('0.0 mph');
+    expect(field('currentSpeed').value(at(3000), 'metric')).toBe('12 km/h');
+    expect(field('currentSpeed').value(at(3001), 'metric')).toBe('0 km/h');
+    expect(field('currentSpeed').value(at(3001), 'imperial')).toBe('0 mph');
     expect(field('currentPace').value(at(3001), 'metric')).toBe('—');
   });
 });

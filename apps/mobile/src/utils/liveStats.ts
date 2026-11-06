@@ -160,7 +160,7 @@ export const LIVE_STAT_FIELDS: Readonly<Record<LiveStatId, LiveStatField>> = {
     families: SPEED,
     value: (d, u) =>
       finite(d.recent.distance) && finite(d.recent.durationMs) && speedStale(d)
-        ? `0.0 ${speedUnit(u)}`
+        ? `0 ${speedUnit(u)}`
         : speed(d.recent.distance, d.recent.durationMs, u),
   },
   lastSplitPace: {

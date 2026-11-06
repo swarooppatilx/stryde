@@ -10,17 +10,24 @@ import { ThemedView } from './themed-view';
 interface Props {
   icon: keyof typeof Ionicons.glyphMap;
   text: string;
+  /** A short bold title above the explanation. */
+  title?: string;
   action?: { label: string; onPress(): void };
   /** Take the whole screen, centred (a screen-level state rather than an empty list). */
   fill?: boolean;
 }
 
 /** The empty or error state of a list. */
-export function ListMessage({ icon, text, action, fill }: Props) {
+export function ListMessage({ icon, text, title, action, fill }: Props) {
   const theme = useTheme();
   return (
     <ThemedView style={[styles.container, fill && styles.fill]}>
       <Ionicons name={icon} size={32} color={theme.textSecondary} />
+      {title ? (
+        <ThemedText type="headline" style={styles.title}>
+          {title}
+        </ThemedText>
+      ) : null}
       <ThemedText type="small" style={{ color: theme.textSecondary, textAlign: 'center' }}>
         {text}
       </ThemedText>
@@ -86,4 +93,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.five,
   },
   fill: { flex: 1 },
+  title: { textAlign: 'center' },
 });

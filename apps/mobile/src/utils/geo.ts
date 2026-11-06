@@ -1,5 +1,8 @@
 import type { Location } from '@/types';
 
+const EARTH_RADIUS_M = 6371e3;
+const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+
 /** Great-circle distance between two coordinates, in meters. */
 export function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   if (
@@ -10,7 +13,7 @@ export function haversineDistance(lat1: number, lon1: number, lat2: number, lon2
   ) {
     return 0;
   }
-  const R = 6371e3;
+  const R = EARTH_RADIUS_M;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -22,6 +25,48 @@ export function haversineDistance(lat1: number, lon1: number, lat2: number, lon2
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
+}
+
+/** A heading wrapped into [0, 360). */
+export function normalizeBearing(degrees: number): number {
+  return ((degrees % 360) + 360) % 360;
+}
+
+/** The signed shortest turn from one bearing to another, in (-180, 180]. */
+
+/** The signed shortest turn from one bearing to another, in (-180, 180]. */
+export function angleDelta(from: number, to: number): number {
+  const delta = normalizeBearing(to - from);
+  return delta > 180 ? delta - 360 : delta;
+}
+
+/** The compass heading from one [lng, lat] point to another, in [0, 360). */
+export function bearingBetween(from: [number, number], to: [number, number]): number {
+  const lat1 = toRad(from[1]);
+  const lat2 = toRad(to[1]);
+  const dLng = toRad(to[0] - from[0]);
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return normalizeBearing((Math.atan2(y, x) * 180) / Math.PI);
+}
+
+/**
+ * Where a short walk of `distanceM` metres on `headingRadians` (0 is north, a quarter turn is east)
+ * from a point ends up. A flat approximation, fine for the few metres between two steps.
+ */
+export function destinationPoint(
+  latitude: number,
+  longitude: number,
+  distanceM: number,
+  headingRadians: number
+): { latitude: number; longitude: number } {
+  const dLat = (distanceM * Math.cos(headingRadians)) / EARTH_RADIUS_M;
+  const dLng =
+    (distanceM * Math.sin(headingRadians)) / (EARTH_RADIUS_M * Math.cos(toRad(latitude)));
+  return {
+    latitude: latitude + (dLat * 180) / Math.PI,
+    longitude: longitude + (dLng * 180) / Math.PI,
+  };
 }
 
 /** Speed in m/s between two timed locations. Returns 0 if timestamps are equal. */

@@ -142,7 +142,7 @@ export function formatSpeed(
   const distanceInUnit =
     unitSystem === 'imperial' ? distanceMeters / METERS_PER_MILE : distanceMeters / 1000;
   const perHour = distanceInUnit / (durationMs / 3_600_000);
-  return `${perHour.toFixed(1)} ${unitSystem === 'imperial' ? 'mph' : 'km/h'}`;
+  return `${Math.round(perHour)} ${unitSystem === 'imperial' ? 'mph' : 'km/h'}`;
 }
 
 /** The figure an athlete of this sport expects: speed for a ride, pace for a run. */
@@ -274,4 +274,14 @@ export function getSportStats(activities: Activity[]): SportStats[] {
   });
 
   return Object.values(stats).sort((a, b) => b.count - a.count);
+}
+
+/** The name to show for an activity: the athlete's own, or the default title when it is missing (another athlete's name lives in IPFS metadata the feed does not fetch). */
+export function activityTitle(activity: {
+  name?: string;
+  activityType: string;
+  createdAt: Date;
+}): string {
+  const name = activity.name?.trim();
+  return name || getActivityName(activity.activityType, new Date(activity.createdAt).getHours());
 }

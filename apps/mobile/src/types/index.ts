@@ -8,6 +8,9 @@ export type ActivityEffort = 'easy' | 'moderate' | 'hard' | 'max';
 
 export type ActivityPrivacy = 'everyone' | 'followers' | 'only_me';
 
+/** Figures an author can keep out of what other people's apps show; others still read distance and time. */
+export type HiddenStat = 'start_time' | 'pace';
+
 export type Gender = 'man' | 'woman' | 'non_binary' | 'prefer_not_to_say';
 
 export interface User {
@@ -119,6 +122,10 @@ export interface Activity {
   hideRouteEnds?: boolean;
   /** Shared without its route map or territory outline; this device keeps both. */
   hideRoute?: boolean;
+  /** Left out of other athletes' Home feeds; still on the author's profile and own feed. Published with the activity, honoured by the app, not enforced by the chain. */
+  mutedFromFeeds?: boolean;
+  /** Figures other athletes' apps leave out of this activity; the owner always sees everything. */
+  hiddenStats?: HiddenStat[];
   /** Recorded with a simulated location: anchored, but never counts for rewards, territory or records. */
   mocked?: boolean;
   /** The athlete's privacy zones when this was saved; a later edit republishes the route cut the same way. */
@@ -148,6 +155,8 @@ export interface Activity {
   privateNote?: string;
   privacy?: ActivityPrivacy;
   isManual?: boolean;
+  /** Brought in from a GPX/TCX file or Health Connect rather than recorded or typed here. */
+  isImported?: boolean;
   kudos?: string[];
   comments?: Comment[];
   txHash?: string;
