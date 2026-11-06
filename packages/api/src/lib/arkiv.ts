@@ -6,7 +6,11 @@ import { ConfigError } from './relayErrors.js';
 
 /** Rabdi (chain 7794095), the Arkiv testnet that replaced Tiramisu. The key goes in a header, never into this URL. */
 const OFFICIAL_RPC = 'https://rpc.rabdi.db-chain.testnet.arkiv.network';
-const REQUEST_TIMEOUT_MS = 10_000;
+/**
+ * The keyed Rabdi endpoint can take over 10s to answer the first call after a quiet spell. Requests are not
+ * retried (a resent transaction would fail as "already known"), so the timeout has to cover that wait.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
 const PRIVATE_KEY_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 export interface ArkivConfig {

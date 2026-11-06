@@ -83,6 +83,10 @@ export const ARCHIVE_TTL_DAYS = 180;
  */
 const ATTESTED = { readonly: true } as const;
 
+/** Phones report GPS timestamps with fractional milliseconds, and BigInt rejects anything but whole numbers. */
+const wholeU64 = (n: number) => u64(BigInt(Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0));
+const wholeI32 = (n: number) => i32(Number.isFinite(n) ? Math.round(n) : 0);
+
 /** Arkiv reverts a transfer to the current owner (TransferToSelf). */
 async function handTo(wallet: ArkivWallet, entityKey: `0x${string}`, owner: `0x${string}`) {
   if (owner.toLowerCase() === getArkivWriter().toLowerCase()) return;
@@ -184,7 +188,7 @@ export async function createSegment(input: {
       startLng: fixed(input.start.longitude),
       endLat: fixed(input.end.latitude),
       endLng: fixed(input.end.longitude),
-      distanceM: u64(BigInt(Math.round(input.distanceM))),
+      distanceM: wholeU64(input.distanceM),
       creator: addr(input.creator),
     },
     { expiration: ExpirationTime.fromDays(SEGMENT_TTL_DAYS), flags: ATTESTED }
@@ -246,14 +250,14 @@ export async function createEffort(input: {
     {
       segmentKey: input.segmentKey,
       athlete: addr(input.athlete),
-      elapsedSec: u64(BigInt(input.elapsedSec)),
-      seasonId: u64(BigInt(input.seasonId)),
+      elapsedSec: wholeU64(input.elapsedSec),
+      seasonId: wholeU64(input.seasonId),
       verifiedHuman: input.verifiedHuman,
       sweatVerified: input.sweatVerified,
-      sweatScore: i32(input.sweatScore),
-      avgBpm: input.avgBpm === null ? undefined : i32(input.avgBpm),
-      activityId: u64(BigInt(input.activityId)),
-      recordedAt: u64(BigInt(input.recordedAt)),
+      sweatScore: wholeI32(input.sweatScore),
+      avgBpm: input.avgBpm === null ? undefined : wholeI32(input.avgBpm),
+      activityId: wholeU64(input.activityId),
+      recordedAt: wholeU64(input.recordedAt),
       swarmRef: input.swarmRef ?? undefined,
     },
     { expiration: ExpirationTime.fromDays(EFFORT_TTL_DAYS), flags: ATTESTED }
@@ -354,13 +358,13 @@ export async function createRouteArchive(input: {
     RouteArchives,
     {
       athlete: addr(input.athlete),
-      activityId: u64(BigInt(input.activityId)),
-      recordedAt: u64(BigInt(input.recordedAt)),
+      activityId: wholeU64(input.activityId),
+      recordedAt: wholeU64(input.recordedAt),
       swarmRef: input.encrypted ? undefined : input.swarmRef,
       sealedRef: input.encrypted ? bytes(stringToHex(input.swarmRef)) : undefined,
       encrypted: input.encrypted,
-      distanceM: u64(BigInt(Math.max(0, Math.round(input.distanceM)))),
-      pointCount: u64(BigInt(input.pointCount)),
+      distanceM: wholeU64(input.distanceM),
+      pointCount: wholeU64(input.pointCount),
       contentType: input.contentType,
     },
     { expiration: ExpirationTime.fromDays(ARCHIVE_TTL_DAYS), flags: ATTESTED }
