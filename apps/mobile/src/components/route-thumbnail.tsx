@@ -1,6 +1,6 @@
 import { StaticMapImageManager } from '@maplibre/maplibre-react-native';
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -9,7 +9,9 @@ import { Palette } from '@/constants/palette';
 import { useTheme } from '@/hooks/use-theme';
 import type { Ring } from '@/types';
 import { parsePolyline } from '@/utils/format';
+import { type Arrow, routeArrows } from '@/utils/routeArrows';
 import { fitBoundsToAspect } from '@/utils/thumbnailBounds';
+import { createThumbnailCache, thumbnailKey } from '@/utils/thumbnailCache';
 
 interface RouteThumbnailProps {
   polyline: string;
@@ -20,6 +22,10 @@ interface RouteThumbnailProps {
 
 const IMG_W = 600;
 const IMG_H = 240;
+const ARROW_COUNT = 4;
+
+/** Pictures already rendered this session, so a card scrolled away and back does not render again. */
+const pictureCache = createThumbnailCache(60);
 
 interface RouteShapes {
   routePath: string | null;
@@ -27,6 +33,7 @@ interface RouteShapes {
   start: { cx: number; cy: number } | null;
   end: { cx: number; cy: number } | null;
   territoryPath: string | null;
+  arrows: Arrow[];
   bounds: [number, number, number, number];
 }
 
@@ -84,6 +91,10 @@ function routeShapes(
     start: points.length > 1 ? dot(points[0]) : null,
     end: points.length > 1 ? dot(points.at(-1)) : null,
     territoryPath: territory && territory.length > 2 ? toPath(territory) : null,
+    arrows: routeArrows(
+      points.map(([lng, lat]) => ({ x: toX(lng), y: toY(lat) })),
+      ARROW_COUNT
+    ),
     bounds: [bMinLng, bMinLat, bMaxLng, bMaxLat] as [number, number, number, number],
   };
 }
@@ -95,13 +106,25 @@ export function RouteThumbnail({
   fallback,
 }: RouteThumbnailProps) {
   const theme = useTheme();
-  const points = parsePolyline(polyline);
+  // Parsed once per route: `shapes.bounds` is an effect dependency, so a fresh array on every render
+  // would restart the map picture each time the card re-rendered.
+  const shapes = useMemo(
+    () => routeShapes(parsePolyline(polyline), territory),
+    [polyline, territory]
+  );
+  const key = useMemo(
+    () => thumbnailKey(parsePolyline(polyline), territory, theme.isDark),
+    [polyline, territory, theme.isDark]
+  );
 
-  const shapes = routeShapes(points, territory);
-
-  const [mapUri, setMapUri] = useState<string | null>(null);
+  const [mapUri, setMapUri] = useState<string | null>(() => pictureCache.get(key) ?? null);
 
   useEffect(() => {
+    const cached = pictureCache.get(key);
+    if (cached) {
+      setMapUri(cached);
+      return;
+    }
     if (!shapes?.bounds) {
       setMapUri(null);
       return;
@@ -116,6 +139,7 @@ export function RouteThumbnail({
       logo: false,
     })
       .then((uri) => {
+        pictureCache.set(key, uri);
         if (!cancelled) setMapUri(uri);
       })
       .catch(() => {
@@ -124,7 +148,7 @@ export function RouteThumbnail({
     return () => {
       cancelled = true;
     };
-  }, [shapes?.bounds, theme.isDark]);
+  }, [key, shapes?.bounds, theme.isDark]);
 
   if (!shapes) {
     return (
@@ -205,22 +229,36 @@ export function RouteThumbnail({
             fill={theme.brand.primary}
           />
         )}
+        {shapes.arrows.map((a) => (
+          // A small white chevron on the route line; rotated so it points the way the route goes.
+          <Path
+            key={`arrow-${a.x.toFixed(0)}-${a.y.toFixed(0)}`}
+            d="M-5,-5 L3,0 L-5,5"
+            fill="none"
+            stroke={Palette.white}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            transform={`translate(${a.x.toFixed(1)},${a.y.toFixed(1)}) rotate(${a.angle.toFixed(1)})`}
+          />
+        ))}
+        {shapes.end && (
+          // A ring, drawn first: on a loop the start sits inside it instead of being covered.
+          <Circle
+            cx={shapes.end.cx}
+            cy={shapes.end.cy}
+            r={9}
+            fill={Palette.white}
+            stroke={theme.brand.primary}
+            strokeWidth={4}
+          />
+        )}
         {shapes.start && (
           <Circle
             cx={shapes.start.cx}
             cy={shapes.start.cy}
             r={6}
             fill={theme.brand.success}
-            stroke={Palette.white}
-            strokeWidth={2}
-          />
-        )}
-        {shapes.end && (
-          <Circle
-            cx={shapes.end.cx}
-            cy={shapes.end.cy}
-            r={6}
-            fill={theme.brand.primary}
             stroke={Palette.white}
             strokeWidth={2}
           />

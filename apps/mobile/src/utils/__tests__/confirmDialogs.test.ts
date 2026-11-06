@@ -4,9 +4,11 @@ const alert = vi.fn();
 vi.mock('@/utils/alert', () => ({ Alert: { alert: (...args: unknown[]) => alert(...args) } }));
 
 const { confirmBlock } = await import('@/utils/confirmBlock');
+const { confirmDeleteRoute } = await import('@/utils/confirmDeleteRoute');
 const { confirmDiscard } = await import('@/utils/confirmDiscard');
 const { confirmLeave } = await import('@/utils/confirmLeave');
 const { confirmRetire } = await import('@/utils/confirmRetire');
+const { confirmMute } = await import('@/utils/confirmMute');
 const { confirmUnfollow } = await import('@/utils/confirmUnfollow');
 
 type Button = { text: string; style?: string; onPress?: () => void };
@@ -20,7 +22,13 @@ describe('confirm dialogs', () => {
     ['block', () => confirmBlock('Asha', vi.fn()), 'Block Asha?', 'Block'],
     ['unfollow', () => confirmUnfollow('Asha', vi.fn()), 'Unfollow Asha?', 'Unfollow'],
     ['leave a club', () => confirmLeave('club', 'Runners', vi.fn()), 'Leave Runners?', 'Leave'],
-    ['discard', () => confirmDiscard(vi.fn()), 'Discard changes?', 'Discard'],
+    ['discard', () => confirmDiscard(vi.fn()), 'Are you sure?', 'Discard Changes'],
+    [
+      'delete a route',
+      () => confirmDeleteRoute('Morning loop', vi.fn()),
+      'Delete this route?',
+      'Delete',
+    ],
     [
       'retire gear',
       () => confirmRetire('Daily trainers', vi.fn()),
@@ -51,5 +59,19 @@ describe('confirm dialogs', () => {
     confirmLeave('event', 'Autumn 50', vi.fn());
 
     expect(alert.mock.calls[0]?.[1]).toBe('You can join this event again later.');
+  });
+
+  it('asks before muting, says the athlete is not told, and is a plain (not destructive) confirm', () => {
+    const onConfirm = vi.fn();
+    confirmMute('Asha', onConfirm);
+
+    expect(title()).toBe('Mute Asha?');
+    expect(alert.mock.calls[0]?.[1]).toContain("won't be told");
+    expect(buttons()[0]?.style).toBe('cancel');
+    expect(buttons()[1]?.text).toBe('Mute');
+    expect(buttons()[1]?.style).toBeUndefined();
+    expect(onConfirm).not.toHaveBeenCalled();
+    buttons()[1]?.onPress?.();
+    expect(onConfirm).toHaveBeenCalledOnce();
   });
 });

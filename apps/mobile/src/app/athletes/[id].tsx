@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshControl, Share, StyleSheet, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActionSheet, type SheetAction } from '@/components/action-sheet';
 import { FollowCounts } from '@/components/follow-counts';
@@ -37,6 +37,7 @@ import { useBlockStore } from '@/stores/blockStore';
 import { useSocialStore, visibleActivities } from '@/stores/socialStore';
 import { sameAddress } from '@/utils/address';
 import { confirmBlock } from '@/utils/confirmBlock';
+import { confirmMute } from '@/utils/confirmMute';
 import { confirmUnfollow } from '@/utils/confirmUnfollow';
 import { buildProfileDeepLink } from '@/utils/deepLink';
 import { followButtonLabel, followsViewer } from '@/utils/followRelation';
@@ -48,8 +49,8 @@ import {
   getInitials,
 } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
-import { logger } from '@/utils/logger';
 import { canReport } from '@/utils/reporting';
+import { shareMessage } from '@/utils/shareMessage';
 import { Toast } from '@/utils/toast';
 
 export default function UserProfileScreen() {
@@ -180,14 +181,11 @@ export default function UserProfileScreen() {
 
   const { block, mute, unmute } = useBlockStore.getState();
 
-  const shareAthlete = async () => {
-    try {
-      await Share.share({ message: `${displayName} on Stryde\n${buildProfileDeepLink(user.id)}` });
-    } catch (error) {
-      logger.error('[UserProfile] Share failed', error);
-      Toast.fail('Could not share this profile', 1);
-    }
-  };
+  const shareAthlete = () =>
+    shareMessage(
+      `${displayName} on Stryde\n${buildProfileDeepLink(user.id)}`,
+      'Could not share this profile'
+    );
   const blockAthlete = () =>
     confirmBlock(displayName, () => {
       if (isFollowing) void toggleFollow(user.id);
@@ -201,10 +199,11 @@ export default function UserProfileScreen() {
       : {
           label: 'Mute',
           icon: 'volume-mute-outline',
-          onPress: () => {
-            mute(user.id);
-            Toast.success(`Muted ${displayName}`);
-          },
+          onPress: () =>
+            confirmMute(displayName, () => {
+              mute(user.id);
+              Toast.success(`Muted ${displayName}`);
+            }),
         },
     { label: 'Block', icon: 'ban-outline', onPress: blockAthlete, destructive: true },
   ];
@@ -329,6 +328,7 @@ export default function UserProfileScreen() {
 
             <FollowCounts
               followers={user.followers}
+              following={user.following}
               onOpen={(tab) => router.push(`/follow-list?id=${user.id}&tab=${tab}`)}
             />
 
