@@ -19,6 +19,7 @@
   "dependencies": {
     "@ant-design/icons-react-native": "^2.3.2",
     "@ant-design/react-native": "^5.4.3",
+    "@bacons/apple-targets": "5.0.0",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "5.2.14",

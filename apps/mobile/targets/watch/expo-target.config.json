@@ -1,0 +1,13 @@
+{
+  "type": "watch",
+  "name": "StrydeWatch",
+  "displayName": "Stryde",
+  "icon": "../../assets/images/icon.png",
+  "deploymentTarget": "10.0",
+  "frameworks": ["SwiftUI", "HealthKit"],
+  "colors": { "$accent": "#FC5200" },
+  "entitlements": {
+    "com.apple.developer.healthkit": true,
+    "com.apple.developer.healthkit.access": []
+  }
+}

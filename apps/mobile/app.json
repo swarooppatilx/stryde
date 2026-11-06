@@ -11,7 +11,14 @@
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.stryde.app",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["instagram-stories", "instagram"]
+        "LSApplicationQueriesSchemes": ["instagram-stories", "instagram"],
+        "NSHealthShareUsageDescription": "Stryde reads heart rate, distance, cadence, power and calories from your Apple Watch while you record.",
+        "NSHealthUpdateUsageDescription": "Stryde saves the workouts you record with your Apple Watch to Apple Health.",
+        "UIBackgroundModes": ["location", "workout-processing"]
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
       }
     },
     "android": {
@@ -36,8 +43,12 @@
       ],
       "predictiveBackGestureEnabled": false,
       "queries": [
-        { "package": "org.world.id.sandbox" },
-        { "package": "com.worldcoin" },
+        {
+          "package": "org.world.id.sandbox"
+        },
+        {
+          "package": "com.worldcoin"
+        },
         {
           "intent": {
             "action": "VIEW",
@@ -111,6 +122,9 @@
             "enableShrinkResourcesInReleaseBuilds": true,
             "enableBundleCompression": true,
             "useLegacyPackaging": true
+          },
+          "ios": {
+            "deploymentTarget": "17.0"
           }
         }
       ],
@@ -137,7 +151,8 @@
           "NSHealthUpdateUsageDescription": false,
           "background": false
         }
-      ]
+      ],
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,
