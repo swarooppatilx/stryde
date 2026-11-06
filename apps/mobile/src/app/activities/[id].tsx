@@ -28,6 +28,7 @@ import { useActivity } from '@/hooks/useActivity';
 import { useActivityResults } from '@/hooks/useActivityResults';
 import { useCollapsibleSheet } from '@/hooks/useCollapsibleSheet';
 import { useFitRoute } from '@/hooks/useFitRoute';
+import { useCoachStore } from '@/stores/coachStore';
 import type { Activity } from '@/types';
 import { recordPins } from '@/utils/activityResults';
 import { ownerSplitPins, routeMarkers } from '@/utils/activityRouteMap';
@@ -95,6 +96,7 @@ export default function ActivitySummaryScreen() {
   const [shareOpen, setShareOpen] = useState(false);
   const [flyoverOpen, setFlyoverOpen] = useState(false);
   const [shareChoice, setShareChoice] = useState<ShareDesign>('route');
+  const posterUri = useCoachStore((s) => (activity ? s.posters[activity.id]?.uri : undefined));
   const sheet = useCollapsibleSheet();
   const { expanded: sheetExpanded, setExpanded, setBodyHeight, setHeaderHeight } = sheet;
   // Framing the route before the map has loaded does nothing, so wait for it.
@@ -145,7 +147,8 @@ export default function ActivitySummaryScreen() {
     );
   }
 
-  const sharePhoto = firstSharePhoto(activity.images);
+  // A coach poster was made for sharing, so it beats the run's own photos.
+  const sharePhoto = (isOwner ? posterUri : undefined) ?? firstSharePhoto(activity.images);
   const shareDesigns = availableShareDesigns({
     photoUri: sharePhoto,
     splitCount: activity.splits?.length ?? 0,
@@ -308,6 +311,10 @@ export default function ActivitySummaryScreen() {
               results={results}
               onOpenComments={() => setCommentsOpen(true)}
               onShare={() => setShareOpen(true)}
+              onSharePoster={() => {
+                setShareChoice('photo');
+                setShareOpen(true);
+              }}
               onFlyover={() => router.push(`/flyover?activityId=${activity.id}`)}
               onScrubChange={setScrubIndex}
               onContentHeight={setBodyHeight}

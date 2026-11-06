@@ -140,4 +140,9 @@ export const expoFiles: Files = {
     const file = new File(uri);
     if (file.exists) file.delete();
   },
+  writeDocument(name, content, encoding = 'utf8') {
+    const file = new File(Paths.document, name);
+    file.write(content, encoding === 'base64' ? { encoding } : undefined);
+    return file.uri;
+  },
 };
