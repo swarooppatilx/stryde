@@ -10,8 +10,7 @@ import {
   walletAttribute,
 } from './arkivEntityStore.js';
 import type { CommentLikePage, CommentLikeRecord, CommentLikeStore } from './commentLikes.js';
-
-type Bytes32 = `0x${string}`;
+import { type Bytes32, isBytes32 } from './hex.js';
 
 /** A comment id is a 32-byte hash held as lowercase hex text (66 characters, inside the 128-byte `str` limit). */
 export const CommentLikeSchema = defineSchema('comment_like', {
@@ -20,7 +19,6 @@ export const CommentLikeSchema = defineSchema('comment_like', {
   liked_at: u64().indexed(),
   data: bytes(),
 });
-const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 export function commentLikeAttributes(liker: Address, commentId: Bytes32, likedAt: number) {
   return {
@@ -35,7 +33,7 @@ export function commentLikeFromEntity(entity: EntityLike): CommentLikeRecord | n
   const commentValue = entity.attributes.comment_id;
   const commentId = commentValue?.type === 'str' ? commentValue.value : null;
   if (!liker) return null;
-  if (typeof commentId !== 'string' || !BYTES32_PATTERN.test(commentId)) return null;
+  if (!isBytes32(commentId)) return null;
   return {
     entityKey: entity.key,
     liker,

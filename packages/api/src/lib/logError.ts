@@ -17,11 +17,23 @@ export function redact(text: string, env: NodeJS.ProcessEnv = process.env): stri
   return result;
 }
 
+/** Something readable for whatever was thrown: the stack of an Error, JSON for an object (not "[object Object]"), else its text. */
+function describe(error: unknown): string {
+  if (error instanceof Error) return error.stack ?? error.message;
+  if (typeof error === 'object' && error !== null) {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
 /**
  * Logs an error with its stack, minus any configured secret: viem and fetch errors
  * embed the request URL, which for the RPC carries the provider's API key.
  */
 export function logError(label: string, error: unknown): void {
-  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  console.error(label, redact(detail));
+  console.error(label, redact(describe(error)));
 }

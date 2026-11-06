@@ -1,5 +1,4 @@
-import { type Context, Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
+import { Hono } from 'hono';
 import {
   arkivConfigFromEnv,
   arkivSignerFromEnv,
@@ -17,7 +16,7 @@ import { createCommentLikeService } from '../lib/commentLikes.js';
 import { createFollowVerifier } from '../lib/followIntent.js';
 import { followPushMessage } from '../lib/followPush.js';
 import { createFollowService } from '../lib/follows.js';
-import { IntentError } from '../lib/intentError.js';
+import { respondIntent } from '../lib/intentError.js';
 import { createPostVerifier } from '../lib/postIntent.js';
 import { createPostService } from '../lib/posts.js';
 import { createAboutService } from '../lib/profileAbout.js';
@@ -26,6 +25,7 @@ import { getPush } from '../lib/pushRuntime.js';
 import { getRelayerPublicClient } from '../lib/relayer.js';
 import { createReportVerifier } from '../lib/reportIntent.js';
 import { createReportService } from '../lib/reports.js';
+import { invalidJsonBody, limitBody, readJsonObject } from '../middleware/jsonBody.js';
 
 type FollowService = ReturnType<typeof createFollowService>;
 type CommentLikeService = ReturnType<typeof createCommentLikeService>;
@@ -36,61 +36,47 @@ type ReportService = ReturnType<typeof createReportService>;
 const MAX_REQUEST_BYTES = 8 * 1024;
 const DEFAULT_POSTS_LIMIT = 20;
 
-function buildPostService(): PostService {
+type ArkivPublic = ReturnType<typeof createArkivPublicClient>;
+type ArkivWallet = ReturnType<typeof createArkivWalletClient>;
+
+/** What every social service is built from: its Arkiv store, and the chain client that checks a signed intent. */
+function socialBase<Store>(
+  createStore: (publicClient: ArkivPublic, walletClient: ArkivWallet) => Store
+) {
   const config = arkivConfigFromEnv();
   const account = arkivSignerFromEnv();
-  const store = createArkivPostStore(
+  const store = createStore(
     createArkivPublicClient(config),
     createArkivWalletClient(account, config)
   );
-  const verify = createPostVerifier(getRelayerPublicClient(), getRelayChainConfig().chainId);
-  return createPostService({ store, verify });
+  return { store, client: getRelayerPublicClient(), chainId: getRelayChainConfig().chainId };
+}
+
+function buildPostService(): PostService {
+  const { store, client, chainId } = socialBase(createArkivPostStore);
+  return createPostService({ store, verify: createPostVerifier(client, chainId) });
 }
 
 function buildReportService(): ReportService {
-  const config = arkivConfigFromEnv();
-  const account = arkivSignerFromEnv();
-  const store = createArkivReportStore(
-    createArkivPublicClient(config),
-    createArkivWalletClient(account, config)
-  );
-  const verify = createReportVerifier(getRelayerPublicClient(), getRelayChainConfig().chainId);
-  return createReportService({ store, verify });
+  const { store, client, chainId } = socialBase(createArkivReportStore);
+  return createReportService({ store, verify: createReportVerifier(client, chainId) });
 }
 
 function buildAboutService(): AboutService {
-  const config = arkivConfigFromEnv();
-  const account = arkivSignerFromEnv();
-  const store = createArkivAboutStore(
-    createArkivPublicClient(config),
-    createArkivWalletClient(account, config)
-  );
-  const verify = createAboutVerifier(getRelayerPublicClient(), getRelayChainConfig().chainId);
-  return createAboutService({ store, verify });
+  const { store, client, chainId } = socialBase(createArkivAboutStore);
+  return createAboutService({ store, verify: createAboutVerifier(client, chainId) });
 }
 
 function buildCommentLikeService(): CommentLikeService {
-  const config = arkivConfigFromEnv();
-  const account = arkivSignerFromEnv();
-  const store = createArkivCommentLikeStore(
-    createArkivPublicClient(config),
-    createArkivWalletClient(account, config)
-  );
-  const verify = createCommentLikeVerifier(getRelayerPublicClient(), getRelayChainConfig().chainId);
-  return createCommentLikeService({ store, verify });
+  const { store, client, chainId } = socialBase(createArkivCommentLikeStore);
+  return createCommentLikeService({ store, verify: createCommentLikeVerifier(client, chainId) });
 }
 
 function buildFollowService(): FollowService {
-  const config = arkivConfigFromEnv();
-  const account = arkivSignerFromEnv();
-  const store = createArkivFollowStore(
-    createArkivPublicClient(config),
-    createArkivWalletClient(account, config)
-  );
-  const verify = createFollowVerifier(getRelayerPublicClient(), getRelayChainConfig().chainId);
+  const { store, client, chainId } = socialBase(createArkivFollowStore);
   return createFollowService({
     store,
-    verify,
+    verify: createFollowVerifier(client, chainId),
     onFollowed: (follower, followee) =>
       getPush().sender.notify(followee, followPushMessage(follower)),
   });
@@ -106,87 +92,52 @@ export function createSocialRoutes(
 ) {
   const social = new Hono();
 
-  const respond = async (c: Context, run: () => Promise<unknown>) => {
-    try {
-      return c.json(await run());
-    } catch (error) {
-      if (!(error instanceof IntentError)) throw error;
-      return c.json({ error: error.message, code: error.code }, error.status);
-    }
-  };
+  social.post('/follow', limitBody(MAX_REQUEST_BYTES), async (c) => {
+    const body = await readJsonObject(c);
+    if (!body) return invalidJsonBody(c);
+    return respondIntent(c, () =>
+      getService().apply(body as { intent: unknown; signature: string })
+    );
+  });
 
-  social.post(
-    '/follow',
-    bodyLimit({
-      maxSize: MAX_REQUEST_BYTES,
-      onError: (c) => c.json({ error: 'Payload too large' }, 413),
-    }),
-    async (c) => {
-      const body = await c.req.json().catch(() => null);
-      if (!body || typeof body !== 'object') return c.json({ error: 'Invalid JSON body' }, 400);
-      return respond(c, () => getService().apply(body as { intent: unknown; signature: string }));
-    }
-  );
-
-  social.post(
-    '/comment-like',
-    bodyLimit({
-      maxSize: MAX_REQUEST_BYTES,
-      onError: (c) => c.json({ error: 'Payload too large' }, 413),
-    }),
-    async (c) => {
-      const body = await c.req.json().catch(() => null);
-      if (!body || typeof body !== 'object') return c.json({ error: 'Invalid JSON body' }, 400);
-      return respond(c, () =>
-        getLikeService().apply(body as { intent: unknown; signature: string })
-      );
-    }
-  );
+  social.post('/comment-like', limitBody(MAX_REQUEST_BYTES), async (c) => {
+    const body = await readJsonObject(c);
+    if (!body) return invalidJsonBody(c);
+    return respondIntent(c, () =>
+      getLikeService().apply(body as { intent: unknown; signature: string })
+    );
+  });
 
   social.get('/comment-likes', (c) =>
-    respond(c, () =>
+    respondIntent(c, () =>
       getLikeService().likesFor((c.req.query('ids') ?? '').split(',').filter(Boolean))
     )
   );
 
-  social.post(
-    '/about',
-    bodyLimit({
-      maxSize: MAX_REQUEST_BYTES,
-      onError: (c) => c.json({ error: 'Payload too large' }, 413),
-    }),
-    async (c) => {
-      const body = await c.req.json().catch(() => null);
-      if (!body || typeof body !== 'object') return c.json({ error: 'Invalid JSON body' }, 400);
-      return respond(c, () =>
-        getAboutService().apply(body as { intent: unknown; signature: string })
-      );
-    }
-  );
+  social.post('/about', limitBody(MAX_REQUEST_BYTES), async (c) => {
+    const body = await readJsonObject(c);
+    if (!body) return invalidJsonBody(c);
+    return respondIntent(c, () =>
+      getAboutService().apply(body as { intent: unknown; signature: string })
+    );
+  });
 
   social.get('/about', (c) =>
-    respond(c, () =>
+    respondIntent(c, () =>
       getAboutService().forAuthors((c.req.query('authors') ?? '').split(',').filter(Boolean))
     )
   );
 
-  social.post(
-    '/post',
-    bodyLimit({
-      maxSize: MAX_REQUEST_BYTES,
-      onError: (c) => c.json({ error: 'Payload too large' }, 413),
-    }),
-    async (c) => {
-      const body = await c.req.json().catch(() => null);
-      if (!body || typeof body !== 'object') return c.json({ error: 'Invalid JSON body' }, 400);
-      return respond(c, () =>
-        getPostService().apply(body as { intent: unknown; signature: string })
-      );
-    }
-  );
+  social.post('/post', limitBody(MAX_REQUEST_BYTES), async (c) => {
+    const body = await readJsonObject(c);
+    if (!body) return invalidJsonBody(c);
+    return respondIntent(c, () =>
+      getPostService().apply(body as { intent: unknown; signature: string })
+    );
+  });
 
   social.get('/posts', (c) =>
-    respond(c, () =>
+    respondIntent(c, () =>
       getPostService().forAuthors(
         (c.req.query('authors') ?? '').split(',').filter(Boolean),
         Number(c.req.query('limit') ?? DEFAULT_POSTS_LIMIT)
@@ -194,26 +145,19 @@ export function createSocialRoutes(
     )
   );
 
-  social.post(
-    '/report',
-    bodyLimit({
-      maxSize: MAX_REQUEST_BYTES,
-      onError: (c) => c.json({ error: 'Payload too large' }, 413),
-    }),
-    async (c) => {
-      const body = await c.req.json().catch(() => null);
-      if (!body || typeof body !== 'object') return c.json({ error: 'Invalid JSON body' }, 400);
-      return respond(c, () =>
-        getReportService().apply(body as { intent: unknown; signature: string })
-      );
-    }
-  );
+  social.post('/report', limitBody(MAX_REQUEST_BYTES), async (c) => {
+    const body = await readJsonObject(c);
+    if (!body) return invalidJsonBody(c);
+    return respondIntent(c, () =>
+      getReportService().apply(body as { intent: unknown; signature: string })
+    );
+  });
 
   social.get('/following/:address', (c) =>
-    respond(c, () => getService().following(c.req.param('address')))
+    respondIntent(c, () => getService().following(c.req.param('address')))
   );
   social.get('/followers/:address', (c) =>
-    respond(c, () => getService().followers(c.req.param('address')))
+    respondIntent(c, () => getService().followers(c.req.param('address')))
   );
 
   return social;

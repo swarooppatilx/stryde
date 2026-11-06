@@ -54,4 +54,18 @@ describe('logError', () => {
 
     expect(log).toHaveBeenCalledWith('[x]', 'plain string');
   });
+
+  it('prints a plain object as JSON instead of "[object Object]", still without secrets', () => {
+    const previous = process.env.RELAYER_RPC_URL;
+    process.env.RELAYER_RPC_URL = RPC;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    logError('[ipfs]', { status: 'weird', url: RPC });
+
+    const output = log.mock.calls.flat().join(' ');
+    expect(output).toContain('"status":"weird"');
+    expect(output).not.toContain('abc123SECRETkey');
+    if (previous === undefined) delete process.env.RELAYER_RPC_URL;
+    else process.env.RELAYER_RPC_URL = previous;
+  });
 });

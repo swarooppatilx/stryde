@@ -151,7 +151,7 @@ describe('POST /notifications/push', () => {
     const json = await res.json();
     expect(JSON.stringify(json)).not.toContain('EXPO_ACCESS_TOKEN');
     // The operator still sees which setting is missing.
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining('EXPO_ACCESS_TOKEN'));
+    expect(logged.mock.calls.flat().join(' ')).toContain('EXPO_ACCESS_TOKEN');
     expect(sendPushNotificationsAsync).not.toHaveBeenCalled();
   });
 });

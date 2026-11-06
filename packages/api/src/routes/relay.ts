@@ -1,12 +1,12 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { checkAchievement } from '../lib/achievementCheck.js';
 import { findRecordedActivity, findRecordedActivityInSubgraph } from '../lib/activityProof.js';
 import { isAddress } from '../lib/address.js';
 import { getRelayChainConfig } from '../lib/chainConfig.js';
 import { settlementVerdict } from '../lib/challengeSettlement.js';
 import { getContributionLedger } from '../lib/contributionLedgerFromEnv.js';
+import { isBytes32 } from '../lib/hex.js';
 import { getChainIndex } from '../lib/index/runtime.js';
 import { logError } from '../lib/logError.js';
 import { RELAY_ABIS } from '../lib/relayAbis.js';
@@ -15,13 +15,11 @@ import { getRelayerPublicClient } from '../lib/relayer.js';
 import { type RelayResult, relayTx } from '../lib/relayerTx.js';
 import { createSerialQueue } from '../lib/serialQueue.js';
 import { apiKeyGate } from '../middleware/apiKey.js';
+import { invalidJsonBody, limitBody, readJsonObject } from '../middleware/jsonBody.js';
 
-const HEX_32_RE = /^0x[0-9a-fA-F]{64}$/;
 /** Contributions and rewards are meters of distance; nobody covers more than 1000 km in one activity. */
 const MAX_DISTANCE_METERS = 1_000_000;
 const MAX_SEASON_SECONDS = 366 * 24 * 60 * 60;
-
-const isBytes32 = (v: unknown): v is `0x${string}` => typeof v === 'string' && HEX_32_RE.test(v);
 
 /** A whole number of `unit`s within [min, max], or null. */
 function wholeNumber(v: unknown, min: number, max: number): number | null {
@@ -36,13 +34,7 @@ export const relay = new Hono();
 const countContribution = createSerialQueue();
 relay.use('*', apiKeyGate);
 // Every relay request is a few small fields; anything bigger is not one.
-relay.use(
-  '*',
-  bodyLimit({
-    maxSize: MAX_RELAY_BODY_BYTES,
-    onError: (c) => c.json({ error: 'Payload too large' }, 413),
-  })
-);
+relay.use('*', limitBody(MAX_RELAY_BODY_BYTES));
 
 function mapRelayError(c: Context, error: unknown) {
   // The 503 hides why we lost track of the transaction, so keep the reason in the logs.
@@ -61,11 +53,6 @@ async function respondWith(c: Context, write: () => Promise<RelayResult>) {
   } catch (error) {
     return mapRelayError(c, error);
   }
-}
-
-async function readJsonObject(c: Context): Promise<Record<string, unknown> | null> {
-  const body = await c.req.json().catch(() => null);
-  return body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
 }
 
 /** Defining once per achievement type, not before every mint, halves the relayer's gas per badge. */
@@ -106,7 +93,7 @@ async function lookupRecordedActivity(activityHash: `0x${string}`) {
 
 relay.post('/mint-achievement', async (c) => {
   const body = await readJsonObject(c);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return invalidJsonBody(c);
   const { recipient, achievementId, achievementName } = body;
   if (
     !isAddress(recipient) ||
@@ -152,7 +139,7 @@ relay.post('/mint-achievement', async (c) => {
 
 relay.post('/mint-reward', async (c) => {
   const body = await readJsonObject(c);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return invalidJsonBody(c);
   const { recipient, activityHash, distance } = body;
   const meters = wholeNumber(distance, 1, MAX_DISTANCE_METERS);
   if (!isAddress(recipient) || !isBytes32(activityHash) || meters === null) {
@@ -212,7 +199,7 @@ function parseChallengeId(value: unknown): bigint | null {
 
 relay.post('/settle-challenge', async (c) => {
   const body = await readJsonObject(c);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return invalidJsonBody(c);
   const { challengeId } = body;
   const id = parseChallengeId(challengeId);
   if (id === null) return c.json({ error: 'Required: challengeId (a whole number)' }, 400);
@@ -241,7 +228,7 @@ relay.post('/settle-challenge', async (c) => {
 
 relay.post('/mint-territory-nft', async (c) => {
   const body = await readJsonObject(c);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return invalidJsonBody(c);
   const { recipient, polygonHash } = body;
   if (!isAddress(recipient) || !isBytes32(polygonHash)) {
     return c.json({ error: 'Required: recipient (address), polygonHash (bytes32)' }, 400);
@@ -276,7 +263,7 @@ relay.post('/mint-territory-nft', async (c) => {
 
 relay.post('/start-season', async (c) => {
   const body = await readJsonObject(c);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return invalidJsonBody(c);
   const seconds = wholeNumber(body.durationSeconds, 1, MAX_SEASON_SECONDS);
   if (seconds === null) {
     return c.json({ error: `durationSeconds must be between 1 and ${MAX_SEASON_SECONDS}` }, 400);
@@ -320,7 +307,7 @@ async function markCounted(
 
 relay.post('/record-contribution', async (c) => {
   const body = await readJsonObject(c);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return invalidJsonBody(c);
   const { participant, activityHash } = body;
   if (!isAddress(participant) || !isBytes32(activityHash)) {
     return c.json({ error: 'Required: participant (address), activityHash (bytes32)' }, 400);

@@ -7,13 +7,14 @@ import {
 } from '@worldcoin/idkit-core';
 import { signRequest } from '@worldcoin/idkit-server';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { keccak256, toBytes } from 'viem';
 import { isAddress } from '../lib/address.js';
 import { isProduction } from '../lib/env.js';
+import { isBytes32 } from '../lib/hex.js';
 import { logError } from '../lib/logError.js';
 import { ConfigError, classifyRelayError, ReceiptTimeoutError } from '../lib/relayErrors.js';
 import { relayTx } from '../lib/relayerTx.js';
+import { limitBody } from '../middleware/jsonBody.js';
 
 export const world = new Hono();
 
@@ -56,13 +57,9 @@ interface SessionEntry {
   wallet: string;
 }
 
-const HEX_BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
-
 /** World returns a bytes32 nullifier; anything else is hashed so distinct values never collide. */
 function toNullifierHash(nullifier: string): `0x${string}` {
-  return HEX_BYTES32_RE.test(nullifier)
-    ? (nullifier as `0x${string}`)
-    : keccak256(toBytes(nullifier));
+  return isBytes32(nullifier) ? (nullifier as `0x${string}`) : keccak256(toBytes(nullifier));
 }
 
 const MIRROR_ATTEMPTS = 3;
@@ -323,52 +320,45 @@ function sessionFailureMessage(error: unknown, code: string | null): string {
   return code ? `Session creation failed (${code})` : 'Session creation failed';
 }
 
-world.post(
-  '/session',
-  bodyLimit({
-    maxSize: MAX_BODY_BYTES,
-    onError: (c) => c.json({ error: 'Payload too large' }, 413),
-  }),
-  async (c) => {
-    if (!RP_SIGNING_KEY) {
-      return c.json({ error: 'World ID signing not configured' }, 503);
-    }
-
-    const body = await c.req.json().catch(() => null);
-    const signal = body?.signal;
-    // The signal is the wallet the verification is mirrored onto; any other
-    // value would pass World's check and then verify nobody onchain.
-    if (!isAddress(signal)) {
-      return c.json({ error: 'signal must be the wallet address being verified' }, 400);
-    }
-    const returnTo = body?.return_to ?? DEFAULT_RETURN_TO;
-    if (
-      typeof returnTo !== 'string' ||
-      !RETURN_TO_PREFIXES.some((prefix) => returnTo.startsWith(prefix))
-    ) {
-      return c.json({ error: 'return_to must be a Stryde app link' }, 400);
-    }
-
-    try {
-      const session = await createSession(signal, returnTo);
-      return c.json(session);
-    } catch (error) {
-      // The IDKit client can throw plain objects (e.g. { code: 'invalid_rp_signature' }),
-      // so don't collapse those into a message-less failure.
-      if (error instanceof SessionLimitError) return c.json({ error: error.message }, 503);
-      if (error instanceof ConfigError) {
-        console.error('[world]', error.message);
-        return c.json({ error: 'Service misconfigured' }, 503);
-      }
-      logError('[world] Session creation failed:', error);
-      const code =
-        typeof error === 'object' && error !== null && 'code' in error
-          ? String((error as { code: unknown }).code)
-          : null;
-      return c.json({ error: sessionFailureMessage(error, code) }, 400);
-    }
+world.post('/session', limitBody(MAX_BODY_BYTES), async (c) => {
+  if (!RP_SIGNING_KEY) {
+    return c.json({ error: 'World ID signing not configured' }, 503);
   }
-);
+
+  const body = await c.req.json().catch(() => null);
+  const signal = body?.signal;
+  // The signal is the wallet the verification is mirrored onto; any other
+  // value would pass World's check and then verify nobody onchain.
+  if (!isAddress(signal)) {
+    return c.json({ error: 'signal must be the wallet address being verified' }, 400);
+  }
+  const returnTo = body?.return_to ?? DEFAULT_RETURN_TO;
+  if (
+    typeof returnTo !== 'string' ||
+    !RETURN_TO_PREFIXES.some((prefix) => returnTo.startsWith(prefix))
+  ) {
+    return c.json({ error: 'return_to must be a Stryde app link' }, 400);
+  }
+
+  try {
+    const session = await createSession(signal, returnTo);
+    return c.json(session);
+  } catch (error) {
+    // The IDKit client can throw plain objects (e.g. { code: 'invalid_rp_signature' }),
+    // so don't collapse those into a message-less failure.
+    if (error instanceof SessionLimitError) return c.json({ error: error.message }, 503);
+    if (error instanceof ConfigError) {
+      logError('[world] Service misconfigured:', error);
+      return c.json({ error: 'Service misconfigured' }, 503);
+    }
+    logError('[world] Session creation failed:', error);
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code: unknown }).code)
+        : null;
+    return c.json({ error: sessionFailureMessage(error, code) }, 400);
+  }
+});
 
 world.post('/session/:id/poll', async (c) => {
   if (!RP_SIGNING_KEY) {
@@ -390,38 +380,31 @@ world.post('/session/:id/poll', async (c) => {
   }
 });
 
-world.post(
-  '/verify',
-  bodyLimit({
-    maxSize: MAX_BODY_BYTES,
-    onError: (c) => c.json({ error: 'Payload too large' }, 413),
-  }),
-  async (c) => {
-    if (!RP_SIGNING_KEY) {
-      return c.json({ error: 'World ID signing not configured' }, 503);
-    }
-
-    const body = (await c.req.json().catch(() => null)) as { idkitResponse?: unknown } | null;
-    const idkitResponse = body?.idkitResponse;
-
-    if (!idkitResponse) {
-      return c.json({ error: 'Missing idkitResponse' }, 400);
-    }
-
-    if (SKIP_REMOTE_VERIFY) {
-      const nullifier = extractNullifier(
-        idkitResponse as { responses?: Array<Record<string, unknown>> }
-      );
-      return c.json({ ok: true, nullifier });
-    }
-
-    try {
-      const result = await verifyWithWorld(idkitResponse);
-      return c.json({ ok: true, result });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : 'Verification failed';
-      logError('[world] Verify failed:', detail);
-      return c.json({ error: describeVerifyFailure(detail) }, 400);
-    }
+world.post('/verify', limitBody(MAX_BODY_BYTES), async (c) => {
+  if (!RP_SIGNING_KEY) {
+    return c.json({ error: 'World ID signing not configured' }, 503);
   }
-);
+
+  const body = (await c.req.json().catch(() => null)) as { idkitResponse?: unknown } | null;
+  const idkitResponse = body?.idkitResponse;
+
+  if (!idkitResponse) {
+    return c.json({ error: 'Missing idkitResponse' }, 400);
+  }
+
+  if (SKIP_REMOTE_VERIFY) {
+    const nullifier = extractNullifier(
+      idkitResponse as { responses?: Array<Record<string, unknown>> }
+    );
+    return c.json({ ok: true, nullifier });
+  }
+
+  try {
+    const result = await verifyWithWorld(idkitResponse);
+    return c.json({ ok: true, result });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Verification failed';
+    logError('[world] Verify failed:', detail);
+    return c.json({ error: describeVerifyFailure(detail) }, 400);
+  }
+});

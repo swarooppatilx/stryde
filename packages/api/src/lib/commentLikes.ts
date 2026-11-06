@@ -1,4 +1,5 @@
 import type { Address } from './address.js';
+import { type Bytes32, isBytes32 } from './hex.js';
 import { IntentError } from './intentError.js';
 import { createSerialQueue } from './serialQueue.js';
 import { createIntentGuards, unixNow } from './signedIntent.js';
@@ -13,8 +14,6 @@ export class CommentLikeError extends IntentError<CommentLikeErrorCode> {
 }
 
 const guard = createIntentGuards((code, message) => new CommentLikeError(code, message));
-
-type Bytes32 = `0x${string}`;
 
 export interface CommentLikeIntent {
   liker: Address;
@@ -59,10 +58,9 @@ export interface CommentLikeServiceDeps {
 /** One request may ask about this many comments. */
 const MAX_COMMENTS_PER_READ = 100;
 const READ_CONCURRENCY = 5;
-const BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 function toCommentId(value: unknown): Bytes32 {
-  if (typeof value !== 'string' || !BYTES32_PATTERN.test(value)) {
+  if (!isBytes32(value)) {
     throw new CommentLikeError('invalid', 'commentId must be a 32-byte hex id');
   }
   return value.toLowerCase() as Bytes32;
