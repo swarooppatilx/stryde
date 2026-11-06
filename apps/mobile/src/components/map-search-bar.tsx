@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import { MapChrome } from '@/constants/mapChrome';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { TypeScale, textStyle } from '@/constants/typography';
 import { useTheme } from '@/hooks/use-theme';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { haptics } from '@/utils/haptics';
 import { SPORT_FILTERS, SPORT_LABELS, type SportFilter } from './filter-chips';
 import { Tappable } from './tappable';
@@ -18,6 +19,10 @@ const SPORT_ICONS: Record<SportFilter, keyof typeof Ionicons.glyphMap> = {
   swim: 'water-outline',
   multi: 'layers-outline',
 };
+
+/** What the search hint suggests in turn: places athletes look for before heading out. */
+const SEARCH_HINTS = ['places', 'cafés', 'parks', 'drinking water', 'trailheads', 'viewpoints'];
+const HINT_MS = 3000;
 
 interface MapSearchBarProps {
   query: string;
@@ -38,6 +43,17 @@ export function MapSearchBar({
 }: MapSearchBarProps) {
   const theme = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  // While the field is empty and idle, the hint cycles through things worth searching for.
+  const [focused, setFocused] = useState(false);
+  const [hintIndex, setHintIndex] = useState(0);
+  const reduceMotion = useReduceMotion();
+  const cycling = !focused && !query && !reduceMotion;
+  useEffect(() => {
+    if (!cycling) return;
+    const timer = setInterval(() => setHintIndex((i) => (i + 1) % SEARCH_HINTS.length), HINT_MS);
+    return () => clearInterval(timer);
+  }, [cycling]);
+  const placeholder = reduceMotion ? 'Search places' : `Search ${SEARCH_HINTS[hintIndex]}`;
   return (
     <View>
       <View
@@ -62,11 +78,15 @@ export function MapSearchBar({
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <TextInput
           style={[styles.input, { color: theme.text }]}
-          placeholder="Search places"
+          placeholder={placeholder}
           placeholderTextColor={theme.placeholder}
           value={query}
           onChangeText={onChangeQuery}
-          onFocus={() => setMenuOpen(false)}
+          onFocus={() => {
+            setFocused(true);
+            setMenuOpen(false);
+          }}
+          onBlur={() => setFocused(false)}
           onSubmitEditing={onSubmit}
           returnKeyType="search"
           autoCapitalize="none"
