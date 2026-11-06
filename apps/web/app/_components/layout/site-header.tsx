@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StrydeMark } from "../icons/stryde-mark";
+import { motion } from "framer-motion";
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview" },
@@ -43,7 +44,7 @@ export function SiteHeader() {
       <header
         className={`pointer-events-auto mx-auto flex items-center justify-between transition-all duration-300 ease-in-out ${
           isScrolled
-            ? "max-w-[1040px] rounded-full border border-[#ebecee]/90 bg-[#faf9f8]/80 px-4 py-2.5 shadow-[0_12px_32px_rgba(11,14,20,0.08)] backdrop-blur-md md:px-6"
+            ? "max-w-[1040px] rounded-full border border-[#ebecee]/90 bg-[#faf9f8]/85 px-4 py-2.5 shadow-[0_22px_42px_rgba(11,24,40,0.1)] backdrop-blur-md md:px-6"
             : "max-w-[1280px] rounded-[24px] border border-transparent bg-[#faf9f8]/50 px-2 py-2 backdrop-blur-sm"
         }`}
       >
@@ -58,20 +59,31 @@ export function SiteHeader() {
           />
         </Link>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-[#ebecee] bg-white/80 p-1 md:flex">
+        <nav className="hidden items-center gap-1 rounded-full p-1 md:flex">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-full px-4 py-1.5 text-[14px] font-medium transition-all no-underline ${
-                  isActive
-                    ? "bg-[#0b0e14] text-white"
-                    : "text-[#7a828a] hover:text-[#0b0e14]"
+                className={`relative rounded-full px-4 py-1.5 text-[14px] font-medium transition-colors duration-200 no-underline ${
+                  isActive ? "text-[#0b0e14]" : "text-[#454b52]"
                 }`}
               >
                 {item.label}
+
+                {isActive && (
+                  <motion.span
+                    layoutId="nav-underline"
+                    className="absolute inset-x-4 -bottom-[1px] h-[2px] rounded-full bg-[#e14502]"
+                    transition={{
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 32,
+                    }}
+                  />
+                )}
               </Link>
             );
           })}

@@ -6,7 +6,7 @@ import { SiteHeader } from "../_components/layout/site-header";
 
 export default function ChallengesPage() {
   return (
-    <div className="min-h-screen bg-[#faf9f8]">
+    <div className="min-h-screen bg-[#faf9f8] mt-5">
       <SiteHeader />
       <main className="mx-auto flex max-w-[880px] flex-col gap-10 px-6 pb-24 pt-12">
         <div>

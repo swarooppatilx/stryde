@@ -30,7 +30,7 @@ export function Hero() {
 
   return (
     <>
-      <section className="relative overflow-hidden px-6 pt-12 pb-10 md:px-10 md:pt-20 md:pb-12">
+      <section className="relative overflow-hidden px-6 pt-12 pb-0 md:px-10 md:pt-20 md:pb-0">
         <div className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[560px] w-full max-w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_#fff0e8_0%,_#fffbf9_45%,_transparent_75%)]" />
 
         <div className="mx-auto flex max-w-[1280px] flex-col items-center text-center">

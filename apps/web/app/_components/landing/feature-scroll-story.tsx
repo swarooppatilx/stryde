@@ -56,12 +56,10 @@ const STEPS: StoryStep[] = [
   },
 ];
 
-/* Phone with an explicit width: height comes from the aspect ratio,
-   so it can never collapse. Screen insets match your phone-frame.png. */
 function Phone({
   activeIndex,
 }: {
-  activeIndex: number | null; // null = show a single static screen (mobile)
+  activeIndex: number | null;
   className?: string;
 }) {
   return (
@@ -99,6 +97,26 @@ export function FeatureScrollStory() {
   const stepRefs = useRef<Array<HTMLElement | null>>([]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    const previousScrollSnapType = root.style.scrollSnapType;
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+
+    const updateScrollSnap = () => {
+      root.style.scrollSnapType = mediaQuery.matches
+        ? "y proximity"
+        : previousScrollSnapType;
+    };
+
+    updateScrollSnap();
+    mediaQuery.addEventListener("change", updateScrollSnap);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateScrollSnap);
+      root.style.scrollSnapType = previousScrollSnapType;
+    };
+  }, []);
+
+  useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -108,10 +126,14 @@ export function FeatureScrollStory() {
           }
         });
       },
-      // thin band around the viewport centre => exactly one active step
-      { rootMargin: "-45% 0px -45% 0px", threshold: 0 }
+      {
+        rootMargin: "-45% 0px -45% 0px",
+        threshold: 0,
+      }
     );
+
     stepRefs.current.forEach((el) => el && observer.observe(el));
+
     return () => observer.disconnect();
   }, []);
 
@@ -124,7 +146,6 @@ export function FeatureScrollStory() {
   return (
     <section className="px-6 py-20 md:px-10 md:py-32">
       <div className="mx-auto max-w-[1180px]">
-        {/* heading */}
         <div className="mx-auto mb-0 max-w-2xl text-center">
           <span className="text-[12px] font-medium uppercase tracking-[0.18em] text-[#7a828a]">
             Architecture
@@ -138,11 +159,11 @@ export function FeatureScrollStory() {
           </p>
         </div>
 
-        {/* DESKTOP: text left, sticky phone right */}
         <div className="hidden lg:grid lg:grid-cols-2 lg:gap-24">
           <div>
             {STEPS.map((step, i) => {
               const isActive = i === activeIndex;
+
               return (
                 <article
                   key={step.title}
@@ -150,7 +171,7 @@ export function FeatureScrollStory() {
                     stepRefs.current[i] = el;
                   }}
                   data-step-index={i}
-                  className="flex min-h-[75vh] items-center"
+                  className="flex min-h-[75vh] snap-center items-center"
                 >
                   <div
                     className={`max-w-md transition-all duration-500 ease-out motion-reduce:transition-none ${
@@ -168,9 +189,11 @@ export function FeatureScrollStory() {
                         {step.tag}
                       </span>
                     </div>
+
                     <h3 className="mt-5 text-[44px] font-normal leading-[1.15] tracking-tight text-[#0b0e14]">
                       {step.title}
                     </h3>
+
                     <p className="mt-4 text-[21px] leading-relaxed text-[#7a828a]">
                       {step.body}
                     </p>
@@ -182,14 +205,13 @@ export function FeatureScrollStory() {
 
           <div className="relative">
             <div className="sticky top-16 flex h-[calc(100vh-4rem)] items-center justify-center">
-              {/* soft backdrop */}
               <div
                 aria-hidden
                 className="absolute aspect-square w-[460px] rounded-full bg-[radial-gradient(circle,rgba(11,14,20,0.06)_0%,rgba(11,14,20,0)_65%)]"
               />
+
               <Phone activeIndex={activeIndex} />
 
-              {/* progress rail */}
               <div className="absolute right-0 top-1/2 flex -translate-y-1/2 flex-col gap-3">
                 {STEPS.map((step, i) => (
                   <button
@@ -213,7 +235,6 @@ export function FeatureScrollStory() {
           </div>
         </div>
 
-        {/* MOBILE / TABLET: clean stacked, no cards */}
         <div className="flex flex-col gap-20 lg:hidden">
           {STEPS.map((step, i) => (
             <div
@@ -223,12 +244,15 @@ export function FeatureScrollStory() {
               <span className="text-[12px] font-medium uppercase tracking-[0.16em] text-[#7a828a]">
                 {String(i + 1).padStart(2, "0")} · {step.tag}
               </span>
+
               <h3 className="mt-3 max-w-sm text-[26px] font-normal leading-[1.15] tracking-tight text-[#0b0e14]">
                 {step.title}
               </h3>
+
               <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-[#7a828a]">
                 {step.body}
               </p>
+
               <div className="mt-8">
                 <StaticPhone step={step} />
               </div>
@@ -252,6 +276,7 @@ function StaticPhone({ step }: { step: StoryStep }) {
           className="object-cover object-top"
         />
       </div>
+
       <Image
         src="/home/phone-frame.png"
         alt=""

@@ -40,7 +40,7 @@ const SEEDED_FEED: ActivityPost[] = [
 
 export default function ActivitiesPage() {
   return (
-    <div className="min-h-screen bg-[#faf9f8]">
+    <div className="min-h-screen bg-[#faf9f8] mt-5">
       <SiteHeader />
       <main className="mx-auto max-w-[760px] px-6 pb-24 pt-12">
         <div className="mb-8">
