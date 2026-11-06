@@ -43,3 +43,18 @@ export async function scanLogWindows<T>(
   }
   return logs;
 }
+
+/**
+ * Like `scanLogWindows`, for activity history: starts at the chain's feed start block when it has
+ * one, so older activity stays out, and at the deploy block otherwise.
+ */
+export async function scanFeedLogWindows<T>(
+  fetchWindow: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
+  latest?: bigint
+): Promise<T[]> {
+  const { feedFromBlock, deployBlock } = getActiveConfig();
+  return scanLogWindows(fetchWindow, {
+    fromBlock: feedFromBlock && feedFromBlock > deployBlock ? feedFromBlock : deployBlock,
+    latest: latest ?? (await getPublicClient().getBlockNumber()),
+  });
+}

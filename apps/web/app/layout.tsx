@@ -19,7 +19,7 @@ const brunson = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'Stryde — Run with the community.',
+  title: 'Stryde | Run with the community.',
   description:
     'Track your runs, capture territories, and share your progress with the Stryde community. On web3.',
 };

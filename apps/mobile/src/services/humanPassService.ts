@@ -92,6 +92,7 @@ function sessionToken(auth: HumanAuth): Promise<string> {
   return opening.promise;
 }
 
+/** A call to the Stryde API that proves which wallet is asking, with one wallet signature per session. */
 export async function humanFetch<T>(
   auth: HumanAuth,
   path: string,

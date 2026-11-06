@@ -216,12 +216,6 @@ export default function SettingsListScreen() {
           subtitle="Create and race segments stored on Arkiv"
           onPress={() => router.push('/segments')}
         />
-        <SettingsRow
-          icon="swap-horizontal-outline"
-          title="Cash out STRD"
-          subtitle="Swap through the Uniswap v4 sweat-fee pool"
-          onPress={() => router.push('/cash-out')}
-        />
       </SettingsSection>
 
       <SettingsSection title="Account and data">

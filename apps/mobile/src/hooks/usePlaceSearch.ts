@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import type { MapCamera } from '@/components/map-camera';
 import { getPlatform } from '@/platform';
 import { createPlaceFinder, type PlaceResult, placeAt } from '@/services/placeSearch';
+import { friendlyError } from '@/utils/friendlyError';
 import { createLatestGate } from '@/utils/mapRoutes';
 
 const DEBOUNCE_MS = 350;
@@ -58,7 +59,7 @@ export function usePlaceSearch(cameraRef: RefObject<MapCamera | null>) {
         } catch (err) {
           if (!request.isCurrent()) return;
           setSearchResults([]);
-          setSearchError(err instanceof Error ? err.message : 'Unable to search for this place');
+          setSearchError(friendlyError(err, 'Unable to search for this place'));
         } finally {
           if (request.isCurrent()) setSearchLoading(false);
         }

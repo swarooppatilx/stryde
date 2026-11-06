@@ -2,6 +2,7 @@ import { services } from '@repo/shared';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCommunityStore } from '@/stores/communityStore';
+import { friendlyError } from '@/utils/friendlyError';
 import { logger } from '@/utils/logger';
 import { isStale } from '@/utils/staleness';
 
@@ -51,7 +52,7 @@ export function useGroupsData({
     } catch (e) {
       // Keep any challenges already shown: a failed read is not "you have none".
       logger.warn('[Groups] Failed to load challenges:', e);
-      setChallengesError(e instanceof Error ? e.message : 'Could not load challenges');
+      setChallengesError(friendlyError(e, 'Could not load challenges'));
       setChallenges((previous) => previous ?? []);
     }
   }, [address, noChain]);

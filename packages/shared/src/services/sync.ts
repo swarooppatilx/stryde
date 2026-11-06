@@ -4,7 +4,7 @@ import type { ActivityType } from '../types';
 import { getActivitySummaries } from './activitySummaries';
 import { getContracts, getPublicClient } from './client';
 import { type ActivityMetadata, fetchJsonFromIpfs } from './ipfs';
-import { scanLogWindows } from './logScan';
+import { scanFeedLogWindows } from './logScan';
 import { getActivitiesFromSubgraph } from './subgraph';
 
 export interface SyncedActivity {
@@ -81,7 +81,7 @@ async function fetchActivityMetadataCids(
 ): Promise<Map<string, string>> {
   const byActivityId = new Map<string, string>();
   try {
-    const logs = await scanLogWindows((fromBlock, toBlock) =>
+    const logs = await scanFeedLogWindows((fromBlock, toBlock) =>
       client.getLogs({
         address: contracts.activityRegistry.address,
         event: ACTIVITY_METADATA_UPDATED_EVENT,
@@ -175,7 +175,7 @@ async function fetchActivityRecordedLogs(
   contracts: ReturnType<typeof getContracts>,
   owner?: `0x${string}`
 ): Promise<SyncedActivity[]> {
-  const logs = await scanLogWindows((fromBlock, toBlock) =>
+  const logs = await scanFeedLogWindows((fromBlock, toBlock) =>
     client.getLogs({
       address: contracts.activityRegistry.address,
       event: ACTIVITY_RECORDED_EVENT,

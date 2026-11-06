@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LOG_WINDOW_BLOCKS, scanLogWindows } from '../logScan';
+import { getChainConfig } from '../../constants';
+import { setChainMode } from '../client';
+import { LOG_WINDOW_BLOCKS, scanFeedLogWindows, scanLogWindows } from '../logScan';
 
 describe('scanLogWindows', () => {
   it('covers deploy block to latest in windows the RPC accepts, oldest first', async () => {
@@ -69,5 +71,31 @@ describe('scanLogWindows', () => {
     await expect(
       scanLogWindows(fetchWindow, { fromBlock: 0n, latest: LOG_WINDOW_BLOCKS * 2n })
     ).rejects.toThrow('rpc down');
+  });
+});
+
+describe('scanFeedLogWindows', () => {
+  it('starts at the feed start block, not at the deployment, when one is set', async () => {
+    setChainMode('ethereum-sepolia');
+    const { feedFromBlock, deployBlock } = getChainConfig('ethereum-sepolia');
+    expect(feedFromBlock).toBeDefined();
+    expect(feedFromBlock ?? 0n).toBeGreaterThan(deployBlock);
+    const fetchWindow = vi.fn(async () => [] as string[]);
+
+    await scanFeedLogWindows(fetchWindow, (feedFromBlock ?? 0n) + 10n);
+
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
+    expect(fetchWindow).toHaveBeenCalledWith(feedFromBlock, (feedFromBlock ?? 0n) + 10n);
+  });
+
+  it('falls back to the deploy block for a chain with no feed start', async () => {
+    setChainMode('local');
+    const { deployBlock, feedFromBlock } = getChainConfig('local');
+    expect(feedFromBlock).toBeUndefined();
+    const fetchWindow = vi.fn(async () => [] as string[]);
+
+    await scanFeedLogWindows(fetchWindow, deployBlock + 5n);
+
+    expect(fetchWindow).toHaveBeenCalledWith(deployBlock, deployBlock + 5n);
   });
 });

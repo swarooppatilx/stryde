@@ -5,10 +5,8 @@ import { getInfoAsync, readAsStringAsync } from 'expo-file-system/legacy';
 import * as ExpoHaptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import * as Network from 'expo-network';
 import type {
   Clipboard,
-  Connectivity,
   Files,
   Haptics,
   IdGenerator,
@@ -17,36 +15,13 @@ import type {
   ScreenAwake,
 } from '@/platform/ports';
 import { ignoreFailure } from '@/utils/ignoreFailure';
-import { logger } from '@/utils/logger';
 import { motionSensorService } from './motionSensors';
 
 export const expoIds: IdGenerator = { next: () => Crypto.randomUUID() };
 
 export const expoMotionSensors: MotionSensors = motionSensorService;
 
-function isOnline(state: Network.NetworkState): boolean {
-  return (
-    state.isConnected !== false &&
-    state.isInternetReachable !== false &&
-    state.type !== Network.NetworkStateType.NONE
-  );
-}
-
-export const expoConnectivity: Connectivity = {
-  async isOnline() {
-    try {
-      return isOnline(await Network.getNetworkStateAsync());
-    } catch (error) {
-      logger.warn('[Device] Network state unreadable, assuming online', error);
-      // An unreadable network state shouldn't park every write in the offline queue.
-      return true;
-    }
-  },
-
-  subscribe(onChange) {
-    return Network.addNetworkStateListener((state) => onChange(isOnline(state)));
-  },
-};
+export { expoConnectivity } from './connectivity';
 
 /** Feedback is a nicety: a failed buzz must never surface as an error. */
 const quiet = (buzz: () => Promise<unknown>) => () => {

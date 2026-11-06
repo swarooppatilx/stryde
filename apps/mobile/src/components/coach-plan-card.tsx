@@ -8,35 +8,58 @@ import { ThemedView } from '@/components/themed-view';
 import { ZeroGReceipts } from '@/components/zero-g-receipts';
 import { Brand, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useMaxHeartRate } from '@/hooks/useMaxHeartRate';
 import { requestPlan } from '@/services/coachService';
+import type { HumanAuth } from '@/services/humanPassService';
 import { useActivityStore } from '@/stores/activityStore';
 import { useCoachStore } from '@/stores/coachStore';
+import { useGoalsStore } from '@/stores/goalsStore';
+import { useProfileStore } from '@/stores/profileStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Alert } from '@/utils/alert';
+import { coachFacts } from '@/utils/coachFacts';
 import { localDay, recentHistory } from '@/utils/coachRun';
+import { friendlyError } from '@/utils/friendlyError';
 import { haptics } from '@/utils/haptics';
+import { factsLine, PRIVACY_LINE, planHeadline, streakText } from '@/utils/planCardText';
+import { isKept, keptDays, planStreak } from '@/utils/planKept';
 
 /** Today's session, written on 0G from the last two weeks of runs and what the athlete said about them. */
-export function CoachPlanCard({ wallet }: { wallet: string | null | undefined }) {
+export function CoachPlanCard({ auth }: { auth: HumanAuth | null }) {
   const theme = useTheme();
   const today = localDay(new Date());
   const saved = useCoachStore((s) => s.plans[today]);
+  const plans = useCoachStore((s) => s.plans);
+  const streak = planStreak(keptDays(plans), today);
   const [busy, setBusy] = useState(false);
+  const maxHr = useMaxHeartRate();
+  const restingHr = useProfileStore((s) => s.settings.restingHeartRate);
+  const zoneFloors = useProfileStore((s) => s.settings.hrZoneFloors);
 
   const generate = async () => {
-    if (!wallet) return;
+    if (!auth) return;
     setBusy(true);
     try {
       const { activities } = useActivityStore.getState();
-      const { debriefs } = useCoachStore.getState();
-      const history = recentHistory(activities, debriefs, Date.now());
-      const result = await requestPlan(wallet, history, today);
-      useCoachStore.getState().savePlan({ day: today, ...result, createdAt: Date.now() });
+      const { debriefs, reviews } = useCoachStore.getState();
+      const profile = { maxHr, restingHr, zoneFloors };
+      const history = recentHistory(activities, debriefs, Date.now(), profile);
+      const facts = coachFacts(
+        activities,
+        {
+          debriefs,
+          reviews,
+          goals: useGoalsStore.getState().goals,
+          weekStartsOn: useSettingsStore.getState().weekStartsOn,
+          profile,
+        },
+        new Date()
+      );
+      const result = await requestPlan(auth, history, today, facts);
+      useCoachStore.getState().savePlan({ day: today, ...result, facts, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
-      Alert.alert(
-        "Today's plan",
-        error instanceof Error ? error.message : 'Try again in a moment.'
-      );
+      Alert.alert("Today's plan", friendlyError(error, 'Try again in a moment.'));
     } finally {
       setBusy(false);
     }
@@ -54,6 +77,24 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
       {saved ? (
         <>
           <ThemedText type="sectionTitle">{saved.plan.title}</ThemedText>
+          {planHeadline(saved.plan) ? (
+            <ThemedText type="smallBold" style={{ color: theme.brand.primary }}>
+              {planHeadline(saved.plan)}
+            </ThemedText>
+          ) : null}
+          {factsLine(saved.facts) ? (
+            <ThemedText type="caption" themeColor="textSecondary">
+              {factsLine(saved.facts)}
+            </ThemedText>
+          ) : null}
+          {saved.adjusted?.length ? (
+            <ThemedView style={styles.row}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={theme.brand.primary} />
+              <ThemedText type="caption" style={styles.flex}>
+                Adjusted for safety: {saved.adjusted.join(' ')}
+              </ThemedText>
+            </ThemedView>
+          ) : null}
           {saved.plan.summary ? <ThemedText type="small">{saved.plan.summary}</ThemedText> : null}
           <ThemedView style={styles.steps}>
             {saved.plan.steps.map((step, i) => (
@@ -76,15 +117,47 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
             </ThemedText>
           ) : null}
           <ZeroGReceipts receipts={saved.receipts} />
-          <AppButton
-            size="small"
-            variant="ghost"
-            onPress={generate}
-            loading={busy}
-            disabled={busy || !wallet}
-          >
-            Rethink today
-          </AppButton>
+          <ThemedText type="caption" themeColor="textSecondary">
+            {PRIVACY_LINE}
+          </ThemedText>
+          {saved.committedAt === undefined ? (
+            <>
+              <AppButton
+                onPress={() => {
+                  useCoachStore.getState().commitPlan(today, Date.now());
+                  haptics.success();
+                }}
+                icon={<Ionicons name="checkmark-circle-outline" size={18} color={Brand.white} />}
+              >
+                I'm doing this
+              </AppButton>
+              <AppButton
+                size="small"
+                variant="ghost"
+                onPress={generate}
+                loading={busy}
+                disabled={busy || !auth}
+              >
+                Rethink today
+              </AppButton>
+            </>
+          ) : (
+            <ThemedView style={styles.row}>
+              <Ionicons
+                name={isKept(saved) ? 'checkmark-circle' : 'time-outline'}
+                size={18}
+                color={isKept(saved) ? Brand.verified : theme.textSecondary}
+              />
+              <ThemedView style={styles.flex}>
+                <ThemedText type="smallBold">
+                  {isKept(saved) ? 'Plan kept' : "You're on it. Go run."}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {isKept(saved) ? streakText(streak) : 'We check it off when your run is saved.'}
+                </ThemedText>
+              </ThemedView>
+            </ThemedView>
+          )}
         </>
       ) : (
         <>
@@ -92,10 +165,13 @@ export function CoachPlanCard({ wallet }: { wallet: string | null | undefined })
             Your coach reads your last two weeks and your voice debriefs, then writes one session
             for today. A new one every morning.
           </ThemedText>
+          <ThemedText type="caption" themeColor="textSecondary">
+            {PRIVACY_LINE}
+          </ThemedText>
           <AppButton
             onPress={generate}
             loading={busy}
-            disabled={busy || !wallet}
+            disabled={busy || !auth}
             icon={<Ionicons name="calendar-outline" size={18} color={Brand.white} />}
           >
             {busy ? 'Planning your day…' : "Plan today's session"}
