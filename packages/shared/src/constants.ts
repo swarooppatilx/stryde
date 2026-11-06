@@ -30,11 +30,17 @@ export interface ChainConfig {
 
 const DEFAULT_LOCAL_RPC = 'http://127.0.0.1:8545';
 let localRpcOverride: string | null = null;
+let sepoliaRpcOverride: string | null = null;
 
 let chainConfigCache: { key: string; config: ChainConfig } | null = null;
 
 export function setLocalRpcUrl(url: string): void {
   localRpcOverride = url;
+}
+
+/** Keyed RPC for Ethereum Sepolia; public endpoints prune old logs and rate-limit shared IPs. */
+export function setSepoliaRpcUrl(url: string): void {
+  sepoliaRpcOverride = url || null;
 }
 
 export function getLocalRpcUrl(): string {
@@ -107,18 +113,18 @@ const CHAIN_CONFIGS: Record<ChainMode, ChainConfig> = {
 };
 
 export function getChainConfig(mode: ChainMode): ChainConfig {
-  const effectiveRpcUrl =
-    mode === 'local' && localRpcOverride ? localRpcOverride : CHAIN_CONFIGS[mode].rpcUrl;
+  const override =
+    (mode === 'local' && localRpcOverride) ||
+    (mode === 'ethereum-sepolia' && sepoliaRpcOverride) ||
+    null;
+  const effectiveRpcUrl = override ?? CHAIN_CONFIGS[mode].rpcUrl;
   const key = `${mode}:${effectiveRpcUrl}`;
 
   if (chainConfigCache?.key === key) {
     return chainConfigCache.config;
   }
 
-  const config = { ...CHAIN_CONFIGS[mode] };
-  if (mode === 'local' && localRpcOverride) {
-    config.rpcUrl = localRpcOverride;
-  }
+  const config = { ...CHAIN_CONFIGS[mode], rpcUrl: effectiveRpcUrl };
 
   chainConfigCache = { key, config };
   return config;

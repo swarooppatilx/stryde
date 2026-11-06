@@ -1,7 +1,7 @@
 import { getActiveConfig, getPublicClient } from './client';
 
-/** Public Sepolia RPCs reject eth_getLogs spans wider than 50,000 blocks. */
-export const LOG_WINDOW_BLOCKS = 50_000n;
+/** Infura rejects eth_getLogs spans wider than 10,000 blocks. */
+export const LOG_WINDOW_BLOCKS = 10_000n;
 
 const LAGGING_NODE = /beyond current head/i;
 const LAGGING_NODE_RETRIES = 3;
