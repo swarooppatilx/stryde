@@ -90,6 +90,7 @@ export interface IActivityService {
         | 'segmentEfforts'
         | 'swarmRef'
         | 'swarmLink'
+        | 'swarmArchiveKey'
       >
     >
   ): void;

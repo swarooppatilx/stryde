@@ -208,6 +208,8 @@ export interface Activity {
   /** Swarm reference of the archived GPX (sealed when the route is private). */
   swarmRef?: string;
   swarmLink?: string;
+  /** Arkiv `stryde_route_archive` entity that points at the Swarm GPX. */
+  swarmArchiveKey?: string;
   /** Automatic retry bookkeeping for an activity the chain does not hold yet. */
   sync?: { attempts: number; nextAttemptAt: number; lastError?: string };
   createdAt: Date;

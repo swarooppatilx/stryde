@@ -1,15 +1,20 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
   athleteEfforts,
+  athleteRouteArchives,
   createEffort,
+  createRouteArchive,
   createSegment,
   endBeacon,
   findSegmentsNear,
   getArkivWriter,
   getBeacon,
+  getEffort,
+  getRouteArchive,
   getSegment,
   isArkivConfigured,
+  type RouteArchiveRecord,
   segmentLeaderboard,
   upsertBeacon,
 } from '../lib/arkivFitness.js';
@@ -23,7 +28,7 @@ import {
   type TimedPoint,
   toGpx,
 } from '../lib/fitness/index.js';
-import { isWalletBanned } from '../lib/humanPass.js';
+import { isWalletBanned, resolveHumanSession } from '../lib/humanPass.js';
 import { getPush } from '../lib/pushRuntime.js';
 import { RELAY_ABIS } from '../lib/relayAbis.js';
 import { getRelayerPublicClient } from '../lib/relayer.js';
@@ -58,6 +63,7 @@ const HEX_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 const MAX_TRACK_POINTS = 20_000;
 const NEARBY_PRECISION = 4;
 const MAX_CANDIDATE_CELLS = 6;
+const ARKIV_EXPLORER = 'https://rabdi.explorer.arkiv.network';
 
 function isLatLng(p: unknown): p is { latitude: number; longitude: number } {
   if (!p || typeof p !== 'object') return false;
@@ -88,6 +94,51 @@ async function currentSeasonId(): Promise<number> {
   }
 }
 
+/**
+ * Stores the GPX on Swarm and writes the run's `stryde_route_archive` entity pointing at it.
+ * Each step is best effort: a failed upload or entity never fails the activity.
+ */
+async function archiveRoute(input: {
+  athlete: `0x${string}`;
+  activityId: number;
+  name: string;
+  distanceM: number;
+  track: TimedPoint[];
+  encrypted: boolean;
+}) {
+  const none = { swarmRef: null, swarmLink: null, archiveKey: null, archiveTxHash: null };
+  if (!isSwarmConfigured()) return none;
+  let swarmRef: string;
+  let swarmLink: string | null;
+  try {
+    const reference = await uploadToSwarm(toGpx(input.name, input.track), {
+      encrypt: input.encrypted,
+    });
+    swarmRef = input.encrypted ? sealReference(reference, input.athlete) : reference;
+    swarmLink = input.encrypted ? null : swarmGatewayLink(reference);
+  } catch (error) {
+    console.warn('[arkiv] Swarm upload failed, continuing without GPX:', error);
+    return none;
+  }
+  if (!isArkivConfigured()) return { ...none, swarmRef, swarmLink };
+  try {
+    const archive = await createRouteArchive({
+      athlete: input.athlete,
+      activityId: input.activityId,
+      recordedAt: input.track[0]?.timestamp ?? Date.now(),
+      swarmRef,
+      encrypted: input.encrypted,
+      distanceM: input.distanceM,
+      pointCount: input.track.length,
+      contentType: 'application/gpx+xml',
+    });
+    return { swarmRef, swarmLink, archiveKey: archive.key, archiveTxHash: archive.txHash };
+  } catch (error) {
+    console.warn('[arkiv] Route archive entity failed:', error);
+    return { ...none, swarmRef, swarmLink };
+  }
+}
+
 // Activity matching still returns the wearable sweat score without Arkiv;
 // everything else needs it.
 arkiv.use('*', async (c, next) => {
@@ -105,7 +156,7 @@ arkiv.get('/info', (c) => {
     arkiv: true,
     writer,
     chainId: 7794095,
-    explorer: `https://rabdi.explorer.arkiv.network/address/${writer}`,
+    explorer: `${ARKIV_EXPLORER}/address/${writer}`,
     swarm: isSwarmConfigured(),
   });
 });
@@ -246,21 +297,25 @@ arkiv.post(
       });
     }
 
-    let swarmRef: string | null = null;
-    let swarmLink: string | null = null;
-    if (isSwarmConfigured()) {
-      try {
-        const gpx = toGpx(body.name ?? 'Stryde activity', track);
-        const reference = await uploadToSwarm(gpx, { encrypt: Boolean(body.privateRoute) });
-        swarmRef = body.privateRoute ? sealReference(reference, athlete) : reference;
-        swarmLink = body.privateRoute ? null : swarmGatewayLink(reference);
-      } catch (error) {
-        console.warn('[arkiv] Swarm upload failed, continuing without GPX:', error);
-      }
-    }
+    const { swarmRef, swarmLink, archiveKey, archiveTxHash } = await archiveRoute({
+      athlete,
+      activityId: Number(body.activityId ?? 0),
+      name: body.name ?? 'Stryde activity',
+      distanceM: Number(body.distanceM ?? 0),
+      track,
+      encrypted: Boolean(body.privateRoute),
+    });
 
     if (!isArkivConfigured()) {
-      return c.json({ sweat, verifiedHuman, swarmRef, swarmLink, segmentsChecked: 0, efforts: [] });
+      return c.json({
+        sweat,
+        verifiedHuman,
+        swarmRef,
+        swarmLink,
+        archiveKey: null,
+        segmentsChecked: 0,
+        efforts: [],
+      });
     }
 
     const cells = [
@@ -288,7 +343,8 @@ arkiv.post(
         avgBpm: sweat.sampleCount ? sweat.avgBpm : null,
         activityId: Number(body.activityId ?? 0),
         recordedAt: match.startedAt,
-        swarmRef,
+        // A sealed reference overflows the 128-byte `str` column; the run's archive entity holds it.
+        swarmRef: swarmLink ? swarmRef : null,
       });
       await announce(match.elapsedSec).catch((error) =>
         console.warn('[arkiv] Segment news push failed:', error)
@@ -306,24 +362,86 @@ arkiv.post(
       verifiedHuman,
       swarmRef,
       swarmLink,
+      archiveKey,
+      archiveTxHash,
       segmentsChecked: candidates.size,
       efforts,
     });
   }
 );
 
-arkiv.get('/efforts/:key/gpx', async (c) => {
-  const wallet = c.req.query('wallet') ?? '';
-  const ref = c.req.query('ref') ?? '';
-  if (!ref) return c.json({ error: 'ref required' }, 400);
+/**
+ * A sealed reference opens only for a signed session of the athlete it was sealed for:
+ * the wallet comes from the session, never from the request.
+ */
+async function sendGpx(c: Context, ref: string, athlete: string, asJson: boolean) {
   if (!isSwarmConfigured()) return c.json({ error: 'Swarm is not configured' }, 503);
-  try {
-    const reference = isSealedReference(ref) ? openReference(ref, wallet) : ref;
-    const gpx = await downloadFromSwarm(reference);
-    return c.body(gpx, 200, { 'content-type': 'application/gpx+xml' });
-  } catch {
-    return c.json({ error: 'Route is private or unavailable' }, 403);
+  let reference = ref;
+  if (isSealedReference(ref)) {
+    const wallet = resolveHumanSession(c.req.header('authorization'));
+    if (!wallet) {
+      c.header('WWW-Authenticate', 'Bearer error="invalid_token"');
+      return c.json({ error: 'Sign in with your wallet first', code: 'session_required' }, 401);
+    }
+    if (wallet.toLowerCase() !== athlete.toLowerCase()) {
+      return c.json({ error: 'Only the athlete can open a private route' }, 403);
+    }
+    try {
+      reference = openReference(ref, wallet);
+    } catch {
+      return c.json({ error: 'Route is private or unavailable' }, 403);
+    }
   }
+  try {
+    const gpx = await downloadFromSwarm(reference);
+    return asJson
+      ? c.json({ gpx })
+      : c.body(gpx, 200, { 'content-type': 'application/gpx+xml' });
+  } catch {
+    return c.json({ error: 'Route is unavailable on Swarm' }, 502);
+  }
+}
+
+function publicArchive(archive: RouteArchiveRecord) {
+  const { swarmRef, ...rest } = archive;
+  return {
+    ...rest,
+    swarmRef: archive.encrypted ? null : swarmRef,
+    swarmLink: archive.encrypted ? null : swarmGatewayLink(swarmRef),
+    explorer: `${ARKIV_EXPLORER}/entity/${archive.key}`,
+  };
+}
+
+arkiv.get('/archives/:key', async (c) => {
+  const key = c.req.param('key');
+  if (!HEX_KEY_RE.test(key)) return c.json({ error: 'Invalid archive key' }, 400);
+  const archive = await getRouteArchive(key as `0x${string}`);
+  return archive
+    ? c.json(publicArchive(archive))
+    : c.json({ error: 'Archive not found or expired' }, 404);
+});
+
+arkiv.get('/archives/:key/gpx', async (c) => {
+  const key = c.req.param('key');
+  if (!HEX_KEY_RE.test(key)) return c.json({ error: 'Invalid archive key' }, 400);
+  const archive = await getRouteArchive(key as `0x${string}`);
+  if (!archive) return c.json({ error: 'Archive not found or expired' }, 404);
+  return sendGpx(c, archive.swarmRef, archive.athlete, c.req.query('format') === 'json');
+});
+
+arkiv.get('/athletes/:wallet/archives', async (c) => {
+  const wallet = c.req.param('wallet');
+  if (!HEX_ADDRESS_RE.test(wallet)) return c.json({ error: 'Invalid wallet' }, 400);
+  const archives = await athleteRouteArchives(wallet as `0x${string}`);
+  return c.json({ archives: archives.map(publicArchive) });
+});
+
+arkiv.get('/efforts/:key/gpx', async (c) => {
+  const key = c.req.param('key');
+  if (!HEX_KEY_RE.test(key)) return c.json({ error: 'Invalid effort key' }, 400);
+  const effort = await getEffort(key as `0x${string}`);
+  if (!effort?.swarmRef) return c.json({ error: 'No route archived for this effort' }, 404);
+  return sendGpx(c, effort.swarmRef, effort.athlete, c.req.query('format') === 'json');
 });
 
 arkiv.post('/beacons', async (c) => {

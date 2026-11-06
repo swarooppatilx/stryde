@@ -1,4 +1,5 @@
 import type { HeartRateSample } from './healthService';
+import { type HumanAuth, humanFetch } from './humanPassService';
 import { apiFetch } from './strydeApi';
 
 export interface Segment {
@@ -44,6 +45,9 @@ export interface MatchResult {
   verifiedHuman: boolean;
   swarmRef: string | null;
   swarmLink: string | null;
+  /** The per-run `stryde_route_archive` entity; null when Swarm or Arkiv was unavailable. */
+  archiveKey?: string | null;
+  archiveTxHash?: string | null;
   segmentsChecked: number;
   efforts: Array<{
     key: string;
@@ -106,6 +110,12 @@ export function createSegment(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+/** Public archives need no auth; a private one opens only for the athlete's signed session. */
+export function routeArchiveGpx(archiveKey: string, auth: HumanAuth | null) {
+  const path = `/arkiv/archives/${archiveKey}/gpx?format=json`;
+  return auth ? humanFetch<{ gpx: string }>(auth, path) : apiFetch<{ gpx: string }>(path);
 }
 
 export function athleteEfforts(wallet: string) {
