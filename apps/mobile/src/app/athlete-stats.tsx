@@ -15,6 +15,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
+import { useGoals } from '@/hooks/useGoals';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProfileStore } from '@/stores/profileStore';
@@ -29,6 +30,7 @@ import {
   type UnitSystem,
 } from '@/utils/format';
 import { goalProgress, weeksInMonth, weeksInYear } from '@/utils/goalProgress';
+import { weeklyTargets } from '@/utils/goals';
 import { type PeriodStats, periodStats, sportBreakdown, sportsDone } from '@/utils/periodStats';
 import { personalRecords } from '@/utils/personalRecords';
 import { countOf } from '@/utils/plural';
@@ -110,13 +112,17 @@ export default function AthleteStatsScreen() {
     shown.filter((a) => !a.isManual),
     weekStartsOn
   );
-  const goals = useProfileStore(
+  // The Goals list is where weekly targets are edited now; the old profile settings only fill in
+  // for a metric with no weekly goal, so this screen agrees with the Progress tab.
+  const goalList = useGoals();
+  const legacy = useProfileStore(
     useShallow((s) => ({
       distance: s.settings.weeklyGoalDistance,
       activities: s.settings.weeklyGoalActivities,
       time: s.settings.weeklyGoalTime,
     }))
   );
+  const goals = weeklyTargets(goalList, legacy);
   const month = goalProgress(stats.thisMonth, goals, weeksInMonth(new Date()));
   const year = goalProgress(stats.thisYear, goals, weeksInYear(new Date()));
 

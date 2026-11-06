@@ -218,3 +218,18 @@ export function weeklyTargets(
     time: find('time', fallback.time),
   };
 }
+
+/** One goal per metric, period and sport; editing a goal never clashes with itself. */
+export function findDuplicateGoal(
+  goals: readonly Goal[],
+  draft: Omit<Goal, 'id'>,
+  ignoreId?: string
+): Goal | undefined {
+  return goals.find(
+    (g) =>
+      g.id !== ignoreId &&
+      g.metric === draft.metric &&
+      g.period === draft.period &&
+      g.sport === draft.sport
+  );
+}

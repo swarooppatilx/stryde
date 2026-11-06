@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Activity } from '@/types';
 import {
+  findDuplicateGoal,
   type Goal,
   goalStanding,
   goalTitle,
@@ -174,5 +175,27 @@ describe('weeklyTargets', () => {
       goal({ id: '2', sport: 'run', metric: 'activities', target: 9 }),
     ];
     expect(weeklyTargets(goals, fallback)).toEqual({ ...fallback, distance: 50_000 });
+  });
+});
+
+describe('findDuplicateGoal', () => {
+  const weekly = { id: 'a', metric: 'distance', period: 'week', target: 20_000 } as const;
+
+  it('finds a goal with the same metric, period and sport', () => {
+    expect(findDuplicateGoal([weekly], { metric: 'distance', period: 'week', target: 5000 })).toBe(
+      weekly
+    );
+  });
+
+  it('treats a different sport, period or metric as a new goal', () => {
+    const draft = { metric: 'distance', period: 'week', target: 5000 } as const;
+    expect(findDuplicateGoal([weekly], { ...draft, sport: 'run' })).toBeUndefined();
+    expect(findDuplicateGoal([weekly], { ...draft, period: 'month' })).toBeUndefined();
+    expect(findDuplicateGoal([weekly], { ...draft, metric: 'time' })).toBeUndefined();
+  });
+
+  it('does not count the goal being edited as its own duplicate', () => {
+    const draft = { metric: 'distance', period: 'week', target: 30_000 } as const;
+    expect(findDuplicateGoal([weekly], draft, 'a')).toBeUndefined();
   });
 });

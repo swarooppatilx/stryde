@@ -18,7 +18,9 @@ import { useActivityStore } from '@/stores/activityStore';
 import { useGoalsStore } from '@/stores/goalsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { confirmDestructive } from '@/utils/confirmDestructive';
-import { type Goal, goalStanding, goalTitle } from '@/utils/goals';
+import { findDuplicateGoal, type Goal, goalStanding, goalTitle } from '@/utils/goals';
+import { haptics } from '@/utils/haptics';
+import { Toast } from '@/utils/toast';
 
 /** Everything the athlete is aiming for: add, change or remove a goal. */
 export default function GoalsScreen() {
@@ -62,8 +64,20 @@ export default function GoalsScreen() {
               units={units}
               onCancel={close}
               onSave={(draft) => {
+                if (findDuplicateGoal(goals, draft, existing?.id)) {
+                  haptics.warning();
+                  Toast.fail(
+                    'You already have this goal. Pick another measure, period or sport, or edit the one you have.',
+                    4
+                  );
+                  return;
+                }
                 if (existing) updateGoal(existing.id, draft);
                 else addGoal(draft);
+                haptics.success();
+                Toast.success(
+                  existing ? 'Goal updated successfully!' : 'Goal created successfully!'
+                );
                 close();
               }}
               onDelete={
@@ -75,6 +89,8 @@ export default function GoalsScreen() {
                         confirmLabel: 'Delete',
                         onConfirm: () => {
                           removeGoal(existing.id);
+                          haptics.success();
+                          Toast.success('Goal deleted successfully!');
                           close();
                         },
                       })
