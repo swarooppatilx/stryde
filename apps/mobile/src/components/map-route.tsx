@@ -26,6 +26,7 @@ import {
   toMapboxPadding,
 } from '@/components/map-camera';
 import { MapErrorBoundary, MapPin, MapRouteFallback } from '@/components/map-route-fallback';
+import { DEFAULT_CENTER } from '@/constants/config';
 import { type HeatmapColor, heatRampFor } from '@/constants/heatmapColors';
 import {
   type BaseMapType,
@@ -334,7 +335,7 @@ const MapboxRouteInternal = React.memo(function MapboxRouteInternal({
   onMarkerDragEnd,
   onMarkerPress,
   onMapLongPress,
-  initialCenter = [73.851074, 18.524209],
+  initialCenter = DEFAULT_CENTER,
   initialZoom = 15,
   initialBounds,
   style,
