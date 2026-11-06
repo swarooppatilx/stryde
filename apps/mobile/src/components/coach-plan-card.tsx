@@ -19,6 +19,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Alert } from '@/utils/alert';
 import { coachFacts } from '@/utils/coachFacts';
 import { localDay, recentHistory } from '@/utils/coachRun';
+import { friendlyError } from '@/utils/friendlyError';
 import { haptics } from '@/utils/haptics';
 import { factsLine, PRIVACY_LINE, planHeadline, streakText } from '@/utils/planCardText';
 import { isKept, keptDays, planStreak } from '@/utils/planKept';
@@ -58,10 +59,7 @@ export function CoachPlanCard({ auth }: { auth: HumanAuth | null }) {
       useCoachStore.getState().savePlan({ day: today, ...result, facts, createdAt: Date.now() });
       haptics.success();
     } catch (error) {
-      Alert.alert(
-        "Today's plan",
-        error instanceof Error ? error.message : 'Try again in a moment.'
-      );
+      Alert.alert("Today's plan", friendlyError(error, 'Try again in a moment.'));
     } finally {
       setBusy(false);
     }
