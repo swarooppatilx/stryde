@@ -18,6 +18,7 @@ import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useInbox } from '@/hooks/useInbox';
 import { useSocialStore } from '@/stores/socialStore';
+import { shortAddress } from '@/utils/address';
 import { formatRelativeTime, getDisplayName } from '@/utils/format';
 import type { InboxItem } from '@/utils/inbox';
 
@@ -53,9 +54,7 @@ export default function InboxScreen() {
         const actor = users[item.actorId.toLowerCase()];
         return {
           item,
-          name: actor
-            ? getDisplayName(actor)
-            : `${item.actorId.slice(0, 6)}…${item.actorId.slice(-4)}`,
+          name: actor ? getDisplayName(actor) : shortAddress(item.actorId),
           avatar: actor?.avatar,
           unread: item.at.getTime() > openedWithSeenAt.current,
         };

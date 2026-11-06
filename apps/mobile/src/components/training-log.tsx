@@ -11,6 +11,7 @@ import type { Activity } from '@/types';
 import { formatDay, formatMonthYear } from '@/utils/dates';
 import { formatDistance, formatDuration, SPORT_LABEL, type UnitSystem } from '@/utils/format';
 import { sportsDone } from '@/utils/periodStats';
+import { countOf } from '@/utils/plural';
 import {
   CHART_RANGES,
   type ChartRange,
@@ -34,8 +35,6 @@ import { ThemedView } from './themed-view';
 
 const CHART_HEIGHT = 96;
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 function TotalsBlock({
   title,
   totals,
@@ -55,7 +54,7 @@ function TotalsBlock({
         {formatDistance(totals.distance, unitSystem)}
       </ThemedText>
       <ThemedText type="caption" themeColor="textSecondary">
-        {plural(totals.count, 'activity', 'activities')} · {formatDuration(totals.duration)}
+        {countOf(totals.count, 'activity', 'activities')} · {formatDuration(totals.duration)}
       </ThemedText>
     </ThemedView>
   );
@@ -180,13 +179,13 @@ function SportBreakdown({
           key={row.sport}
           style={styles.breakdownRow}
           accessible
-          accessibilityLabel={`${SPORT_LABEL[row.sport] ?? row.sport}: ${formatDistance(row.distance, unitSystem)}, ${plural(row.count, 'activity', 'activities')}`}
+          accessibilityLabel={`${SPORT_LABEL[row.sport] ?? row.sport}: ${formatDistance(row.distance, unitSystem)}, ${countOf(row.count, 'activity', 'activities')}`}
         >
           <ThemedView style={styles.breakdownText}>
             <ThemedText type="small">{SPORT_LABEL[row.sport] ?? row.sport}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {formatDistance(row.distance, unitSystem)} ·{' '}
-              {plural(row.count, 'activity', 'activities')}
+              {countOf(row.count, 'activity', 'activities')}
             </ThemedText>
           </ThemedView>
           <ThemedView style={[styles.share, { backgroundColor: theme.backgroundSelected }]}>
@@ -285,7 +284,7 @@ function MonthCalendar({
                 accessibilityLabel={`${formatDay(new Date(shown.getFullYear(), shown.getMonth(), cell.day))}: ${
                   cell.count === 0
                     ? 'no activity'
-                    : `${plural(cell.count, 'activity', 'activities')}, ${formatDistance(cell.distance, unitSystem)}`
+                    : `${countOf(cell.count, 'activity', 'activities')}, ${formatDistance(cell.distance, unitSystem)}`
                 }`}
               >
                 <View
@@ -315,7 +314,7 @@ function MonthCalendar({
       {picked && (
         <ThemedText type="small" themeColor="textSecondary" style={styles.picked}>
           {formatDay(new Date(shown.getFullYear(), shown.getMonth(), picked.day))} ·{' '}
-          {plural(picked.count, 'activity', 'activities')} ·{' '}
+          {countOf(picked.count, 'activity', 'activities')} ·{' '}
           {formatDistance(picked.distance, unitSystem)}
         </ThemedText>
       )}

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ListMessage } from '@/components/list-message';
@@ -17,6 +17,7 @@ import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useHiddenAuthors } from '@/hooks/useHiddenAuthors';
 import { useUserResolver } from '@/hooks/useSocialUser';
+import { sameAddress } from '@/utils/address';
 import { followListUsers } from '@/utils/followListUsers';
 import { logger } from '@/utils/logger';
 import type { SocialUser } from '@/utils/socialSelectors';
@@ -52,11 +53,16 @@ export default function FollowListScreen() {
     Followers: { state: 'loading' },
     Following: { state: 'loading' },
   });
-  const isOwn = !!id && id.toLowerCase() === me.toLowerCase();
+  const isOwn = sameAddress(id, me);
+  // Only the newest request per list may write its answer: a slow reply for an athlete we have left,
+  // or for an earlier retry, must not replace what the newer one found.
+  const requestCount = useRef<Record<Tab, number>>({ Followers: 0, Following: 0 });
 
   const load = useCallback(
     async (which: Tab) => {
       if (!id) return;
+      const mine = ++requestCount.current[which];
+      const isCurrent = () => mine === requestCount.current[which];
       setLists((l) => ({ ...l, [which]: { state: 'loading' } }));
       try {
         const address = id as `0x${string}`;
@@ -64,10 +70,12 @@ export default function FollowListScreen() {
           which === 'Followers'
             ? await services.follows.getFollowers(address)
             : await services.follows.getFollowing(address);
-        setLists((l) => ({ ...l, [which]: { state: 'ready', addresses: list.addresses } }));
+        if (isCurrent()) {
+          setLists((l) => ({ ...l, [which]: { state: 'ready', addresses: list.addresses } }));
+        }
       } catch (e) {
         logger.warn(`[FollowList] Failed to load ${which}:`, e);
-        setLists((l) => ({ ...l, [which]: { state: 'error' } }));
+        if (isCurrent()) setLists((l) => ({ ...l, [which]: { state: 'error' } }));
       }
     },
     [id]

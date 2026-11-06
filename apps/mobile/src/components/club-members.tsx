@@ -14,6 +14,7 @@ import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useHiddenAuthors } from '@/hooks/useHiddenAuthors';
 import { useUserResolver } from '@/hooks/useSocialUser';
 import { useSocialStore } from '@/stores/socialStore';
+import { sameAddress } from '@/utils/address';
 import { rankClubMembers } from '@/utils/clubRanking';
 import { followListUsers } from '@/utils/followListUsers';
 import { formatDistance, getDisplayName } from '@/utils/format';
@@ -104,7 +105,7 @@ export function ClubMembers({ clubId, owner }: { clubId: string; owner: string }
         <PersonRow
           key={user.id}
           user={user}
-          tag={user.id.toLowerCase() === owner.toLowerCase() ? 'Owner' : undefined}
+          tag={sameAddress(user.id, owner) ? 'Owner' : undefined}
           showFollow={user.id.toLowerCase() !== me.toLowerCase()}
           onPress={() => router.push(`/athletes/${user.id}`)}
         />

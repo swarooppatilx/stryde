@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useUserResolver } from '@/hooks/useSocialUser';
 import { useBlockStore } from '@/stores/blockStore';
+import { shortAddress } from '@/utils/address';
 import { getDisplayName } from '@/utils/format';
 import { hiddenList } from '@/utils/hiddenList';
 import { Toast } from '@/utils/toast';
@@ -58,9 +59,7 @@ export default function BlockedScreen() {
             const verb = kind === 'blocked' ? 'Unblock' : 'Unmute';
             const done = kind === 'blocked' ? 'Unblocked' : 'Unmuted';
             const user = resolve(address);
-            const name = user
-              ? getDisplayName(user)
-              : `${address.slice(0, 6)}…${address.slice(-4)}`;
+            const name = user ? getDisplayName(user) : shortAddress(address);
             return (
               <View style={styles.row}>
                 <Tappable
