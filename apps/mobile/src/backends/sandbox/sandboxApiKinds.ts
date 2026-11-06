@@ -1,4 +1,5 @@
 import { SET_FOLLOW } from '@/constants/outboxKinds';
+import { CLUB_ACTION } from '@/services/clubIntents';
 import { CREATE_POST, DELETE_POST } from '@/services/postIntents';
 import { SET_ABOUT } from '@/services/profileIntents';
 import { SEND_REPORT } from '@/services/reportIntents';
@@ -10,4 +11,5 @@ export const SANDBOX_API_KINDS: readonly string[] = [
   CREATE_POST,
   DELETE_POST,
   SEND_REPORT,
+  CLUB_ACTION,
 ];

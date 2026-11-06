@@ -1,7 +1,19 @@
 import { services } from '@repo/shared';
 import { useCallback, useEffect, useState } from 'react';
+import { getActiveProfileId } from '@/backends/activeProfile';
+import { PROFILES } from '@/backends/profiles';
+import { SANDBOX_CLUB_MEMBERS } from '@/backends/sandbox/communitySeed';
+import { getCurrentUserId } from '@/constants/config';
+import { useCommunityStore } from '@/stores/communityStore';
 import { logger } from '@/utils/logger';
 import { orderMembers } from '@/utils/orderMembers';
+
+function sandboxMembers(clubId: string): `0x${string}`[] {
+  const seeded = (SANDBOX_CLUB_MEMBERS[clubId] ?? []).map((m) => m.toLowerCase() as `0x${string}`);
+  const me = getCurrentUserId().toLowerCase() as `0x${string}`;
+  const joined = useCommunityStore.getState().joinedClubIds.includes(clubId);
+  return joined && !seeded.includes(me) ? [...seeded, me] : seeded;
+}
 
 export type ClubMembersState =
   | { status: 'loading' }
@@ -17,7 +29,10 @@ export function useClubMembers(clubId: string | undefined, owner: string | undef
     if (!clubId) return;
     setState({ status: 'loading' });
     try {
-      const members = await services.subgraph.getGroupMembersFromSubgraph(BigInt(clubId));
+      // The Sandbox has no chain to list members: use the seeded ones (and you, once joined).
+      const members = PROFILES[getActiveProfileId()].fakeChain
+        ? sandboxMembers(clubId)
+        : await services.subgraph.getGroupMembersFromSubgraph(BigInt(clubId));
       setState(
         members === null
           ? { status: 'unavailable' }

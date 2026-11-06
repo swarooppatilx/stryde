@@ -5,6 +5,7 @@ import { startRelayQueue } from '@/services/relayQueue';
 import { getActiveProfileId } from './activeProfile';
 import { apiConfigFor } from './apiConfig';
 import { setBalanceReader } from './balanceSource';
+import { registerClubIntents } from './clubIntents';
 import { registerMembershipIntents } from './membership';
 import { registerPostIntents } from './postIntents';
 import { registerProfileIntents } from './profileIntents';
@@ -51,6 +52,7 @@ export function configureBackends(): void {
   startRelayQueue();
   registerProfileIntents();
   registerMembershipIntents();
+  registerClubIntents();
   registerPostIntents();
   registerReportIntents();
   registerPushIntents();

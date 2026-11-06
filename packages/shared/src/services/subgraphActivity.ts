@@ -64,3 +64,39 @@ export async function getActivitiesFromSubgraph(
     } satisfies SyncedActivity;
   });
 }
+
+/**
+ * Activities by any of these wallets since `sinceSeconds`, newest first: what a club leaderboard
+ * needs. Null when no subgraph is configured.
+ */
+export async function getRecentActivitiesForUsersFromSubgraph(
+  wallets: readonly `0x${string}`[],
+  sinceSeconds: number
+): Promise<SyncedActivity[] | null> {
+  const { subgraphUrl } = getActiveConfig();
+  if (!subgraphUrl) return null;
+  const valid = wallets.filter((w) => HEX_ADDRESS_RE.test(w)).map((w) => `"${w.toLowerCase()}"`);
+  if (valid.length === 0) return [];
+  const found = await paginate<ActivityEntity>({
+    url: subgraphUrl,
+    collection: 'activities',
+    idType: 'Bytes',
+    selection:
+      'id activityId user { id } activityHash activityType distance duration territoryArea timestamp metadataCid',
+    where: `user_in: [${valid.join(', ')}], timestamp_gte: "${Math.floor(sinceSeconds)}"`,
+  });
+  return found
+    .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+    .map((a) => ({
+      activityHash: a.activityHash,
+      owner: a.user.id,
+      activityId: BigInt(a.activityId),
+      activityType: ACTIVITY_TYPE_BY_ID[a.activityType] ?? 'run',
+      distance: Number(a.distance),
+      duration: Number(a.duration),
+      territoryArea: Number(a.territoryArea),
+      timestamp: Number(a.timestamp),
+      metadata: '',
+      metadataCid: a.metadataCid ?? undefined,
+    }));
+}
