@@ -1,3 +1,5 @@
+import { en } from '@/i18n/locales/en';
+
 /**
  * Words that describe how the app works underneath, not what the athlete is doing. They stay out of
  * everyday copy: errors, empty states, hints and these constants. The wallet address and the STRD
@@ -77,56 +79,10 @@ export const SAVE_TIMING_COPY = {
 export const SHORT_ACTIVITY_LINE = 'Every bit counts. Well done for getting out.';
 
 /** The "Before you start" card on the Record screen: what could stop a recording quietly. */
-export const READINESS_COPY = {
-  heading: 'Before you start',
-  locationBlockedTitle: 'Location is off for Stryde',
-  locationBlockedDetail: 'Stryde cannot record a route without it.',
-  locationBlockedAction: 'Open settings',
-  locationApproxTitle: 'Only approximate location',
-  locationApproxDetail: 'Turn on precise location so the route follows your steps.',
-  locationApproxAction: 'Open settings',
-  locationBackgroundTitle: 'Location only while the app is open',
-  locationBackgroundDetail:
-    'Choose "Allow all the time" so recording continues with the screen off.',
-  locationBackgroundAction: 'Open settings',
-  servicesTitle: 'Phone location is switched off',
-  servicesDetail: 'Turn it on, then come back.',
-  servicesAction: 'Open location settings',
-  notificationsTitle: 'Notifications are off',
-  notificationsDetail: 'The recording notice may be hidden, and the phone may stop the recording.',
-  notificationsAction: 'Open settings',
-  batteryTitle: 'Long run tip',
-  batteryDetail:
-    'If recording stops with the screen off, set battery use for Stryde to unrestricted in the phone settings.',
-  batteryAction: 'Open settings',
-  storageTitle: 'Phone storage is almost full',
-  storageDetail: 'Free some space so the recording can be saved.',
-} as const;
+export const READINESS_COPY = en.readiness;
 
 /** Dialogs shown when Start is pressed and something may stop the recording. */
-export const START_GATE_COPY = {
-  inProgressTitle: 'Activity already in progress',
-  inProgressBody: 'Finish or discard the recording you have open before starting another.',
-  servicesOffTitle: 'Location services are off',
-  servicesOffBody: 'Turn on location in your phone settings so Stryde can record your route.',
-  servicesOffAction: 'Open settings',
-  permissionTitle: 'Location is off for Stryde',
-  permissionBody: 'Allow location in Settings to see where you are and record activities.',
-  permissionAction: 'Open Settings',
-  approximateTitle: 'Location is not precise',
-  approximateBody:
-    'Stryde only has approximate location, so the route and distance will be rough. Turn on Precise location in Settings.',
-  approximateAction: 'Open Settings',
-  noSignalTitle: 'No GPS signal',
-  noSignalBody: 'For accurate recording try moving to a location with better reception.',
-  noSignalContinue: 'Continue',
-  noSignalWait: 'Wait',
-  close: 'OK',
-  batterySaverTitle: 'Battery saver is on',
-  batterySaverBody: 'Battery saver is on. It can make your route less exact. Continue anyway?',
-  batterySaverContinue: 'Continue',
-  batterySaverSettings: 'Open phone settings',
-} as const;
+export const START_GATE_COPY = en.startGate;
 
 /** Shown when the GPS is set gentler than the athlete chose, because the battery is low. */
 export const LOW_POWER_COPY = {

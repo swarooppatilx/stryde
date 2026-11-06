@@ -3,17 +3,20 @@ import { SettingsScreen } from '@/components/settings-screen';
 import { ThemedText } from '@/components/themed-text';
 import { WeeklyGoalsSettings } from '@/components/weekly-goals-settings';
 import { Spacing } from '@/constants/theme';
+import { type LanguageSetting, type TKey, useT } from '@/i18n';
 import { useProfileStore } from '@/stores/profileStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { MOTION_OPTIONS } from '@/utils/motionPreference';
-import { THEME_PREF_LABEL } from '@/utils/settingsSummary';
+import { languageLabel, themeLabel, weekStartLabel } from '@/utils/settingsSummary';
 import { START_TABS } from '@/utils/startTab';
-import { WEEK_START_OPTIONS } from '@/utils/trainingLog';
 
-const THEME_OPTIONS = (['system', 'light', 'dark'] as const).map((value) => ({
-  value,
-  label: THEME_PREF_LABEL[value],
-}));
+const LANGUAGE_VALUES: readonly LanguageSetting[] = ['system', 'en', 'hi'];
+
+const TAB_KEY = {
+  index: 'tabs.home',
+  tracking: 'tabs.record',
+  map: 'tabs.maps',
+  groups: 'tabs.groups',
+} as const satisfies Record<(typeof START_TABS)[number]['value'], TKey>;
 
 function Heading({ children }: { children: string }) {
   return (
@@ -24,6 +27,7 @@ function Heading({ children }: { children: string }) {
 }
 
 export default function PreferencesScreen() {
+  const t = useT();
   const theme = useProfileStore((s) => s.settings.theme);
   const units = useProfileStore((s) => s.settings.units);
   const updateSettings = useProfileStore((s) => s.updateSettings);
@@ -33,54 +37,69 @@ export default function PreferencesScreen() {
   const setWeekStartsOn = useSettingsStore((s) => s.setWeekStartsOn);
   const motion = useSettingsStore((s) => s.motion);
   const setMotion = useSettingsStore((s) => s.setMotion);
+  const language = useSettingsStore((s) => s.language);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
 
   return (
-    <SettingsScreen title="Preferences">
-      <Heading>THEME</Heading>
+    <SettingsScreen title={t('preferences.title')}>
+      <Heading>{t('preferences.themeHeading')}</Heading>
       <Segmented
-        label="Theme"
+        label={t('preferences.theme')}
         value={theme}
-        options={THEME_OPTIONS}
+        options={(['system', 'light', 'dark'] as const).map((value) => ({
+          value,
+          label: themeLabel(value, t),
+        }))}
         onChange={(next) => updateSettings({ theme: next })}
       />
 
-      <Heading>UNITS</Heading>
+      <Heading>{t('preferences.unitsHeading')}</Heading>
       <Segmented
-        label="Units"
+        label={t('preferences.units')}
         value={units}
         options={[
-          { value: 'metric', label: 'Metric (km)' },
-          { value: 'imperial', label: 'Imperial (mi)' },
+          { value: 'metric', label: t('preferences.unitsMetric') },
+          { value: 'imperial', label: t('preferences.unitsImperial') },
         ]}
         onChange={(unit) => updateSettings({ units: unit })}
       />
 
-      <Heading>WEEK STARTS ON</Heading>
+      <Heading>{t('preferences.weekStartsHeading')}</Heading>
       <Segmented
-        label="Week starts on"
+        label={t('preferences.weekStarts')}
         value={weekStartsOn}
-        options={WEEK_START_OPTIONS}
+        options={([0, 1] as const).map((value) => ({ value, label: weekStartLabel(value, t) }))}
         onChange={setWeekStartsOn}
       />
 
-      <Heading>OPEN THE APP ON</Heading>
+      <Heading>{t('preferences.openOnHeading')}</Heading>
       <Segmented
-        label="Open the app on"
+        label={t('preferences.openOn')}
         value={startTab}
-        options={START_TABS.map((tab) => ({ value: tab.value, label: tab.label }))}
+        options={START_TABS.map((tab) => ({ value: tab.value, label: t(TAB_KEY[tab.value]) }))}
         onChange={setStartTab}
       />
 
-      <Heading>MOTION</Heading>
+      <Heading>{t('preferences.languageHeading')}</Heading>
       <Segmented
-        label="Motion"
+        label={t('preferences.language')}
+        value={language}
+        options={LANGUAGE_VALUES.map((value) => ({ value, label: languageLabel(value, t) }))}
+        onChange={setLanguage}
+      />
+
+      <Heading>{t('preferences.motionHeading')}</Heading>
+      <Segmented
+        label={t('preferences.motion')}
         value={motion}
-        options={MOTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+        options={[
+          { value: 'auto', label: t('preferences.motionAuto') },
+          { value: 'reduced', label: t('preferences.motionReduced') },
+        ]}
         onChange={setMotion}
       />
       <ThemedText type="caption" themeColor="textSecondary" style={{ marginTop: -Spacing.one }}>
-        Auto follows your phone's reduce-motion setting. Reduced keeps screen changes and loading
-        placeholders still.
+        {t('preferences.motionCaption')}
       </ThemedText>
 
       <WeeklyGoalsSettings />

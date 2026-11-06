@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useLogout } from '@/hooks/useLogout';
 import { useNotificationPermission } from '@/hooks/useNotificationPermission';
 import { useWorldVerification } from '@/hooks/useWorldVerification';
+import { type TFunction, useT } from '@/i18n';
 import {
   getHealthAvailability,
   openHealthSettings,
@@ -23,7 +24,7 @@ import {
   useNotificationPrefsStore,
 } from '@/stores/notificationPrefsStore';
 import { useProfileStore } from '@/stores/profileStore';
-import { ACCURACY_MODE_CONFIG, useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Alert } from '@/utils/alert';
 import {
   notificationsSummary,
@@ -32,12 +33,18 @@ import {
   recordingSummary,
 } from '@/utils/settingsSummary';
 
-function HealthConnectAccessRow({ visible }: { visible: boolean }) {
+const ACCURACY_KEY = {
+  best: 'accuracy.best',
+  balanced: 'accuracy.balanced',
+  power: 'accuracy.lowPower',
+} as const;
+
+function HealthConnectAccessRow({ visible, t }: { visible: boolean; t: TFunction }) {
   if (!visible) return null;
   return (
     <SettingsRow
       icon="settings-outline"
-      title="Manage Health Connect access"
+      title={t('settings.manageHealthConnect')}
       onPress={openHealthSettings}
     />
   );
@@ -56,6 +63,8 @@ export default function SettingsListScreen() {
   const latestWeight = useBodyStore((s) => s.entries.at(-1)?.kg ?? null);
   const settings = useSettingsStore((s) => s);
   const theme = useTheme();
+  const t = useT();
+  const isIos = Platform.OS === 'ios';
 
   const toggleHealthData = async (enabled: boolean) => {
     if (!enabled) {
@@ -65,90 +74,98 @@ export default function SettingsListScreen() {
     const availability = await getHealthAvailability();
     if (!availability.available) {
       Alert.alert(
-        'Health data unavailable',
-        availability.reason ?? 'Health data is not available.'
+        t('settings.healthUnavailableTitle'),
+        availability.reason ?? t('settings.healthUnavailableBody')
       );
       return;
     }
     if (!(await requestHealthPermissions())) {
-      Alert.alert('Permission needed', 'Allow Stryde to read heart rate to verify your efforts.');
+      Alert.alert(t('settings.permissionNeededTitle'), t('settings.permissionNeededBody'));
       return;
     }
     settings.setHealthData(true);
   };
 
   return (
-    <SettingsScreen title="Settings">
-      <SettingsSection title="Profile">
+    <SettingsScreen title={t('settings.title')}>
+      <SettingsSection title={t('settings.sectionProfile')}>
         <SettingsRow
           icon="person-outline"
-          title="Edit profile"
-          subtitle={username ? `@${username}` : 'Add your name and photo'}
+          title={t('settings.editProfile')}
+          subtitle={username ? `@${username}` : t('settings.editProfileHint')}
           onPress={() => router.push('/profile-edit')}
         />
         <SettingsRow
           icon="body-outline"
-          title="Body and heart rate"
-          subtitle={latestWeight === null ? 'No weight saved' : `${latestWeight} kg`}
+          title={t('settings.body')}
+          subtitle={latestWeight === null ? t('settings.bodyNone') : `${latestWeight} kg`}
           onPress={() => router.push('/body')}
         />
         <SettingsRow
           icon="footsteps-outline"
-          title="Gear"
+          title={t('settings.gear')}
           subtitle={
-            gearCount === 0 ? 'None added' : `${gearCount} ${gearCount === 1 ? 'item' : 'items'}`
+            gearCount === 0 ? t('settings.gearNone') : t('settings.gearCount', { count: gearCount })
           }
           onPress={() => router.push('/gear')}
         />
       </SettingsSection>
 
-      <SettingsSection title="App">
+      <SettingsSection title={t('settings.sectionApp')}>
         <SettingsRow
           icon="options-outline"
-          title="Preferences"
-          subtitle={preferencesSummary({
-            theme: profileSettings.theme,
-            units: profileSettings.units,
-            weekStartsOn: settings.weekStartsOn,
-          })}
+          title={t('settings.preferences')}
+          subtitle={preferencesSummary(
+            {
+              theme: profileSettings.theme,
+              units: profileSettings.units,
+              weekStartsOn: settings.weekStartsOn,
+              language: settings.language,
+            },
+            t
+          )}
           onPress={() => router.push('/preferences')}
         />
         <SettingsRow
           icon="radio-button-on-outline"
-          title="Recording"
-          subtitle={recordingSummary({
-            autoPause: settings.autoPause,
-            autoPauseOnFoot: settings.autoPauseOnFoot,
-            countdownSeconds: settings.countdownSeconds,
-            accuracyLabel: ACCURACY_MODE_CONFIG[settings.accuracyMode].label,
-          })}
+          title={t('settings.recording')}
+          subtitle={recordingSummary(
+            {
+              autoPause: settings.autoPause,
+              autoPauseOnFoot: settings.autoPauseOnFoot,
+              countdownSeconds: settings.countdownSeconds,
+              accuracyLabel: t(ACCURACY_KEY[settings.accuracyMode]),
+            },
+            t
+          )}
           onPress={() => router.push('/recording-settings')}
         />
         <SettingsRow
           icon="lock-closed-outline"
-          title="Privacy and safety"
-          subtitle={privacySummary(settings.defaultPrivacy, settings.privacyZones.length)}
+          title={t('settings.privacy')}
+          subtitle={privacySummary(settings.defaultPrivacy, settings.privacyZones.length, t)}
           onPress={() => router.push('/privacy-safety')}
         />
         <SettingsRow
           icon="notifications-outline"
-          title="Notifications"
+          title={t('settings.notifications')}
           subtitle={notificationsSummary(
             notificationsAllowed,
             enabledCount(prefs),
-            NOTIFICATION_KINDS.length
+            NOTIFICATION_KINDS.length,
+            t
           )}
           onPress={() => router.push('/notifications')}
         />
       </SettingsSection>
 
       <SettingsSection
-        title="Wearables and sharing"
-        footer={`Heart rate from your watch (via ${Platform.OS === 'ios' ? 'Apple Health' : 'Samsung Health, Fitbit, Garmin or Wear OS through Health Connect'}) proves real effort on segments. Live beacons expire on Arkiv after 10 minutes. Private routes are encrypted before they reach Swarm.`}
+        title={t('settings.sectionWearables')}
+        footer={t(isIos ? 'settings.footerIos' : 'settings.footerAndroid')}
       >
         <SettingsRow
           icon="heart-outline"
-          title={Platform.OS === 'ios' ? 'Apple Health heart rate' : 'Health Connect heart rate'}
+          title={t(isIos ? 'settings.heartRateIos' : 'settings.heartRateAndroid')}
           extra={
             <Switch
               checked={settings.healthData}
@@ -159,7 +176,7 @@ export default function SettingsListScreen() {
         />
         <SettingsRow
           icon="radio-outline"
-          title="Live beacon while recording"
+          title={t('settings.liveBeacon')}
           extra={
             <Switch
               checked={settings.liveBeacon}
@@ -170,7 +187,7 @@ export default function SettingsListScreen() {
         />
         <SettingsRow
           icon="bug-outline"
-          title="Verbose tracking log"
+          title={t('settings.verboseLog')}
           extra={
             <Switch
               checked={settings.verboseTrackingLog}
@@ -181,7 +198,7 @@ export default function SettingsListScreen() {
         />
         <SettingsRow
           icon="lock-closed-outline"
-          title="Private route archive"
+          title={t('settings.privateArchive')}
           extra={
             <Switch
               checked={settings.privateRoutes}
@@ -190,57 +207,60 @@ export default function SettingsListScreen() {
             />
           }
         />
-        <HealthConnectAccessRow visible={settings.healthData && Platform.OS === 'android'} />
+        <HealthConnectAccessRow visible={settings.healthData && Platform.OS === 'android'} t={t} />
       </SettingsSection>
 
-      <SettingsSection title="Partner features">
+      <SettingsSection title={t('settings.sectionPartner')}>
         <SettingsRow
           icon="sparkles-outline"
-          title="AI Coach and World Agent Pass"
-          subtitle="Let your AI coach read your runs, bound to a verified human"
+          title={t('settings.coach')}
+          subtitle={t('settings.coachHint')}
           onPress={() => router.push('/coach')}
         />
         <SettingsRow
           icon="flag-outline"
-          title="Segments"
-          subtitle="Create and race segments stored on Arkiv"
+          title={t('settings.segments')}
+          subtitle={t('settings.segmentsHint')}
           onPress={() => router.push('/segments')}
         />
         <SettingsRow
           icon="swap-horizontal-outline"
-          title="Cash out STRD"
-          subtitle="Swap through the Uniswap v4 sweat-fee pool"
+          title={t('settings.cashOut')}
+          subtitle={t('settings.cashOutHint')}
           onPress={() => router.push('/cash-out')}
         />
       </SettingsSection>
 
-      <SettingsSection title="Account and data">
+      <SettingsSection title={t('settings.sectionAccount')}>
         <SettingsRow
           icon="person-circle-outline"
-          title="Account"
-          subtitle={`${user?.email ?? 'Signed in'} · World ID ${isVerified ? 'verified' : 'not verified'}`}
+          title={t('settings.account')}
+          subtitle={t('settings.accountSubtitle', {
+            who: user?.email ?? t('settings.signedIn'),
+            state: t(isVerified ? 'settings.worldVerified' : 'settings.worldNotVerified'),
+          })}
           onPress={() => router.push('/account')}
         />
         <SettingsRow
           icon="folder-open-outline"
-          title="Data"
-          subtitle="Import, export or delete your data"
+          title={t('settings.data')}
+          subtitle={t('settings.dataHint')}
           onPress={() => router.push('/data')}
         />
         <SettingsRow
           icon="help-circle-outline"
-          title="Help and About"
-          subtitle={`Version ${Constants.expoConfig?.version ?? '—'}`}
+          title={t('settings.help')}
+          subtitle={t('settings.version', { version: Constants.expoConfig?.version ?? '—' })}
           onPress={() => router.push('/about')}
         />
       </SettingsSection>
 
       {DEV_TOOLS.enabled ? (
-        <SettingsSection title="Developer">
+        <SettingsSection title={t('settings.sectionDeveloper')}>
           <SettingsRow
             icon="construct-outline"
-            title="Developer tools"
-            subtitle="Profiles, seed data and diagnostics"
+            title={t('settings.devTools')}
+            subtitle={t('settings.devToolsHint')}
             onPress={() => router.push('/dev-tools')}
           />
         </SettingsSection>
@@ -249,7 +269,7 @@ export default function SettingsListScreen() {
       <SettingsSection>
         <SettingsRow
           icon="log-out-outline"
-          title="Log out"
+          title={t('settings.logOut')}
           subtitle={user?.email ?? undefined}
           onPress={handleLogout}
           danger

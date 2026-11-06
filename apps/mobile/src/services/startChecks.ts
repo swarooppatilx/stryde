@@ -1,4 +1,4 @@
-import { START_GATE_COPY as C } from '@/constants/copy';
+import { t } from '@/i18n';
 import { getPlatform } from '@/platform';
 import { ensureForegroundLocation } from '@/services/locationPermission';
 import { Alert } from '@/utils/alert';
@@ -38,11 +38,11 @@ async function confirmBatterySaver(): Promise<boolean> {
   if (batterySaverAccepted) return true;
   const action = await new Promise<'continue' | 'settings' | 'dismissed'>((resolve) => {
     Alert.alert(
-      C.batterySaverTitle,
-      C.batterySaverBody,
+      t('startGate.batterySaverTitle'),
+      t('startGate.batterySaverBody'),
       [
-        { text: C.batterySaverSettings, onPress: () => resolve('settings') },
-        { text: C.batterySaverContinue, onPress: () => resolve('continue') },
+        { text: t('startGate.batterySaverSettings'), onPress: () => resolve('settings') },
+        { text: t('startGate.batterySaverContinue'), onPress: () => resolve('continue') },
       ],
       { onDismiss: () => resolve('dismissed') }
     );
@@ -72,11 +72,18 @@ export async function confirmStart(session: {
     case null:
       return confirmBatterySaver();
     case 'inProgress':
-      Alert.alert(C.inProgressTitle, C.inProgressBody, [{ text: C.close }]);
+      Alert.alert(t('startGate.inProgressTitle'), t('startGate.inProgressBody'), [
+        { text: t('startGate.close') },
+      ]);
       return false;
     case 'servicesOff':
       if (
-        await askToContinue(C.servicesOffTitle, C.servicesOffBody, C.servicesOffAction, 'Cancel')
+        await askToContinue(
+          t('startGate.servicesOffTitle'),
+          t('startGate.servicesOffBody'),
+          t('startGate.servicesOffAction'),
+          t('common.cancel')
+        )
       ) {
         await location.openSettings();
       }
@@ -88,10 +95,10 @@ export async function confirmStart(session: {
     case 'noSignal':
       return (
         (await askToContinue(
-          C.noSignalTitle,
-          C.noSignalBody,
-          C.noSignalContinue,
-          C.noSignalWait
+          t('startGate.noSignalTitle'),
+          t('startGate.noSignalBody'),
+          t('startGate.noSignalContinue'),
+          t('startGate.noSignalWait')
         )) && confirmBatterySaver()
       );
   }

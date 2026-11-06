@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getT } from '@/i18n';
 import {
   notificationPermissionLabel,
   notificationsSummary,
@@ -55,5 +56,25 @@ describe('settings summaries', () => {
         accuracyLabel: 'Low-power',
       })
     ).toBe('Auto-pause off · no countdown · GPS low-power');
+  });
+});
+
+describe('settings summaries in Hindi', () => {
+  const hiT = getT('hi');
+
+  it('translate the rows and keep the plural forms', () => {
+    expect(privateZonesSummary(0, hiT)).toBe('कोई नहीं');
+    expect(privateZonesSummary(1, hiT)).toBe('1 जगह');
+    expect(privateZonesSummary(2, hiT)).toBe('2 जगहें');
+    expect(notificationsSummary(false, 9, 13, hiT)).toBe('फ़ोन की सेटिंग में बंद · 13 में से 9 तरह की');
+  });
+
+  it('names the language in the preferences summary', () => {
+    expect(
+      preferencesSummary({ theme: 'dark', units: 'metric', weekStartsOn: 1, language: 'hi' })
+    ).toBe('Dark · Metric · Monday · हिन्दी');
+    expect(preferencesSummary({ theme: 'dark', units: 'metric', weekStartsOn: 1 })).toBe(
+      'Dark · Metric · Monday'
+    );
   });
 });

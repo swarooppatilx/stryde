@@ -1,3 +1,4 @@
+import { t as defaultT, type TFunction } from '@/i18n';
 import type { MapStylePref } from '@/stores/mapPrefsStore';
 import { sensorsSubtitle } from '@/utils/sensorLive';
 
@@ -6,6 +7,16 @@ export const MAP_STYLE_LABELS: Record<MapStylePref, string> = {
   light: 'Light',
   dark: 'Dark',
 };
+
+const MAP_STYLE_KEY = {
+  auto: 'flyout.mapAuto',
+  light: 'flyout.mapLight',
+  dark: 'flyout.mapDark',
+} as const;
+
+export function mapStyleLabel(style: MapStylePref, t: TFunction = defaultT): string {
+  return t(MAP_STYLE_KEY[style]);
+}
 
 /** The stats island holds this many figures, the first of the athlete's live layout. */
 const ISLAND_STAT_COUNT = 3;
@@ -26,40 +37,47 @@ export interface FlyoutRow {
 }
 
 /** The options flyout: each row says what it is set to now. */
-export function flyoutRows({
-  trackLaps,
-  mapStyle,
-  liveShare,
-  sensors = { connected: 0, paired: 0 },
-}: {
-  trackLaps: boolean;
-  mapStyle: MapStylePref;
-  /** Whether the live beacon is on; null when it cannot work here, which leaves the row out. */
-  liveShare: boolean | null;
-  /** How many Bluetooth sensors are connected and how many are paired. */
-  sensors?: { connected: number; paired: number };
-}): FlyoutRow[] {
+export function flyoutRows(
+  {
+    trackLaps,
+    mapStyle,
+    liveShare,
+    sensors = { connected: 0, paired: 0 },
+  }: {
+    trackLaps: boolean;
+    mapStyle: MapStylePref;
+    /** Whether the live beacon is on; null when it cannot work here, which leaves the row out. */
+    liveShare: boolean | null;
+    /** How many Bluetooth sensors are connected and how many are paired. */
+    sensors?: { connected: number; paired: number };
+  },
+  t: TFunction = defaultT
+): FlyoutRow[] {
+  const onOff = (on: boolean) => t(on ? 'common.on' : 'common.off');
   const share: FlyoutRow[] =
     liveShare === null
       ? []
-      : [
-          {
-            id: 'share',
-            title: 'Share live location',
-            subtitle: liveShare ? 'On' : 'Off',
-            available: true,
-          },
-        ];
+      : [{ id: 'share', title: t('flyout.share'), subtitle: onOff(liveShare), available: true }];
   return [
-    { id: 'laps', title: 'Track laps', subtitle: trackLaps ? 'On' : 'Off', available: true },
+    { id: 'laps', title: t('flyout.laps'), subtitle: onOff(trackLaps), available: true },
     {
       id: 'settings',
-      title: 'Recording settings',
-      subtitle: 'Audio cues, auto-pause',
+      title: t('flyout.settings'),
+      subtitle: t('flyout.settingsHint'),
       available: true,
     },
-    { id: 'layers', title: 'Map layers', subtitle: MAP_STYLE_LABELS[mapStyle], available: true },
+    {
+      id: 'layers',
+      title: t('flyout.layers'),
+      subtitle: mapStyleLabel(mapStyle, t),
+      available: true,
+    },
     ...share,
-    { id: 'sensor', title: 'Add a sensor', subtitle: sensorsSubtitle(sensors), available: true },
+    {
+      id: 'sensor',
+      title: t('flyout.sensor'),
+      subtitle: sensorsSubtitle(sensors, t),
+      available: true,
+    },
   ];
 }
