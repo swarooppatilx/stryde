@@ -105,7 +105,7 @@ describe('CoachBudget', () => {
   const day = new Date('2026-11-06T10:00:00Z');
 
   it('allows the daily allowance, then refuses until the next UTC day', () => {
-    const budget = new CoachBudget({ plan: 2, poster: 1, debrief: 1 });
+    const budget = new CoachBudget({ plan: 2, poster: 1, debrief: 1, review: 1 });
     expect(budget.take(wallet, 'plan', day)).toBe(true);
     expect(budget.take(wallet, 'plan', day)).toBe(true);
     expect(budget.take(wallet, 'plan', day)).toBe(false);
@@ -113,7 +113,7 @@ describe('CoachBudget', () => {
   });
 
   it('gives a failed call back', () => {
-    const budget = new CoachBudget({ plan: 1, poster: 1, debrief: 1 });
+    const budget = new CoachBudget({ plan: 1, poster: 1, debrief: 1, review: 1 });
     expect(budget.take(wallet, 'poster', day)).toBe(true);
     budget.refund(wallet, 'poster', day);
     expect(budget.remaining(wallet, 'poster', day)).toBe(1);
