@@ -174,12 +174,57 @@ describe('Signed by a Human', () => {
         identifier: 'proof_of_human',
         nullifier: '43',
         signal_hash: signalHash(WALLET),
-        sybil_score: 0,
       },
     ];
     const result = await check(world, {}, orb);
 
-    expect(result).toMatchObject({ status: 'confirmed', kind: 'enroll', pass: { band: 'low' } });
+    expect(result).toMatchObject({
+      status: 'confirmed',
+      kind: 'enroll',
+      pass: { credential: 'proof_of_human', band: 'low' },
+    });
+    const pass = await (await world.request(`/pass/${WALLET}?meters=500`)).json();
+    expect(pass.gate).toMatchObject({ ok: true });
+  });
+
+  it('tells the athlete nothing was shared when they dismiss the check', async () => {
+    const world = await loadWorld();
+    const session = await world.request('/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signal: WALLET }),
+    });
+    const { sessionId } = (await session.json()) as { sessionId: string };
+    pollStatus.current = { type: 'failed', error: 'user_rejected' };
+    const poll = await (
+      await world.request(`/session/${sessionId}/poll`, { method: 'POST' })
+    ).json();
+    expect(poll).toMatchObject({ status: 'failed', error: 'cancelled' });
+    const pass = await (await world.request(`/pass/${WALLET}?meters=500`)).json();
+    expect(pass).toMatchObject({ pass: null, gate: { ok: false, code: 'enroll_required' } });
+  });
+
+  it('points a person without an Orb credential to the Orb when the pass needs Proof of Human', async () => {
+    process.env.WORLD_PASS_CREDENTIALS = 'proof_of_human';
+    try {
+      const world = await loadWorld();
+      const session = await world.request('/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signal: WALLET }),
+      });
+      const { sessionId } = (await session.json()) as { sessionId: string };
+      pollStatus.current = { type: 'failed', error: 'credential_unavailable' };
+      const poll = await (
+        await world.request(`/session/${sessionId}/poll`, { method: 'POST' })
+      ).json();
+      expect(poll).toMatchObject({ status: 'failed', error: 'credential_unavailable' });
+      expect(poll.message).toMatch(/Orb-verified/);
+      const pass = await (await world.request(`/pass/${WALLET}`)).json();
+      expect(pass).toMatchObject({ pass: null, accepts: ['proof_of_human'] });
+    } finally {
+      delete process.env.WORLD_PASS_CREDENTIALS;
+    }
   });
 
   it('proves the saved session with the run hash as signal, and issues a ticket for that run', async () => {

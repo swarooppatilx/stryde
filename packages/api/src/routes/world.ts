@@ -289,10 +289,10 @@ function requireSignal(item: ResultItem | undefined, signal: string) {
 function describeVerifyFailure(detail: string): string {
   const text = detail.toLowerCase();
   if (text.includes('selfie') || text.includes('feature') || text.includes('not enabled')) {
-    return 'Selfie Check may not be enabled for your app yet. Email developers@toolsforhumanity.com with your app ID.';
+    return 'This World ID credential may not be enabled for the app yet. Try again later.';
   }
   if (text.includes('invalid_proof') || text.includes('verification_failed')) {
-    return 'World rejected the proof. Confirm environment and Selfie Check are enabled for your app.';
+    return 'World rejected the proof. Start the check again.';
   }
   if (text.includes('rp_signature') || text.includes('timestamp')) {
     return 'RP signature expired. Tap Reset and try again.';
@@ -460,6 +460,7 @@ function settle(entry: SessionEntry, result: ProofResult): Pick<PollResult, 'pas
       sessionId: result.session_id as `session_${string}`,
       nullifier,
       sybilScore: enrollmentSybilScore(item),
+      credential: item?.identifier === 'proof_of_human' ? 'proof_of_human' : 'selfie',
       now,
     });
     return { pass: toPublicPass(pass) };
@@ -602,9 +603,10 @@ function worldErrorMessage(error: string, kind: CheckKind): string {
   switch (error) {
     case 'feature_unavailable':
     case 'credential_unavailable':
-      return kind === 'step_up'
-        ? 'Proof of Human needs an Orb-verified World ID. Your runs stay saved; earning stays paused until then.'
-        : 'Selfie Check is not available on this World App yet. Update World App and try again; your run is saved either way.';
+      if (kind === 'step_up' || !LIVENESS_CREDENTIALS.includes('selfie')) {
+        return 'This needs an Orb-verified World ID (Proof of Human). Your runs stay saved; earning waits until then.';
+      }
+      return 'Selfie Check is not available on this World App yet. Update World App and try again; your run is saved either way.';
     case 'world_id_4_not_available':
       return 'This needs World ID 4.0. Update World App, then try again.';
     case 'user_presence_failed':
@@ -615,7 +617,7 @@ function worldErrorMessage(error: string, kind: CheckKind): string {
     case 'connection_failed':
       return 'Could not reach World App. Check your connection and try again.';
     case 'generic_error':
-      return 'World ID could not complete Selfie Check. Ensure Selfie Check is enabled for your app in the Developer Portal.';
+      return 'World ID could not complete the check. Try again.';
     default:
       return `World ID error: ${error}`;
   }
@@ -715,6 +717,8 @@ world.get('/pass/:wallet', (c) => {
     pass: pass ? toPublicPass(pass) : null,
     ticket: ticket ?? null,
     gate: rewardGate(pass, ticket, Number.isFinite(meters) ? meters : 0),
+    /** What a new Athlete Pass accepts, so the app names the right check. */
+    accepts: LIVENESS_CREDENTIALS,
   });
 });
 

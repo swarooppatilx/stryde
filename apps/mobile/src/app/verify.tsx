@@ -13,12 +13,18 @@ import { useTheme } from '@/hooks/use-theme';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useRefreshAthletePass, useWorldVerification } from '@/hooks/useWorldVerification';
 import { isWorldIdConfigured } from '@/services/worldIdService';
+import type { PassCredential } from '@/types/worldId';
 import { formatLongDate } from '@/utils/dates';
 import { getParsedError } from '@/utils/errors';
 
 const STATUS_MESSAGE: Record<string, string> = {
   opening: 'Opening World ID\u2026',
-  polling: 'Complete Selfie Check in World ID, then return here.',
+  polling: 'Complete the check in World App, then return here.',
+};
+
+const CREDENTIAL_LABEL: Record<PassCredential, string> = {
+  selfie: 'Selfie Check',
+  proof_of_human: 'Proof of Human (Orb)',
 };
 
 export default function VerifyScreen() {
@@ -53,6 +59,7 @@ export default function VerifyScreen() {
   const statusMessage = STATUS_MESSAGE[status] ?? null;
 
   const verifiedDate = verifiedAt && formatLongDate(verifiedAt);
+  const credentialLabel = pass ? CREDENTIAL_LABEL[pass.credential ?? 'selfie'] : 'World ID';
 
   return (
     <ThemedView type="background" style={styles.container}>
@@ -84,21 +91,22 @@ export default function VerifyScreen() {
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.heroSubtitle}>
               {hasPass
-                ? `Selfie Check confirmed on ${verifiedDate}. Your runs can earn STRD, and big ones are signed at the finish line.`
-                : 'Running is free for everyone. Earning STRD needs an Athlete Pass: one World ID Selfie Check, once.'}
+                ? `${credentialLabel} confirmed on ${verifiedDate}. Your runs can earn STRD.`
+                : 'Running is free for everyone. Earning STRD needs an Athlete Pass: one World ID check, once.'}
             </ThemedText>
           </ThemedView>
 
           {pass && (
             <Card style={styles.card}>
               <ThemedText type="sectionTitle">Your pass</ThemedText>
+              <PassRow label="Verified with" value={credentialLabel} />
               <PassRow label="Sybil signal" value={BAND_LABEL[pass.band]} />
               <PassRow
                 label="Finish-Line checks"
                 value={
-                  pass.band === 'low'
+                  pass.finishLineMeters > 0
                     ? `Runs over ${(pass.finishLineMeters / 1000).toFixed(0)} km`
-                    : 'Every earning run'
+                    : 'Off'
                 }
               />
               <PassRow label="Runs signed by you" value={String(pass.presenceCount)} />
@@ -126,24 +134,24 @@ export default function VerifyScreen() {
 
           {!hasPass && (
             <Card style={styles.card}>
-              <ThemedText type="sectionTitle">Why Selfie Check, and not more?</ThemedText>
+              <ThemedText type="sectionTitle">Why World ID, and nothing more?</ThemedText>
               <ThemedView style={styles.benefitRow}>
                 <Ionicons name="happy-outline" size={18} color={theme.brand.primary} />
                 <ThemedView style={styles.benefitCopy}>
                   <ThemedText type="smallBold">Enough to stop farms</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    A live face check stops bot farms and one person running ten accounts. The same
-                    face signs your big runs, so a borrowed or rented phone cannot earn.
+                    STRD is real value. World ID proves one unique human holds this account, so bot
+                    farms and one person running ten accounts cannot split the rewards.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
               <ThemedView style={styles.benefitRow}>
                 <Ionicons name="globe-outline" size={18} color={theme.brand.primary} />
                 <ThemedView style={styles.benefitCopy}>
-                  <ThemedText type="smallBold">Open to every runner</ThemedText>
+                  <ThemedText type="smallBold">Only where money moves</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    No Orb visit and no passport: anyone with World App can do it in under a minute.
-                    We only ask for the Orb when the risk signal says so.
+                    Recording runs, records and territory never needs it. You verify once, and only
+                    to earn.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>
@@ -153,7 +161,7 @@ export default function VerifyScreen() {
                   <ThemedText type="smallBold">Nothing about you</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
                     We never need your name, age or nationality to pay for a run, so we never ask.
-                    Stryde receives a zero-knowledge proof, not your face.
+                    Stryde receives a zero-knowledge proof, not who you are.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>

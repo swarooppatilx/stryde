@@ -415,8 +415,8 @@ export default function ProfileSetupScreen() {
                 </ThemedText>
                 <ThemedText themeColor="textSecondary" style={styles.subtitle}>
                   {worldVerification.isVerified
-                    ? 'Selfie Check confirmed. Your profile shows a verified badge.'
-                    : 'Optional: prove you’re a real person with World ID Selfie Check. Verified athletes get a badge and fairer leaderboards/territory claims.'}
+                    ? 'World ID confirmed. Your profile shows a verified badge.'
+                    : 'Optional: prove you’re a real person with World ID. Verified athletes get a badge and fairer leaderboards/territory claims.'}
                 </ThemedText>
 
                 {worldVerification.error && (

@@ -27,12 +27,12 @@ const CHECK_FOR_HOLD: Record<RewardHold, WorldCheckKind> = {
 const STEP_COPY: Record<RewardHold, { title: string; body: string; cta: string }> = {
   enroll_required: {
     title: 'Get your Athlete Pass',
-    body: 'One Selfie Check in World App ties one real human to this earning account. You do it once.',
+    body: 'One World ID check in World App ties one real human to this earning account. You do it once.',
     cta: 'Get Athlete Pass with World ID',
   },
   presence_required: {
     title: 'Sign this run',
-    body: 'A quick camera check proves the human who holds your Athlete Pass is the one who ran it. The proof is bound to this run, and to nothing else.',
+    body: 'A quick World ID check proves the human who holds your Athlete Pass is the one who ran it. The proof is bound to this run, and to nothing else.',
     cta: 'Sign with World ID',
   },
   step_up_required: {
@@ -175,9 +175,9 @@ export default function FinishLineScreen() {
               <PassRow
                 label="Finish-Line checks"
                 value={
-                  pass.band === 'low'
+                  pass.finishLineMeters > 0
                     ? `Runs over ${(pass.finishLineMeters / 1000).toFixed(0)} km`
-                    : 'Every earning run'
+                    : 'Off'
                 }
               />
               <PassRow label="Runs signed" value={String(pass.presenceCount)} />
