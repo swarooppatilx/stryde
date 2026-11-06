@@ -17,6 +17,10 @@ contract MoveToEarnToken is IMoveToEarnToken, ERC20, Ownable2Step, Pausable, Acc
     /// @dev wei-per-meter. Default 1e15 => 1e18 (1 STRD) per 1000 meters.
     uint256 public rewardPerMeter = 1e15;
 
+    /// @dev 100x the default. The rate takes effect on the next mint, so a stolen or mistaken admin key
+    /// could otherwise set it high enough to mint an unbounded amount in one transaction.
+    uint256 public constant MAX_REWARD_PER_METER = 1e17;
+
     mapping(bytes32 => bool) private _rewarded;
 
     constructor() ERC20("Stryde", "STRD") Ownable(msg.sender) {
@@ -25,9 +29,22 @@ contract MoveToEarnToken is IMoveToEarnToken, ERC20, Ownable2Step, Pausable, Acc
     }
 
     function setRewardPerMeter(uint256 newRate) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newRate > MAX_REWARD_PER_METER) revert RewardRateTooHigh();
         uint256 oldRate = rewardPerMeter;
         rewardPerMeter = newRate;
         emit RewardPerMeterUpdated(oldRate, newRate);
+    }
+
+    /// @dev Pausing and the reward rate are one authority: when ownership moves to a new owner, so does the
+    /// admin role, so the old owner cannot keep changing the rate or granting minters. Roles other than
+    /// admin stay as they are, because the relayer's minting must not stop with a handover.
+    function _transferOwnership(address newOwner) internal override {
+        address previous = owner();
+        super._transferOwnership(newOwner);
+        if (previous != newOwner) {
+            if (previous != address(0)) _revokeRole(DEFAULT_ADMIN_ROLE, previous);
+            if (newOwner != address(0)) _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+        }
     }
 
     function mintForActivity(address recipient, bytes32 activityHash, uint256 distance)

@@ -11,6 +11,7 @@ interface IMoveToEarnToken {
     error EmptyActivityHash();
     error ZeroDistance();
     error DuplicateActivityHash();
+    error RewardRateTooHigh();
 
     // Write functions
     function mintForActivity(address recipient, bytes32 activityHash, uint256 distance) external returns (uint256);

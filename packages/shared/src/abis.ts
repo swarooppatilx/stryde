@@ -3782,6 +3782,19 @@ export const moveToEarnTokenAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_REWARD_PER_METER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MINTER_ROLE",
     "inputs": [],
     "outputs": [
@@ -4622,6 +4635,11 @@ export const moveToEarnTokenAbi = [
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "RewardRateTooHigh",
+    "inputs": []
   },
   {
     "type": "error",
