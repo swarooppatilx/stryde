@@ -251,11 +251,10 @@ function rewardHoldOf(error: unknown): RewardHold | null {
   return status === 428 && REWARD_HOLDS.includes(code as RewardHold) ? (code as RewardHold) : null;
 }
 
+type Attempted<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
 /** Runs one best-effort step, turning a throw into data so the next step still runs. */
-async function attempt<T>(
-  label: string,
-  run: () => Promise<T>
-): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
+async function attempt<T>(label: string, run: () => Promise<T>): Promise<Attempted<T>> {
   try {
     return { ok: true, value: await run() };
   } catch (error) {
@@ -380,10 +379,6 @@ type OnChainOutcome = Pick<
   'steps' | 'onchainFailed' | 'needsVerification' | 'rewardHold'
 >;
 
-/**
- * Records a saved activity onchain, as far as it gets. Every step reports its own
- * outcome; one failing never stops the others.
- */
 function skipReason(
   activity: Pick<Activity, 'mocked' | 'privacy' | 'hideRoute' | 'hideRouteEnds'>
 ): string {
@@ -394,17 +389,228 @@ function skipReason(
   return 'privacy zone';
 }
 
+/**
+ * Records a saved activity onchain, as far as it gets. Every step reports its own
+ * outcome; one failing never stops the others.
+ */
+type PublicRoute = ReturnType<typeof publicRoute>;
+
+type OnChainDeps = Pick<PostRunDeps, 'store' | 'isVerified' | 'timing' | 'retryDelayMs'> & {
+  chain: ActivityChain;
+};
+
+interface OnChainContext {
+  activity: OnChainSubject['activity'];
+  photos: string[];
+  territory: Ring | null | undefined;
+  deps: OnChainDeps;
+  activityHash: `0x${string}`;
+  shared: PublicRoute;
+  territoryPublic: boolean;
+}
+
+/** What a step group settled: the outcomes it decided and the flags it raised. */
+interface StepsUpdate {
+  steps: Partial<PostRunResult['steps']>;
+  onchainFailed?: boolean;
+  needsVerification?: boolean;
+  rewardHold?: RewardHold;
+}
+
+const failed = (error: unknown): StepOutcome => ({ status: 'failed', error });
+
+function metadataInput(
+  activity: OnChainSubject['activity'],
+  photos: string[],
+  territory: Ring | null | undefined,
+  shared: PublicRoute,
+  territoryPublic: boolean
+): ActivityMetadataInput {
+  const hasRoute = shared.route.length > 0;
+  return {
+    name: activity.name,
+    description: activity.description,
+    photos: photos.length > 0 ? photos : undefined,
+    polyline: hasRoute ? toPolyline(shared.route) : undefined,
+    // The loop's outline would point back at a hidden place, so it stays private then.
+    territory: territoryPublic ? (territory ?? undefined) : undefined,
+    // The chain stores only a hash/distance/duration/area: this is the
+    // one durable place the real route shape lives.
+    coordinates: hasRoute ? shared.route : undefined,
+    ...(activity.mutedFromFeeds && { mutedFromFeeds: true }),
+    ...(activity.hiddenStats?.length ? { hiddenStats: activity.hiddenStats } : {}),
+  };
+}
+
+function metadataOutcome(
+  metadata: Attempted<{ cid: string; confirmed: boolean } | null>
+): StepOutcome {
+  if (!metadata.ok) return failed(metadata.error);
+  if (metadata.value?.confirmed) return ok();
+  return skipped(metadata.value ? 'not confirmed' : 'nothing to store');
+}
+
+async function syncMetadata(ctx: OnChainContext, onchainActivityId: bigint): Promise<StepOutcome> {
+  const { activity, deps } = ctx;
+  if (staysOnDevice(activity.privacy)) return skipped('private activity');
+  // Persists name/description/photos/route to IPFS and attaches the CID
+  // onchain, so the activity's rich data survives logout or a device switch.
+  // That copy is public, so it carries the route without its hidden ends and private places.
+  const upload = () =>
+    deps.chain.setMetadata(
+      onchainActivityId,
+      metadataInput(activity, ctx.photos, ctx.territory, ctx.shared, ctx.territoryPublic)
+    );
+  // The pinning service sometimes drops the first request after the phone has been idle
+  // (seen once on Sepolia: a "fetch failed" after 11 s, then 1-2 s calls); one retry keeps
+  // the activity from being saved without its route and photos for that.
+  const metadata = await attempt('activity metadata', async () => {
+    try {
+      return await upload();
+    } catch (error) {
+      if (isConflict(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, deps.retryDelayMs ?? 2_000));
+      return upload();
+    }
+  });
+  if (metadata.ok && metadata.value?.confirmed) {
+    deps.store.updateActivity(activity.id, { metadataCid: metadata.value.cid });
+  }
+  return metadataOutcome(metadata);
+}
+
+async function syncSeason(ctx: OnChainContext): Promise<StepOutcome> {
+  const { activity, activityHash, deps } = ctx;
+  const season = await attempt('season contribution', () =>
+    deps.chain.recordSeasonContribution(activityHash, activity.distance)
+  );
+  if (season.ok) return ok();
+  // The relayer refuses a repeat with 409: it counted this run, or a timed-out send may still land.
+  if (isConflict(season.error)) return skipped('already counted or being counted');
+  return failed(season.error);
+}
+
+async function syncReward(
+  ctx: OnChainContext
+): Promise<{ reward: StepOutcome; rewardHold?: RewardHold }> {
+  const { activity, activityHash, deps } = ctx;
+  const reward = await attempt('reward mint', () =>
+    deps.chain.mintReward(activityHash, activity.distance)
+  );
+  if (reward.ok) {
+    // Relayed mints can't report the amount; only a known amount is recorded.
+    if (reward.value.confirmed && reward.value.amount > 0n) {
+      deps.store.updateActivity(activity.id, {
+        strdEarned: Number(formatUnits(reward.value.amount, 18)),
+        rewardHold: undefined,
+      });
+    }
+    return { reward: reward.value.confirmed ? ok() : skipped('not confirmed') };
+  }
+  const hold = rewardHoldOf(reward.error);
+  if (!hold) return { reward: failed(reward.error) };
+  deps.store.updateActivity(activity.id, { rewardHold: hold });
+  return { reward: skipped('held for a World ID check'), rewardHold: hold };
+}
+
+/** Everything that follows a confirmed record: the metadata, then the season and the reward. */
+async function syncConfirmed(ctx: OnChainContext, onchainActivityId: bigint): Promise<StepsUpdate> {
+  const { activity, deps } = ctx;
+  deps.store.updateActivity(activity.id, { onchainActivityId: onchainActivityId.toString() });
+  const metadata = await syncMetadata(ctx, onchainActivityId);
+  if (activity.mocked) {
+    // A simulated location is anchored like any activity but never earns: a first, client-side check.
+    return {
+      steps: {
+        metadata,
+        season: skipped('simulated location'),
+        reward: skipped('simulated location'),
+      },
+    };
+  }
+  const season = await syncSeason(ctx);
+  const { reward, rewardHold } = await syncReward(ctx);
+  return { steps: { metadata, season, reward }, rewardHold };
+}
+
+async function syncRecord(ctx: OnChainContext): Promise<StepsUpdate> {
+  const { activity, activityHash, deps } = ctx;
+  const record = await attempt('recordActivity', () =>
+    deps.chain.recordActivity({
+      polyline: activity.polyline,
+      activityType: activity.activityType,
+      distance: activity.distance,
+      duration: activity.duration,
+      territoryArea: activity.territoryArea,
+      metadata: activity.id,
+    })
+  );
+  if (!record.ok) return { steps: { record: failed(record.error) }, onchainFailed: true };
+  deps.store.updateActivity(activity.id, { txHash: record.value.txHash });
+  if (!record.value.confirmed) {
+    return {
+      steps: { record: failed(new Error('transaction not confirmed')) },
+      onchainFailed: true,
+    };
+  }
+  deps.timing?.confirmed(activity.id, activityHash);
+  const rest = await syncConfirmed(ctx, record.value.onchainActivityId);
+  return { ...rest, steps: { record: ok(), ...rest.steps } };
+}
+
+async function claimAndMint(ctx: OnChainContext, polygon: Ring): Promise<StepsUpdate> {
+  const { activity, deps } = ctx;
+  const claim = await attempt('claimTerritory', () =>
+    deps.chain.claimTerritory(polygon, activity.territoryArea)
+  );
+  if (!claim.ok) {
+    return {
+      steps: { territory: failed(claim.error), territoryNft: skipped('claim failed') },
+      onchainFailed: true,
+    };
+  }
+  if (!claim.value.confirmed) {
+    return {
+      steps: {
+        territory: failed(new Error('transaction not confirmed')),
+        territoryNft: skipped('claim not confirmed'),
+      },
+      onchainFailed: true,
+    };
+  }
+  const nft = await attempt('territory NFT mint', () =>
+    deps.chain.mintTerritoryNft(claim.value.territoryId)
+  );
+  return { steps: { territory: ok(), territoryNft: nft.ok ? ok() : failed(nft.error) } };
+}
+
+async function syncTerritory(ctx: OnChainContext): Promise<StepsUpdate> {
+  const { activity, territory, deps } = ctx;
+  if (!territory) {
+    return { steps: { territory: skipped('no territory'), territoryNft: skipped('no territory') } };
+  }
+  // The claim writes the outline onchain, so it follows the same privacy rule as the metadata.
+  if (staysOnDevice(activity.privacy) || activity.mocked || !ctx.territoryPublic) {
+    const why = skipReason(activity);
+    return { steps: { territory: skipped(why), territoryNft: skipped(why) } };
+  }
+  // A UX-level sybil signal, not a security control: the contract does not enforce it. Unverified users
+  // still get their activity and distance recorded; only the territory claim waits.
+  if (!deps.isVerified()) {
+    const reason = 'not verified with World ID';
+    return {
+      steps: { territory: skipped(reason), territoryNft: skipped(reason) },
+      needsVerification: true,
+    };
+  }
+  return claimAndMint(ctx, territory);
+}
+
 async function syncOnChain(
   { activity, photos, territory }: OnChainSubject,
   deps: Pick<PostRunDeps, 'store' | 'chain' | 'isVerified' | 'timing' | 'retryDelayMs'>
 ): Promise<OnChainOutcome> {
-  const { store, chain } = deps;
-  // The hash is derived from the id, so recomputing it gives the one saved with the activity.
-  const activityHash = services.activity.computeActivityHash(
-    activity.polyline,
-    activity.territoryArea,
-    activity.id
-  );
+  const { chain } = deps;
   const steps: PostRunResult['steps'] = {
     record: NO_WALLET,
     metadata: NO_WALLET,
@@ -413,8 +619,9 @@ async function syncOnChain(
     territory: NO_WALLET,
     territoryNft: NO_WALLET,
   };
-  let onchainFailed = false;
-  let needsVerification = false;
+  if (!chain) {
+    return { steps, onchainFailed: false, needsVerification: false };
+  }
   const shared = publicRoute(
     // A hidden route publishes nothing of the route at all.
     activity.hideRoute ? [] : parsePolyline(activity.polyline),
@@ -424,158 +631,29 @@ async function syncOnChain(
       seed: activity.id,
     }
   );
-  const territoryPublic = canShareTerritory(activity, shared.cutByZone);
-  let rewardHold: RewardHold | undefined;
+  const ctx: OnChainContext = {
+    activity,
+    photos,
+    territory,
+    deps: { ...deps, chain },
+    // The hash is derived from the id, so recomputing it gives the one saved with the activity.
+    activityHash: services.activity.computeActivityHash(
+      activity.polyline,
+      activity.territoryArea,
+      activity.id
+    ),
+    shared,
+    territoryPublic: canShareTerritory(activity, shared.cutByZone),
+  };
 
-  if (chain) {
-    const record = await attempt('recordActivity', () =>
-      chain.recordActivity({
-        polyline: activity.polyline,
-        activityType: activity.activityType,
-        distance: activity.distance,
-        duration: activity.duration,
-        territoryArea: activity.territoryArea,
-        metadata: activity.id,
-      })
-    );
-
-    if (record.ok) {
-      store.updateActivity(activity.id, { txHash: record.value.txHash });
-      if (record.value.confirmed) {
-        steps.record = ok();
-        deps.timing?.confirmed(activity.id, activityHash);
-        const onchainActivityId = record.value.onchainActivityId;
-        store.updateActivity(activity.id, { onchainActivityId: onchainActivityId.toString() });
-
-        if (staysOnDevice(activity.privacy)) {
-          steps.metadata = skipped('private activity');
-        } else {
-          // Persists name/description/photos/route to IPFS and attaches the CID
-          // onchain, so the activity's rich data survives logout or a device switch.
-          // That copy is public, so it carries the route without its hidden ends and private places.
-          const upload = () =>
-            chain.setMetadata(onchainActivityId, {
-              name: activity.name,
-              description: activity.description,
-              photos: photos.length > 0 ? photos : undefined,
-              polyline: shared.route.length > 0 ? toPolyline(shared.route) : undefined,
-              // The loop's outline would point back at a hidden place, so it stays private then.
-              territory: territoryPublic ? (territory ?? undefined) : undefined,
-              // The chain stores only a hash/distance/duration/area: this is the
-              // one durable place the real route shape lives.
-              coordinates: shared.route.length > 0 ? shared.route : undefined,
-              ...(activity.mutedFromFeeds && { mutedFromFeeds: true }),
-              ...(activity.hiddenStats?.length ? { hiddenStats: activity.hiddenStats } : {}),
-            });
-          // The pinning service sometimes drops the first request after the phone has been idle
-          // (seen once on Sepolia: a "fetch failed" after 11 s, then 1-2 s calls); one retry keeps
-          // the activity from being saved without its route and photos for that.
-          const metadata = await attempt('activity metadata', async () => {
-            try {
-              return await upload();
-            } catch (error) {
-              if (isConflict(error)) throw error;
-              await new Promise((resolve) => setTimeout(resolve, deps.retryDelayMs ?? 2_000));
-              return upload();
-            }
-          });
-          if (!metadata.ok) {
-            steps.metadata = { status: 'failed', error: metadata.error };
-          } else if (metadata.value?.confirmed) {
-            store.updateActivity(activity.id, { metadataCid: metadata.value.cid });
-            steps.metadata = ok();
-          } else {
-            steps.metadata = skipped(metadata.value ? 'not confirmed' : 'nothing to store');
-          }
-        }
-
-        if (activity.mocked) {
-          // A simulated location is anchored like any activity but never earns: a first, client-side check.
-          steps.season = skipped('simulated location');
-          steps.reward = skipped('simulated location');
-        } else {
-          const season = await attempt('season contribution', () =>
-            chain.recordSeasonContribution(activityHash, activity.distance)
-          );
-          if (season.ok) {
-            steps.season = ok();
-          } else if (isConflict(season.error)) {
-            // The relayer refuses a repeat with 409: it counted this run, or a timed-out send may still land.
-            steps.season = skipped('already counted or being counted');
-          } else {
-            steps.season = { status: 'failed', error: season.error };
-          }
-
-          const reward = await attempt('reward mint', () =>
-            chain.mintReward(activityHash, activity.distance)
-          );
-          const hold = reward.ok ? null : rewardHoldOf(reward.error);
-          if (reward.ok) {
-            steps.reward = reward.value.confirmed ? ok() : skipped('not confirmed');
-            // Relayed mints can't report the amount; only a known amount is recorded.
-            if (reward.value.confirmed && reward.value.amount > 0n) {
-              store.updateActivity(activity.id, {
-                strdEarned: Number(formatUnits(reward.value.amount, 18)),
-                rewardHold: undefined,
-              });
-            }
-          } else if (hold) {
-            rewardHold = hold;
-            store.updateActivity(activity.id, { rewardHold: hold });
-            steps.reward = skipped('held for a World ID check');
-          } else {
-            steps.reward = { status: 'failed', error: reward.error };
-          }
-        }
-      } else {
-        steps.record = { status: 'failed', error: new Error('transaction not confirmed') };
-        onchainFailed = true;
-      }
-    } else {
-      steps.record = { status: 'failed', error: record.error };
-      onchainFailed = true;
-    }
-
-    // The claim writes the outline onchain, so it follows the same privacy rule as the metadata.
-    if (territory && (staysOnDevice(activity.privacy) || activity.mocked || !territoryPublic)) {
-      const why = skipReason(activity);
-      steps.territory = skipped(why);
-      steps.territoryNft = skipped(why);
-    } else if (territory) {
-      // A UX-level sybil signal, not a security control: the contract does not enforce it. Unverified users
-      // still get their activity and distance recorded; only the territory claim waits.
-      if (deps.isVerified()) {
-        const polygon = territory;
-        const claim = await attempt('claimTerritory', () =>
-          chain.claimTerritory(polygon, activity.territoryArea)
-        );
-        if (!claim.ok) {
-          steps.territory = { status: 'failed', error: claim.error };
-          steps.territoryNft = skipped('claim failed');
-          onchainFailed = true;
-        } else if (claim.value.confirmed) {
-          steps.territory = ok();
-          const nft = await attempt('territory NFT mint', () =>
-            chain.mintTerritoryNft(claim.value.territoryId)
-          );
-          steps.territoryNft = nft.ok ? ok() : { status: 'failed', error: nft.error };
-        } else {
-          steps.territory = { status: 'failed', error: new Error('transaction not confirmed') };
-          steps.territoryNft = skipped('claim not confirmed');
-          onchainFailed = true;
-        }
-      } else {
-        needsVerification = true;
-        steps.territory = skipped('not verified with World ID');
-        steps.territoryNft = skipped('not verified with World ID');
-      }
-    } else {
-      steps.territory = skipped('no territory');
-      steps.territoryNft = skipped('no territory');
-    }
-  }
-
-  return { steps, onchainFailed, needsVerification, rewardHold };
+  const record = await syncRecord(ctx);
+  const territoryUpdate = await syncTerritory(ctx);
+  return {
+    steps: { ...steps, ...record.steps, ...territoryUpdate.steps },
+    onchainFailed: Boolean(record.onchainFailed || territoryUpdate.onchainFailed),
+    needsVerification: Boolean(territoryUpdate.needsVerification),
+    rewardHold: record.rewardHold,
+  };
 }
 
 /** The outcome of a run that did nothing, every step skipped for the same reason. */

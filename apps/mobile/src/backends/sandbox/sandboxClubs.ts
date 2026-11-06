@@ -56,6 +56,234 @@ const DEFAULT_SETTINGS = {
 
 const hex = (n: number) => `0x${n.toString(16).padStart(40, '0')}`;
 
+type Refusal = { status: number; code: string; error: string };
+
+const refuse = (status: number, code: string, error: string): Refusal => ({
+  status,
+  code,
+  error,
+});
+
+const isRefusal = (result: Json | Refusal): result is Refusal =>
+  'code' in result && 'status' in result && typeof result.status === 'number' && 'error' in result;
+
+const settingsOf = (data: ClubData) => ({ ...DEFAULT_SETTINGS, ...(data.settings ?? {}) });
+
+function buildFeed(posts: Post[], comments: Comment[], id: string, limit: number) {
+  return posts
+    .filter((p) => p.clubId === id)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit)
+    .map(({ clubId: _c, clientId: _k, ...p }) => ({
+      ...p,
+      comments: comments
+        .filter((c) => c.postId === p.id)
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .map(({ clubId: _c2, clientId: _k2, ...c }) => c),
+    }));
+}
+
+/** Everything one club action needs: who acts on what, their rights, and the club's stores. */
+interface ActionContext {
+  intent: Json;
+  action: string;
+  clubId: string;
+  actor: string;
+  target: string;
+  clientId: string;
+  data: Json;
+  owner: string;
+  club: ClubData;
+  isOwner: boolean;
+  isAdmin: boolean;
+  isMember: boolean;
+  now: () => number;
+  posts: Post[];
+  comments: Comment[];
+  nextId: () => number;
+}
+
+type ActionHandler = (ctx: ActionContext) => Json | Refusal;
+
+const requireAdmin = (ctx: ActionContext): Refusal | null =>
+  ctx.isAdmin ? null : refuse(403, 'forbidden', 'Only club admins can do that');
+
+const requireMember = (ctx: ActionContext): Refusal | null =>
+  ctx.isMember ? null : refuse(403, 'forbidden', 'Join the club first');
+
+function createPost(ctx: ActionContext): Post {
+  const { data } = ctx;
+  const created = {
+    id: `sbx-club-post-${ctx.nextId()}`,
+    clubId: ctx.clubId,
+    author: ctx.actor,
+    text: String(data.text ?? '').trim(),
+    photos: Array.isArray(data.photos) ? (data.photos as string[]) : [],
+    announcement: data.announcement === true,
+    createdAt: ctx.now(),
+    clientId: ctx.clientId,
+  };
+  ctx.posts.push(created);
+  return created;
+}
+
+const actPost: ActionHandler = (ctx) => {
+  const blocked = requireMember(ctx);
+  if (blocked) return blocked;
+  if ((settingsOf(ctx.club).adminsOnlyPost || ctx.data.announcement) && !ctx.isAdmin) {
+    return refuse(403, 'forbidden', 'Only club admins can post here');
+  }
+  const already = ctx.posts.find(
+    (p) => p.clubId === ctx.clubId && p.author === ctx.actor && p.clientId === ctx.clientId
+  );
+  const post = already ?? createPost(ctx);
+  const published = buildFeed(ctx.posts, ctx.comments, ctx.clubId, 50).find(
+    (p) => p.id === post.id
+  );
+  return { post: { ...published } };
+};
+
+const actComment: ActionHandler = (ctx) => {
+  const blocked = requireMember(ctx);
+  if (blocked) return blocked;
+  if (!ctx.posts.some((p) => p.id === ctx.intent.target))
+    return refuse(404, 'not_found', 'That post is gone');
+  const already = ctx.comments.find(
+    (x) => x.clubId === ctx.clubId && x.author === ctx.actor && x.clientId === ctx.clientId
+  );
+  const comment = already ?? {
+    id: `sbx-club-comment-${ctx.nextId()}`,
+    postId: String(ctx.intent.target),
+    clubId: ctx.clubId,
+    author: ctx.actor,
+    text: String(ctx.data.text ?? '').trim(),
+    createdAt: ctx.now(),
+    clientId: ctx.clientId,
+  };
+  if (!already) ctx.comments.push(comment);
+  const { clubId: _c, clientId: _k, ...out } = comment;
+  return { comment: out };
+};
+
+function dropCommentsOf(comments: Comment[], postId: string): void {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    if (comments[i]?.postId === postId) comments.splice(i, 1);
+  }
+}
+
+const actDelete: ActionHandler = (ctx) => {
+  const isPost = ctx.action === 'delete-post';
+  const list = isPost ? ctx.posts : ctx.comments;
+  const index = list.findIndex((x) => x.id === ctx.intent.target);
+  const found = list[index];
+  if (!found) return { deleted: true };
+  if (found.author !== ctx.actor && !ctx.isAdmin) {
+    return refuse(403, 'forbidden', 'You can only delete your own posts and comments');
+  }
+  list.splice(index, 1);
+  if (isPost) dropCommentsOf(ctx.comments, found.id);
+  return { deleted: true };
+};
+
+const actSettings: ActionHandler = (ctx) => {
+  const blocked = requireAdmin(ctx);
+  if (blocked) return blocked;
+  ctx.club.settings = { ...DEFAULT_SETTINGS, ...ctx.data };
+  return { settings: ctx.club.settings };
+};
+
+const actSetRole: ActionHandler = (ctx) => {
+  if (!ctx.isOwner) return refuse(403, 'forbidden', 'Only the club owner can change admins');
+  if (ctx.data.role === 'admin') ctx.club.admins.add(ctx.target);
+  else ctx.club.admins.delete(ctx.target);
+  return { role: ctx.data.role };
+};
+
+const actRequest: ActionHandler = (ctx) => {
+  const { club, actor } = ctx;
+  if (club.removed.has(actor)) return refuse(403, 'forbidden', 'You were removed from this club');
+  const existing = club.requests.get(actor);
+  if (existing && existing.status !== 'declined') return { status: existing.status };
+  club.requests.set(actor, { status: 'pending', at: ctx.now() });
+  return { status: 'pending' };
+};
+
+const actCancelRequest: ActionHandler = (ctx) => {
+  ctx.club.requests.delete(ctx.actor);
+  return { status: null };
+};
+
+const actDecide: ActionHandler = (ctx) => {
+  const blocked = requireAdmin(ctx);
+  if (blocked) return blocked;
+  if (ctx.club.requests.get(ctx.target)?.status !== 'pending')
+    return refuse(404, 'not_found', 'No request to decide');
+  const status = ctx.data.approve === true ? 'approved' : 'declined';
+  ctx.club.requests.set(ctx.target, { status, at: ctx.now() });
+  return { status };
+};
+
+const actRemoveMember: ActionHandler = (ctx) => {
+  const blocked = requireAdmin(ctx);
+  if (blocked) return blocked;
+  const { club, target } = ctx;
+  if (target === ctx.owner) return refuse(403, 'forbidden', 'The owner cannot be removed');
+  if (club.admins.has(target) && !ctx.isOwner)
+    return refuse(403, 'forbidden', 'Only the owner can remove an admin');
+  const removed = ctx.data.removed !== false;
+  if (removed) {
+    club.removed.add(target);
+    club.admins.delete(target);
+  } else {
+    club.removed.delete(target);
+  }
+  return { removed };
+};
+
+const actLinkEvent: ActionHandler = (ctx) => {
+  const blocked = requireAdmin(ctx);
+  if (blocked) return blocked;
+  const linking = ctx.action === 'link-event';
+  if (linking) ctx.club.events.add(String(ctx.intent.target));
+  else ctx.club.events.delete(String(ctx.intent.target));
+  return { linked: linking };
+};
+
+const actNotify: ActionHandler = (ctx) => {
+  ctx.club.notify.set(ctx.actor, String(ctx.data.level));
+  return { level: ctx.data.level };
+};
+
+const ACTIONS: Record<string, ActionHandler> = {
+  post: actPost,
+  comment: actComment,
+  'delete-post': actDelete,
+  'delete-comment': actDelete,
+  settings: actSettings,
+  'set-role': actSetRole,
+  request: actRequest,
+  'cancel-request': actCancelRequest,
+  decide: actDecide,
+  'remove-member': actRemoveMember,
+  'link-event': actLinkEvent,
+  'unlink-event': actLinkEvent,
+  notify: actNotify,
+};
+
+function parseIntentData(intent: Json): { data: Json } | null {
+  try {
+    return { data: intent.data ? JSON.parse(String(intent.data)) : {} };
+  } catch {
+    return null;
+  }
+}
+
+function actionResponse(result: Json | Refusal) {
+  return isRefusal(result)
+    ? { status: result.status, body: { error: result.error, code: result.code } }
+    : { status: 200, body: result };
+}
+
 export function createSandboxClubs(deps: SandboxClubDeps) {
   const clubs = new Map<string, ClubData>();
   const posts: Post[] = [];
@@ -144,186 +372,42 @@ export function createSandboxClubs(deps: SandboxClubDeps) {
     };
   };
 
-  const feed = (id: string, limit: number) =>
-    posts
-      .filter((p) => p.clubId === id)
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, limit)
-      .map(({ clubId: _c, clientId: _k, ...p }) => ({
-        ...p,
-        comments: comments
-          .filter((c) => c.postId === p.id)
-          .sort((a, b) => a.createdAt - b.createdAt)
-          .map(({ clubId: _c2, clientId: _k2, ...c }) => c),
-      }));
-
-  type Refusal = { status: number; code: string; error: string };
-  const refuse = (status: number, code: string, error: string): Refusal => ({
-    status,
-    code,
-    error,
-  });
+  const feed = (id: string, limit: number) => buildFeed(posts, comments, id, limit);
 
   function apply(intent: Json): Json | Refusal {
     const clubId = String(intent.clubId ?? '');
     const actor = String(intent.actor ?? '').toLowerCase();
-    const target = String(intent.target ?? '').toLowerCase();
-    const action = String(intent.action ?? '');
-    const clientId = String(intent.clientId ?? '');
-    let data: Json = {};
-    try {
-      data = intent.data ? JSON.parse(String(intent.data)) : {};
-    } catch {
-      return refuse(400, 'invalid', 'data must be a JSON object');
-    }
+    const parsed = parseIntentData(intent);
+    if (!parsed) return refuse(400, 'invalid', 'data must be a JSON object');
     const owner = deps.owner(clubId)?.toLowerCase() ?? null;
     if (!owner) return refuse(404, 'not_found', 'No such club');
     const c = club(clubId);
     const isOwner = owner === actor;
-    const isAdmin = isOwner || c.admins.has(actor);
-    const member = !c.removed.has(actor) && deps.isMember(clubId, actor);
-    const adminOnly = () =>
-      isAdmin ? null : refuse(403, 'forbidden', 'Only club admins can do that');
-    const memberOnly = () => (member ? null : refuse(403, 'forbidden', 'Join the club first'));
-
-    switch (action) {
-      case 'post': {
-        const blocked = memberOnly();
-        if (blocked) return blocked;
-        const settings = { ...DEFAULT_SETTINGS, ...(c.settings ?? {}) };
-        if ((settings.adminsOnlyPost || data.announcement) && !isAdmin) {
-          return refuse(403, 'forbidden', 'Only club admins can post here');
-        }
-        const already = posts.find(
-          (p) => p.clubId === clubId && p.author === actor && p.clientId === clientId
-        );
-        const post =
-          already ??
-          (() => {
-            const created = {
-              id: `sbx-club-post-${next++}`,
-              clubId,
-              author: actor,
-              text: String(data.text ?? '').trim(),
-              photos: Array.isArray(data.photos) ? (data.photos as string[]) : [],
-              announcement: data.announcement === true,
-              createdAt: deps.now(),
-              clientId,
-            };
-            posts.push(created);
-            return created;
-          })();
-        return { post: { ...feed(clubId, 50).find((p) => p.id === post.id) } };
-      }
-      case 'comment': {
-        const blocked = memberOnly();
-        if (blocked) return blocked;
-        if (!posts.some((p) => p.id === intent.target))
-          return refuse(404, 'not_found', 'That post is gone');
-        const already = comments.find(
-          (x) => x.clubId === clubId && x.author === actor && x.clientId === clientId
-        );
-        const comment = already ?? {
-          id: `sbx-club-comment-${next++}`,
-          postId: String(intent.target),
-          clubId,
-          author: actor,
-          text: String(data.text ?? '').trim(),
-          createdAt: deps.now(),
-          clientId,
-        };
-        if (!already) comments.push(comment);
-        const { clubId: _c, clientId: _k, ...out } = comment;
-        return { comment: out };
-      }
-      case 'delete-post':
-      case 'delete-comment': {
-        const list = action === 'delete-post' ? posts : comments;
-        const index = list.findIndex((x) => x.id === intent.target);
-        const found = list[index];
-        if (!found) return { deleted: true };
-        if (found.author !== actor && !isAdmin) {
-          return refuse(403, 'forbidden', 'You can only delete your own posts and comments');
-        }
-        list.splice(index, 1);
-        if (action === 'delete-post') {
-          for (let i = comments.length - 1; i >= 0; i--)
-            if (comments[i]?.postId === found.id) comments.splice(i, 1);
-        }
-        return { deleted: true };
-      }
-      case 'settings': {
-        const blocked = adminOnly();
-        if (blocked) return blocked;
-        c.settings = { ...DEFAULT_SETTINGS, ...data };
-        return { settings: c.settings };
-      }
-      case 'set-role':
-        if (!isOwner) return refuse(403, 'forbidden', 'Only the club owner can change admins');
-        if (data.role === 'admin') c.admins.add(target);
-        else c.admins.delete(target);
-        return { role: data.role };
-      case 'request': {
-        if (c.removed.has(actor))
-          return refuse(403, 'forbidden', 'You were removed from this club');
-        const existing = c.requests.get(actor);
-        if (existing && existing.status !== 'declined') return { status: existing.status };
-        c.requests.set(actor, { status: 'pending', at: deps.now() });
-        return { status: 'pending' };
-      }
-      case 'cancel-request':
-        c.requests.delete(actor);
-        return { status: null };
-      case 'decide': {
-        const blocked = adminOnly();
-        if (blocked) return blocked;
-        if (c.requests.get(target)?.status !== 'pending')
-          return refuse(404, 'not_found', 'No request to decide');
-        const status = data.approve === true ? 'approved' : 'declined';
-        c.requests.set(target, { status, at: deps.now() });
-        return { status };
-      }
-      case 'remove-member': {
-        const blocked = adminOnly();
-        if (blocked) return blocked;
-        if (target === owner) return refuse(403, 'forbidden', 'The owner cannot be removed');
-        if (c.admins.has(target) && !isOwner)
-          return refuse(403, 'forbidden', 'Only the owner can remove an admin');
-        const removed = data.removed !== false;
-        if (removed) {
-          c.removed.add(target);
-          c.admins.delete(target);
-        } else c.removed.delete(target);
-        return { removed };
-      }
-      case 'link-event':
-      case 'unlink-event': {
-        const blocked = adminOnly();
-        if (blocked) return blocked;
-        if (action === 'link-event') c.events.add(String(intent.target));
-        else c.events.delete(String(intent.target));
-        return { linked: action === 'link-event' };
-      }
-      case 'notify':
-        c.notify.set(actor, String(data.level));
-        return { level: data.level };
-      default:
-        return refuse(400, 'invalid', 'unknown club action');
-    }
+    const action = String(intent.action ?? '');
+    const handler = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : undefined;
+    if (!handler) return refuse(400, 'invalid', 'unknown club action');
+    return handler({
+      intent,
+      action,
+      clubId,
+      actor,
+      target: String(intent.target ?? '').toLowerCase(),
+      clientId: String(intent.clientId ?? ''),
+      data: parsed.data,
+      owner,
+      club: c,
+      isOwner,
+      isAdmin: isOwner || c.admins.has(actor),
+      isMember: !c.removed.has(actor) && deps.isMember(clubId, actor),
+      now: deps.now,
+      posts,
+      comments,
+      nextId: () => next++,
+    });
   }
 
-  /** Answers `/api/clubs/...`; null for a path that is not a club route. */
-  function handle(route: string, method: string, query: URLSearchParams, body: Json | null) {
-    if (method === 'POST' && route === 'action') {
-      const result = apply((body?.intent as Json) ?? {});
-      return 'code' in result &&
-        'status' in result &&
-        typeof result.status === 'number' &&
-        'error' in result
-        ? { status: result.status as number, body: { error: result.error, code: result.code } }
-        : { status: 200, body: result };
-    }
-    if (method !== 'GET') return null;
+  /** Answers `GET /api/clubs/...`; null for a path that is not a club read. */
+  function read(route: string, query: URLSearchParams) {
     if (route === 'settings') {
       const settings: Json = {};
       for (const id of (query.get('ids') ?? '').split(',').filter(Boolean)) {
@@ -342,6 +426,14 @@ export function createSandboxClubs(deps: SandboxClubDeps) {
       return { status: 200, body: { level: club(id).notify.get(member.toLowerCase()) ?? 'all' } };
     }
     return null;
+  }
+
+  /** Answers `/api/clubs/...`; null for a path that is not a club route. */
+  function handle(route: string, method: string, query: URLSearchParams, body: Json | null) {
+    if (method === 'POST' && route === 'action') {
+      return actionResponse(apply((body?.intent as Json) ?? {}));
+    }
+    return method === 'GET' ? read(route, query) : null;
   }
 
   return { handle };

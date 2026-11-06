@@ -1,4 +1,4 @@
-import { services, setLocalRpcUrl } from '@repo/shared';
+import { setLocalRpcUrl } from '@repo/shared';
 import { useEffect, useRef, useState } from 'react';
 import { getActiveProfileId } from '@/backends/activeProfile';
 import { PROFILES } from '@/backends/profiles';
@@ -13,6 +13,7 @@ import { useSocialStore } from '@/stores/socialStore';
 import { useTerritoryStore } from '@/stores/territoryStore';
 import { logger } from '@/utils/logger';
 import { Toast } from '@/utils/toast';
+import { fetchChainSnapshot } from './chainSnapshot';
 import { useViemWallet } from './useViemWallet';
 
 export function useChainSync() {
@@ -54,59 +55,7 @@ export function useChainSync() {
 
     async function sync() {
       try {
-        // Prefer one composed subgraph query over the per-registry calls below; falls back to them when no subgraph exists for the mode (local Anvil) or it fails or returns nothing.
-        type NormalizedTerritory = {
-          id: string;
-          areaSqm: number;
-          strength: number;
-          capturedAt: number;
-          lastReinforced: number;
-        };
-
-        let activities: services.sync.SyncedActivity[];
-        // null = couldn't be read, which must not be mistaken for "owns none".
-        let territories: NormalizedTerritory[] | null;
-        let profile: services.sync.SyncedProfile;
-
-        const composite = await services.subgraph.getAthleteComposite(walletAddress).catch((e) => {
-          logger.warn('[ChainSync] Composite subgraph query failed, falling back:', e);
-          return null;
-        });
-
-        if (composite) {
-          activities = composite.activities;
-          // Decayed or lost territories stay in the index flagged inactive.
-          territories = composite.territories.filter((t) => t.isActive);
-          profile = { isRegistered: true, profileId: composite.profileId };
-        } else {
-          // allSettled: one failing registry read must not discard the activities/profile that synced.
-          const [activitiesResult, territoriesResult, profileResult] = await Promise.allSettled([
-            services.sync.syncActivitiesFromChain(walletAddress),
-            services.sync.syncTerritoriesFromChain(walletAddress),
-            services.sync.syncProfileFromChain(walletAddress),
-          ]);
-          for (const r of [activitiesResult, territoriesResult, profileResult]) {
-            if (r.status === 'rejected') logger.warn('[ChainSync] Partial sync failure:', r.reason);
-          }
-          const rawActivities =
-            activitiesResult.status === 'fulfilled' ? activitiesResult.value : [];
-          const rawTerritories =
-            territoriesResult.status === 'fulfilled' ? territoriesResult.value : null;
-          const rawProfile =
-            profileResult.status === 'fulfilled'
-              ? profileResult.value
-              : { isRegistered: false, profileId: null };
-          activities = rawActivities;
-          territories =
-            rawTerritories?.map((t) => ({
-              id: t.id,
-              areaSqm: t.areaSqm,
-              strength: t.controlStrength,
-              capturedAt: t.capturedAt,
-              lastReinforced: t.lastReinforced,
-            })) ?? null;
-          profile = rawProfile;
-        }
+        const { activities, territories, profile } = await fetchChainSnapshot(walletAddress);
         if (cancelled) return;
 
         if (activities.length > 0) {

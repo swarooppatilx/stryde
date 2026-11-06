@@ -151,57 +151,53 @@ export function getParsedError(error: unknown): string {
   return message;
 }
 
+const RETRY_MESSAGE = 'That did not go through. Please try again';
+
+/** viem errors with one fixed sentence, checked in this order. */
+const FIXED_VIEM_MESSAGES: ReadonlyArray<[new (...args: never[]) => BaseError, string]> = [
+  [UserRejectedRequestError, 'You cancelled that'],
+  [InsufficientFundsError, "You don't have enough funds for that"],
+  [NonceTooLowError, RETRY_MESSAGE],
+  [FeeCapTooLowError, RETRY_MESSAGE],
+];
+
+const mentionsPaymaster = (text: string) => /paymaster/i.test(text);
+
+/** The message for a contract revert, or null when the revert carries no error name. */
+function revertMessage(error: BaseError): string | null {
+  const revertError = error.walk((e) => e instanceof ContractFunctionRevertedError);
+  if (!(revertError instanceof ContractFunctionRevertedError)) return null;
+  const errorName = revertError.data?.errorName;
+  if (!errorName) return null;
+  // An error name nobody wrote a message for is a code name, not something to show.
+  return FRIENDLY_MESSAGES[errorName] ?? GENERIC_MESSAGE;
+}
+
+function isPaymasterFailure(error: BaseError): boolean {
+  if (error.walk((e) => e instanceof Error && PAYMASTER_ERROR_NAMES.has(e.name))) return true;
+  // Best-effort match on "paymaster" for bundler error shapes not matched by name.
+  return mentionsPaymaster(error.shortMessage) || mentionsPaymaster(error.message);
+}
+
+function parseViemError(error: BaseError): string {
+  const fixed = FIXED_VIEM_MESSAGES.find(([kind]) => error instanceof kind);
+  if (fixed) return fixed[1];
+  if (error instanceof ExecutionRevertedError) {
+    return `That didn't go through: ${error.shortMessage}`;
+  }
+  const revert = revertMessage(error);
+  if (revert) return revert;
+  if (isPaymasterFailure(error)) return GASLESS_NOT_CONFIGURED_MESSAGE;
+  if (isConnectionFailure(error)) return CONNECTION_MESSAGE;
+  return readable(error.shortMessage) ?? GENERIC_MESSAGE;
+}
+
 function parseError(error: unknown): string {
-  if (error instanceof BaseError) {
-    if (error instanceof UserRejectedRequestError) {
-      return 'You cancelled that';
-    }
-    if (error instanceof InsufficientFundsError) {
-      return "You don't have enough funds for that";
-    }
-    if (error instanceof NonceTooLowError) {
-      return 'That did not go through. Please try again';
-    }
-    if (error instanceof FeeCapTooLowError) {
-      return 'That did not go through. Please try again';
-    }
-    if (error instanceof ExecutionRevertedError) {
-      return `That didn't go through: ${error.shortMessage}`;
-    }
-
-    const revertError = error.walk((e) => e instanceof ContractFunctionRevertedError);
-    if (revertError instanceof ContractFunctionRevertedError) {
-      const errorName = revertError.data?.errorName;
-      if (errorName && FRIENDLY_MESSAGES[errorName]) {
-        return FRIENDLY_MESSAGES[errorName];
-      }
-      // An error name nobody wrote a message for is a code name, not something to show.
-      if (errorName) return GENERIC_MESSAGE;
-    }
-
-    const paymasterError = error.walk(
-      (e) => e instanceof Error && PAYMASTER_ERROR_NAMES.has(e.name)
-    );
-    if (paymasterError) {
-      return GASLESS_NOT_CONFIGURED_MESSAGE;
-    }
-
-    // Best-effort match on "paymaster" for bundler error shapes not matched above.
-    if (/paymaster/i.test(error.shortMessage) || /paymaster/i.test(error.message)) {
-      return GASLESS_NOT_CONFIGURED_MESSAGE;
-    }
-
-    if (isConnectionFailure(error)) return CONNECTION_MESSAGE;
-    return readable(error.shortMessage) ?? GENERIC_MESSAGE;
-  }
-  if (error instanceof Error) {
-    if (/paymaster/i.test(error.message)) {
-      return GASLESS_NOT_CONFIGURED_MESSAGE;
-    }
-    if (isConnectionFailure(error)) return CONNECTION_MESSAGE;
-    return readable(error.message) ?? GENERIC_MESSAGE;
-  }
-  return GENERIC_MESSAGE;
+  if (error instanceof BaseError) return parseViemError(error);
+  if (!(error instanceof Error)) return GENERIC_MESSAGE;
+  if (mentionsPaymaster(error.message)) return GASLESS_NOT_CONFIGURED_MESSAGE;
+  if (isConnectionFailure(error)) return CONNECTION_MESSAGE;
+  return readable(error.message) ?? GENERIC_MESSAGE;
 }
 
 export function isNetworkError(error: unknown): boolean {

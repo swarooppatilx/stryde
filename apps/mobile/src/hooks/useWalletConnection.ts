@@ -8,14 +8,10 @@ import { anvil } from '@/config/privyChains';
 import { clearCurrentUserId, ENV, getLocalRpcUrl, setCurrentUserId } from '@/constants/config';
 import { DEV_TOOLS } from '@/constants/devTools';
 import { useAuth } from '@/hooks/useAuth';
+import { connectAndRemember } from '@/hooks/walletInit';
 import { getPlatform } from '@/platform';
 import { setActiveWallet } from '@/services/wallet';
-import { connectRemoteWallet } from '@/services/walletConnection';
-import {
-  lockFallbackIdentity,
-  rememberedWalletKind,
-  rememberWalletKind,
-} from '@/services/walletIdentity';
+import { rememberedWalletKind } from '@/services/walletIdentity';
 import { logger } from '@/utils/logger';
 import { walletRetryDelayMs } from '@/utils/walletRetry';
 
@@ -114,10 +110,13 @@ export function useWalletConnection(mode: ChainMode = 'ethereum-sepolia'): Walle
         const lockedKind = privyUserId ? await rememberedWalletKind(storage, privyUserId) : null;
         if (!cancelled) setWalletError(null);
 
-        const connection = await connectRemoteWallet({
+        const connection = await connectAndRemember({
           chain: CHAIN_MAP[mode],
           lockedKind,
           embedded: embeddedWallet,
+          storage,
+          privyUserId,
+          isRegistered: (a) => services.profile.isRegistered(a),
           // Gasless path: a Privy smart account (ERC-4337) sponsored by the paymaster policy. Each attempt reads the latest getClientForChain; a copy captured before the wallet connected would fail every retry.
           getSmartClient: ENV.USE_SMART_WALLET
             ? (chainId) => getClientForChainRef.current({ chainId })
@@ -128,16 +127,6 @@ export function useWalletConnection(mode: ChainMode = 'ethereum-sepolia'): Walle
               error
             ),
         });
-
-        if (privyUserId && connection.kind === 'smart' && lockedKind !== 'smart') {
-          await rememberWalletKind(storage, privyUserId, 'smart');
-        }
-
-        if (privyUserId && connection.kind === 'embedded' && lockedKind === null) {
-          await lockFallbackIdentity(storage, privyUserId, connection.address, (a) =>
-            services.profile.isRegistered(a)
-          );
-        }
 
         if (!cancelled) {
           setWallet(connection.wallet);
