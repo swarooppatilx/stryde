@@ -15,8 +15,7 @@ interface Props {
 export function LapsList({ laps, unitSystem, activityType }: Props) {
   const theme = useTheme();
   return (
-    <View style={styles.container} accessibilityLabel="Laps">
-      <ThemedText type="smallBold">Laps</ThemedText>
+    <View style={styles.container}>
       {laps.map((lap) => (
         <View key={lap.index} style={styles.row}>
           <ThemedText type="small" style={[styles.index, { color: theme.textSecondary }]}>
@@ -38,7 +37,7 @@ export function LapsList({ laps, unitSystem, activityType }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { gap: Spacing.one, paddingVertical: Spacing.two },
+  container: { gap: Spacing.one },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   index: { width: 24 },
   distance: { flex: 1 },

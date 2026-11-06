@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { chartRange } from '@/utils/chartRange';
 import { indexAtX, SCRUB_HOLD_MS } from '@/utils/chartScrub';
 import { formatDuration } from '@/utils/format';
 import { ThemedText } from './themed-text';
@@ -18,6 +19,8 @@ interface Props {
   summary: string;
   /** Set when `times` are seconds, so a touch can read out the moment. */
   timed?: boolean;
+  /** The chart never zooms in tighter than this, so a flat series reads as flat. */
+  minSpan?: number;
   accessibilityLabel: string;
   /** Streams the point under the finger, so the map can move a cursor along the route. */
   onScrubChange?: (index: number | null) => void;
@@ -55,6 +58,7 @@ export function ScrubChart({
   formatValue,
   summary,
   timed = false,
+  minSpan = 0,
   accessibilityLabel,
   onScrubChange,
 }: Props) {
@@ -85,8 +89,7 @@ export function ScrubChart({
     [scrubTo, onScrubChange]
   );
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const { min, max } = chartRange(values, minSpan);
   const paths = chartPaths(values, times, { min, max }, width);
   const last = times.at(-1) ?? 1;
   const span = max - min || 1;
@@ -109,7 +112,7 @@ export function ScrubChart({
       onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
     >
       <View style={styles.header}>
-        <ThemedText type="smallBold">{title}</ThemedText>
+        <ThemedText type="sectionTitle">{title}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {readout}
         </ThemedText>

@@ -50,6 +50,6 @@ describe('other owner-decided surfaces', () => {
   });
 
   it('a verified activity links to its receipt', () => {
-    expect(source('app/activities/[id].tsx')).toContain('explorerTxUrl');
+    expect(source('components/activity-detail/sheet-body.tsx')).toContain('explorerTxUrl');
   });
 });

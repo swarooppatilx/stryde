@@ -1,6 +1,7 @@
 import type { SyncedComment, services } from '@repo/shared';
 import type { SocialActivity, SocialComment } from '@/stores/socialStore';
 import type { Activity } from '@/types';
+import { parseHiddenStats } from './activityStats';
 import { sameAddress } from './address';
 
 export function activityKey(activities: Record<string, SocialActivity>, id: string): string {
@@ -127,6 +128,9 @@ export function feedFromChain({ chain, local, existing, social, me }: FeedInput)
       image: mine?.image ?? a.metadataPhotos?.[0],
       images: mine?.images ?? a.metadataPhotos,
       isManual: mine?.isManual,
+      isImported: mine?.isImported,
+      mutedFromFeeds: mine?.mutedFromFeeds ?? a.metadataMuted,
+      hiddenStats: mine?.hiddenStats ?? parseHiddenStats(a.metadataHiddenStats),
       activityHash: a.activityHash,
       txHash: mine?.txHash,
       metadataCid: mine?.metadataCid ?? a.metadataCid,
@@ -162,6 +166,18 @@ export function filterFeed(
     case 'You':
       return activities.filter((a) => sameAddress(a.userId, viewerId));
   }
+}
+
+/**
+ * Drops what other athletes chose not to publish to Home. Their own profile and your own posts are
+ * not feeds built here, so they are untouched. The author's request is honoured by this app; the
+ * activity itself stays readable on the chain.
+ */
+export function withoutMutedFromOthers(
+  activities: SocialActivity[],
+  viewerId: string
+): SocialActivity[] {
+  return activities.filter((a) => !a.mutedFromFeeds || sameAddress(a.userId, viewerId));
 }
 
 /** One comment, with the viewer's like added or removed; the original is left alone. */

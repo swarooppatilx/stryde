@@ -1,7 +1,7 @@
 import type { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatEther } from 'viem';
@@ -11,7 +11,7 @@ import { PROFILES } from '@/backends/profiles';
 import { CommunityCard, JoinButton } from '@/components/community-card';
 import { EventCard } from '@/components/event-card';
 import { ChipRow, FilterChips, type SportFilter } from '@/components/filter-chips';
-import { ListLoading, ListMessage } from '@/components/list-message';
+import { GroupsEmptyState } from '@/components/groups-empty-state';
 import { OutlinePill } from '@/components/outline-pill';
 import { SearchBar } from '@/components/search-bar';
 import { StaleBanner } from '@/components/stale-banner';
@@ -20,13 +20,16 @@ import { ThemedView } from '@/components/themed-view';
 import { TopBarAction } from '@/components/top-bar-action';
 import { UnderlineTabs } from '@/components/underline-tabs';
 import { SPORT_ICONS } from '@/constants/activity';
-import { COMMUNITY_COPY } from '@/constants/copy';
+import { stockImageFor } from '@/constants/stockImages';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useChainAction } from '@/hooks/useChainAction';
+import { useGroupsData } from '@/hooks/useGroupsData';
 import { useOutboxEntries } from '@/hooks/useOutbox';
 import { useUserResolver } from '@/hooks/useSocialUser';
+import { useViemWallet } from '@/hooks/useViemWallet';
+import { useActivityStore } from '@/stores/activityStore';
 import {
   type Club,
   filterClubs,
@@ -36,7 +39,7 @@ import {
 } from '@/stores/communityStore';
 import type { ActivityType } from '@/types';
 import type { ChallengeEvent } from '@/types/event';
-import { sameAddress } from '@/utils/address';
+import { sameAddress, shortAddress } from '@/utils/address';
 import {
   CHALLENGE_FILTERS,
   CHALLENGE_STATUS_LABEL,
@@ -45,19 +48,20 @@ import {
   matchesChallengeFilter,
   orderChallenges,
 } from '@/utils/challengeFilter';
+import { clubRowSubtitle } from '@/utils/clubRow';
 import { confirmLeave } from '@/utils/confirmLeave';
 import { formatDateRange, formatDayYear } from '@/utils/dates';
 import { deliveryOf } from '@/utils/deliveryState';
 import { eventStatus } from '@/utils/eventStatus';
 import { formatDistance, formatMemberCount, getDisplayName } from '@/utils/format';
+import { groupsEmptyView } from '@/utils/groupsEmptyView';
+import { defaultGroupTab, GROUP_TABS, type GroupTab } from '@/utils/groupTabs';
 import { haptics } from '@/utils/haptics';
 import { loadFailureView } from '@/utils/loadFailureView';
-import { logger } from '@/utils/logger';
 import { orderEvents } from '@/utils/otherEvents';
-import { isStale } from '@/utils/staleness';
 
-const TABS = ['Clubs', 'Events', 'Challenges'] as const;
-type TabKey = (typeof TABS)[number];
+const TABS = GROUP_TABS;
+type TabKey = GroupTab;
 
 type ChallengeItem = Awaited<ReturnType<typeof services.challenge.getUserChallenges>>[number];
 
@@ -96,16 +100,14 @@ const SPORT_ICON_NAME = (sport: ActivityType | 'multi'): keyof typeof Ionicons.g
   return (SPORT_ICONS[sport] ?? 'walk') as keyof typeof Ionicons.glyphMap;
 };
 
-/** How long a Groups list counts as fresh when the tab regains focus. */
-const FOCUS_REFRESH_MS = 30_000;
-
 export default function CommunityScreen() {
   const router = useRouter();
   const theme = useTheme();
   const unitSystem = useUnitSystem();
   const listRef = useRef<FlatList<Row>>(null);
 
-  const [activeTab, setActiveTab] = useState<TabKey>('Clubs');
+  const hasActivities = useActivityStore((s) => s.activities.length > 0);
+  const [activeTab, setActiveTab] = useState<TabKey>(() => defaultGroupTab({ hasActivities }));
   const [clubQuery, setClubQuery] = useState('');
   const [eventQuery, setEventQuery] = useState('');
   const [sportFilter, setSportFilter] = useState<SportFilter>('all');
@@ -119,10 +121,6 @@ export default function CommunityScreen() {
   const eventsError = useCommunityStore((s) => s.eventsError);
   const eventsLoading = useCommunityStore((s) => s.eventsLoading);
   const joinedClubIds = useCommunityStore((s) => s.joinedClubIds);
-  const fetchClubs = useCommunityStore((s) => s.fetchClubs);
-  const fetchJoinedClubs = useCommunityStore((s) => s.fetchJoinedClubs);
-  const fetchEvents = useCommunityStore((s) => s.fetchEvents);
-  const fetchJoinedEvents = useCommunityStore((s) => s.fetchJoinedEvents);
 
   const filteredClubs = orderClubs(filterClubs(clubs, clubQuery, sportFilter), joinedClubIds);
   const filteredEvents = orderEvents(
@@ -131,13 +129,9 @@ export default function CommunityScreen() {
   );
 
   const { address } = useChainAction();
+  const { walletFailed, retry: retryWallet } = useViemWallet();
   const isEventHost = useCommunityStore((s) => s.isEventHost);
   const getUserById = useUserResolver();
-  const [challenges, setChallenges] = useState<Awaited<
-    ReturnType<typeof services.challenge.getUserChallenges>
-  > | null>(null);
-  const [challengesError, setChallengesError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [challengeFilter, setChallengeFilter] = useState<ChallengeFilter>('all');
   // A join or leave still on its way to the chain: shown on the card, but never blocks it.
   const outboxEntries = useOutboxEntries();
@@ -146,95 +140,11 @@ export default function CommunityScreen() {
   // A profile with no chain cannot read challenges, and a retry would fail the same way.
   const noChain = PROFILES[getActiveProfileId()].fakeChain;
 
-  const loadChallenges = useCallback(async () => {
-    if (!address || noChain) {
-      setChallenges([]);
-      return;
-    }
-    try {
-      const list = await services.challenge.getUserChallenges(address);
-      setChallenges(list.slice().reverse());
-      setChallengesError(null);
-    } catch (e) {
-      // Keep any challenges already shown: a failed read is not "you have none".
-      logger.warn('[Groups] Failed to load challenges:', e);
-      setChallengesError(e instanceof Error ? e.message : 'Could not load challenges');
-      setChallenges((previous) => previous ?? []);
-    }
-  }, [address, noChain]);
-
-  // A different wallet must not see the last one's challenges while loading.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: address is the trigger
-  useEffect(() => {
-    setChallenges(null);
-    setChallengesError(null);
-  }, [address]);
-
-  // Refresh when the tab is opened, but not on every flick between tabs: the lists only change
-  // when someone acts, and each read goes to the chain. Pull-to-refresh always reloads.
-  const loadedAt = useRef<Record<'challenges' | 'clubs' | 'events', number | null>>({
-    challenges: null,
-    clubs: null,
-    events: null,
+  const { challenges, challengesError, refreshing, onRefresh } = useGroupsData({
+    activeTab,
+    address,
+    noChain,
   });
-  const dueFor = useCallback((list: 'challenges' | 'clubs' | 'events') => {
-    const now = Date.now();
-    if (!isStale(loadedAt.current[list], now, FOCUS_REFRESH_MS)) return false;
-    loadedAt.current[list] = now;
-    return true;
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (activeTab !== 'Challenges' || !address || !dueFor('challenges')) return;
-      void loadChallenges();
-    }, [activeTab, address, loadChallenges, dueFor])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (activeTab !== 'Clubs' || !dueFor('clubs')) return;
-      fetchClubs();
-    }, [activeTab, fetchClubs, dueFor])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (activeTab !== 'Clubs' || !address) return;
-      fetchJoinedClubs(address);
-    }, [activeTab, address, fetchJoinedClubs])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (activeTab !== 'Events' || !dueFor('events')) return;
-      fetchEvents();
-    }, [activeTab, fetchEvents, dueFor])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      if (activeTab !== 'Events' || !address) return;
-      fetchJoinedEvents(address);
-    }, [activeTab, address, fetchJoinedEvents])
-  );
-
-  const onRefresh = () => {
-    if (activeTab === 'Challenges') {
-      setRefreshing(true);
-      void loadChallenges().finally(() => setRefreshing(false));
-    } else if (activeTab === 'Clubs') {
-      setRefreshing(true);
-      void Promise.all([fetchClubs(), address ? fetchJoinedClubs(address) : null]).finally(() =>
-        setRefreshing(false)
-      );
-    } else {
-      setRefreshing(true);
-      void Promise.all([fetchEvents(), address ? fetchJoinedEvents(address) : null]).finally(() =>
-        setRefreshing(false)
-      );
-    }
-  };
 
   const isClubs = activeTab === 'Clubs';
   const isEvents = activeTab === 'Events';
@@ -268,21 +178,23 @@ export default function CommunityScreen() {
   const renderClub = (item: Club) => (
     <CommunityCard
       icon={SPORT_ICON_NAME(item.sportType)}
+      image={stockImageFor('club', item.id)}
       title={item.name}
       lines={[
-        item.location,
-        `${formatMemberCount(item.memberCount)} ${item.memberCount === 1 ? 'member' : 'members'}`,
+        clubRowSubtitle(item),
         sameAddress(item.owner, address ?? undefined) ? 'You run this club' : '',
       ]}
       onPress={() => router.push(`/clubs/${item.id}`)}
+      // The owner has nothing to join; a disabled "Joined" pill only squeezed the club name.
       trailing={
-        <JoinButton
-          joined={joinedClubIds.includes(item.id)}
-          pending={isSending(clubKey(item.id))}
-          name={item.name}
-          onPress={() => handleJoinClub(item)}
-          disabled={sameAddress(item.owner, address ?? undefined)}
-        />
+        sameAddress(item.owner, address ?? undefined) ? undefined : (
+          <JoinButton
+            joined={joinedClubIds.includes(item.id)}
+            pending={isSending(clubKey(item.id))}
+            name={item.name}
+            onPress={() => handleJoinClub(item)}
+          />
+        )
       }
     />
   );
@@ -291,6 +203,7 @@ export default function CommunityScreen() {
     <EventCard
       sport={item.sportType}
       icon={SPORT_ICON_NAME(item.sportType)}
+      image={stockImageFor('event', item.id)}
       title={item.title}
       badge={formatDayYear(item.startDate)}
       lines={[
@@ -321,10 +234,11 @@ export default function CommunityScreen() {
     const opponentUser = getUserById(opponentAddress);
     const opponentName = opponentUser
       ? getDisplayName(opponentUser)
-      : `${opponentAddress.slice(0, 6)}...${opponentAddress.slice(-4)}`;
+      : shortAddress(opponentAddress);
     return (
       <CommunityCard
         icon="flag"
+        image={stockImageFor('challenge', item.id)}
         title={`vs ${opponentName}`}
         lines={[
           `${formatDistance(Number(item.targetMetric), unitSystem)} · ${formatEther(item.stake)} ETH stake`,
@@ -363,53 +277,33 @@ export default function CommunityScreen() {
     return renderChallenge(item.challenge);
   };
 
-  const loadError = (what: string) => (
-    <ListMessage
-      icon="cloud-offline-outline"
-      text={`Couldn't load ${what}. Check your connection and try again.`}
-      action={{ label: 'Retry', onPress: onRefresh }}
+  const emptyView = groupsEmptyView({
+    tab: activeTab,
+    clubs: { total: clubs.length, loading: clubsLoading, error: !!clubsError },
+    events: {
+      total: events.length,
+      loading: eventsLoading,
+      error: !!eventsError,
+      registryDeployed: services.event.isEventRegistryDeployed(),
+    },
+    challenges: {
+      loaded: challenges !== null,
+      total: challenges?.length ?? 0,
+      error: !!challengesError,
+    },
+    challengeFilter,
+    noChain,
+    walletFailed,
+    hasAddress: !!address,
+  });
+  const renderEmpty = () => (
+    <GroupsEmptyState
+      view={emptyView}
+      onRetry={onRefresh}
+      onRetryWallet={retryWallet}
+      onShowAllChallenges={() => setChallengeFilter('all')}
     />
   );
-
-  const renderEmpty = () => {
-    if (isClubs) {
-      if (clubsLoading && clubs.length === 0) return <ListLoading />;
-      if (clubsError && clubs.length === 0) return loadError('clubs');
-      return (
-        <ListMessage
-          icon="people-outline"
-          text={clubs.length === 0 ? 'No clubs yet. Create the first one!' : 'No clubs found'}
-        />
-      );
-    }
-    if (isEvents) {
-      if (eventsLoading && events.length === 0) return <ListLoading />;
-      if (eventsError && events.length === 0) return loadError('events');
-      return (
-        <ListMessage
-          icon="trophy-outline"
-          text={
-            services.event.isEventRegistryDeployed()
-              ? 'No events yet'
-              : "Events aren't live on this network yet"
-          }
-        />
-      );
-    }
-    if (noChain) return <ListMessage icon="flag-outline" text={COMMUNITY_COPY.challengesSandbox} />;
-    if (challenges === null) return <ListLoading />;
-    if (challengesError && challenges.length === 0) return loadError('challenges');
-    if (challengeFilter !== 'all' && challenges.length > 0) {
-      return (
-        <ListMessage
-          icon="flag-outline"
-          text="No challenges here."
-          action={{ label: 'Show all', onPress: () => setChallengeFilter('all') }}
-        />
-      );
-    }
-    return <ListMessage icon="flag-outline" text={COMMUNITY_COPY.challengesEmpty} />;
-  };
 
   // Fixed above the list: the title and tabs stay put while the content scrolls.
   const pageHeader = (

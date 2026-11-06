@@ -1,54 +1,99 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
 import { AvatarStack } from '@/components/avatar-stack';
+import { SocialStrip } from '@/components/social-strip';
 import { Tappable } from '@/components/tappable';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { IconSize, Spacing, Touch } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { activityKey, useSocialStore } from '@/stores/socialStore';
+import { sameAddress } from '@/utils/address';
+import { haptics } from '@/utils/haptics';
+import { countOf } from '@/utils/plural';
 import { ThemedText } from './themed-text';
-import { ThemedView } from './themed-view';
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+interface Props {
+  activityId: string;
+  onOpen(): void;
+  onShare(): void;
+}
 
-/** Kudos and comments on an activity, tap to read or add to the thread. Renders nothing until the feed knows the activity. */
-export function ActivitySocialRow({ activityId, onOpen }: { activityId: string; onOpen(): void }) {
+/**
+ * Who gave kudos and how many comments, then the three buttons: kudos, comment, share.
+ * Until the feed knows the activity there is nothing to give kudos to, so only share shows.
+ */
+export function ActivitySocialRow({ activityId, onOpen, onShare }: Props) {
   const theme = useTheme();
+  const router = useRouter();
+  const me = useCurrentUserId();
+  const toggleKudos = useSocialStore((s) => s.toggleKudos);
   const social = useSocialStore((s) => s.activities[activityKey(s.activities, activityId)]);
-  if (!social) return null;
 
-  const label = `${plural(social.kudos.length, 'kudo', 'kudos')}, ${plural(social.comments.length, 'comment', 'comments')}`;
+  if (!social) {
+    return (
+      <Tappable
+        onPress={onShare}
+        style={styles.shareOnly}
+        accessibilityRole="button"
+        accessibilityLabel="Share activity"
+      >
+        <Ionicons name="share-social-outline" size={IconSize.action} color={theme.text} />
+      </Tappable>
+    );
+  }
+
+  const hasKudoed = !!me && social.kudos.some((id) => sameAddress(id, me));
+  const kudosCount = countOf(social.kudos.length, 'kudo', 'kudos');
+  const commentCount = countOf(social.comments.length, 'comment', 'comments');
+  const seeKudos = () => router.push(`/kudos?id=${activityId}`);
+  const takeKudos = () => {
+    haptics.tap();
+    void toggleKudos(activityId);
+  };
+
   return (
-    <Tappable
-      onPress={onOpen}
-      activeOpacity={0.7}
-      style={[styles.row, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}. Open comments`}
-    >
-      <Ionicons name="thumbs-up-outline" size={16} color={theme.textSecondary} />
-      <ThemedText type="small" themeColor="textSecondary">
-        {social.kudos.length}
-      </ThemedText>
-      {social.kudos.length > 0 && <AvatarStack userIds={social.kudos} max={4} size={20} />}
-      <ThemedView style={styles.spacer} />
-      <Ionicons name="chatbubble-outline" size={16} color={theme.textSecondary} />
-      <ThemedText type="small" themeColor="textSecondary">
-        {social.comments.length}
-      </ThemedText>
-      <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
-    </Tappable>
+    <View style={styles.column}>
+      <View style={styles.counts}>
+        <Tappable
+          onPress={seeKudos}
+          disabled={social.kudos.length === 0}
+          hitSlop={8}
+          style={styles.count}
+          accessibilityRole="button"
+          accessibilityLabel={`${kudosCount}. See who gave them`}
+        >
+          {social.kudos.length > 0 && <AvatarStack userIds={social.kudos} max={3} size={22} />}
+          <ThemedText type="caption" themeColor="textSecondary">
+            {kudosCount}
+          </ThemedText>
+        </Tappable>
+        <Tappable
+          onPress={onOpen}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`${commentCount}. Open comments`}
+        >
+          <ThemedText type="caption" themeColor="textSecondary">
+            {commentCount}
+          </ThemedText>
+        </Tappable>
+      </View>
+      <SocialStrip
+        hasKudoed={hasKudoed}
+        commentCount={social.comments.length}
+        onKudos={takeKudos}
+        onSeeKudos={seeKudos}
+        onComment={onOpen}
+        onShare={onShare}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: BorderRadius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  spacer: { flex: 1, backgroundColor: 'transparent' },
+  column: { gap: Spacing.one },
+  counts: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  count: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  shareOnly: { alignSelf: 'center', minHeight: Touch.target, justifyContent: 'center' },
 });

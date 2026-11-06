@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useState } from 'react';
 import { StyleSheet } from 'react-native';
+import { ActionSheet, type SheetAction } from '@/components/action-sheet';
 import { Tappable } from '@/components/tappable';
-import { BorderRadius } from '@/constants/theme';
+import { BorderRadius, Touch } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { type OverflowActionKey, overflowActionKeys } from '@/utils/activityActions';
 import { ThemedView } from './themed-view';
 
 interface Props {
@@ -12,8 +14,8 @@ interface Props {
   routeSaved: boolean;
   isOwner: boolean;
   onCopy(): void;
+  onFlyover(): void;
   onDownload(): void;
-  onShare(): void;
   onExportGpx(): void;
   onToggleSavedRoute(): void;
   onDelete(): void;
@@ -21,20 +23,38 @@ interface Props {
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Copy, save, share, export, bookmark and (for the owner) delete, as one row of round buttons. */
+/** Bookmark stays one tap away; the rest sits behind "More", with delete last. */
 export function ActivityActionRow({
   hasRoute,
   routeSaved,
   isOwner,
   onCopy,
+  onFlyover,
   onDownload,
-  onShare,
   onExportGpx,
   onToggleSavedRoute,
   onDelete,
 }: Props) {
   const theme = useTheme();
-  const actions: Array<{
+  const [menuOpen, setMenuOpen] = useState(false);
+  const overflow = overflowActionKeys({ hasRoute, isOwner });
+  const menu: Record<OverflowActionKey, SheetAction> = {
+    flyover: { label: 'Fly over route', icon: 'airplane-outline', onPress: onFlyover },
+    copy: { label: 'Copy route image', icon: 'copy-outline', onPress: onCopy },
+    download: {
+      label: 'Save route image to device',
+      icon: 'download-outline',
+      onPress: onDownload,
+    },
+    gpx: { label: 'Export route as GPX', icon: 'document-text-outline', onPress: onExportGpx },
+    delete: {
+      label: 'Delete activity',
+      icon: 'trash-outline',
+      onPress: onDelete,
+      destructive: true,
+    },
+  };
+  const round: Array<{
     key: string;
     show: boolean;
     icon: IconName;
@@ -43,22 +63,6 @@ export function ActivityActionRow({
     selected?: boolean;
     onPress(): void;
   }> = [
-    { key: 'copy', show: true, icon: 'copy-outline', label: 'Copy route image', onPress: onCopy },
-    {
-      key: 'download',
-      show: true,
-      icon: 'download-outline',
-      label: 'Save route image to device',
-      onPress: onDownload,
-    },
-    { key: 'share', show: true, icon: 'share-outline', label: 'Share activity', onPress: onShare },
-    {
-      key: 'gpx',
-      show: hasRoute,
-      icon: 'document-text-outline',
-      label: 'Export route as GPX',
-      onPress: onExportGpx,
-    },
     {
       key: 'route',
       show: hasRoute,
@@ -69,18 +73,16 @@ export function ActivityActionRow({
       onPress: onToggleSavedRoute,
     },
     {
-      key: 'delete',
-      show: isOwner,
-      icon: 'trash-outline',
-      label: 'Delete activity',
-      color: theme.brand.danger,
-      onPress: onDelete,
+      key: 'more',
+      show: overflow.length > 0,
+      icon: 'ellipsis-horizontal',
+      label: 'More actions',
+      onPress: () => setMenuOpen(true),
     },
   ];
-
   return (
     <ThemedView style={styles.row}>
-      {actions
+      {round
         .filter((action) => action.show)
         .map((action) => (
           <Tappable
@@ -97,6 +99,11 @@ export function ActivityActionRow({
             <Ionicons name={action.icon} size={20} color={action.color ?? theme.text} />
           </Tappable>
         ))}
+      <ActionSheet
+        visible={menuOpen}
+        actions={overflow.map((key) => menu[key])}
+        onClose={() => setMenuOpen(false)}
+      />
     </ThemedView>
   );
 }
@@ -104,8 +111,8 @@ export function ActivityActionRow({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center' },
   button: {
-    width: 48,
-    height: 48,
+    width: Touch.target,
+    height: Touch.target,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',

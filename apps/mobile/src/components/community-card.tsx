@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image, type ImageSource } from 'expo-image';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { Tappable } from '@/components/tappable';
@@ -9,6 +10,8 @@ import { ThemedView } from './themed-view';
 
 interface CardProps {
   icon: keyof typeof Ionicons.glyphMap;
+  /** A photo for the row; the icon circle shows when there is none. */
+  image?: ImageSource | number;
   title: string;
   lines: readonly string[];
   onPress(): void;
@@ -17,7 +20,7 @@ interface CardProps {
 }
 
 /** One row in the Groups lists: clubs, events and challenges. */
-export function CommunityCard({ icon, title, lines, onPress, trailing }: CardProps) {
+export function CommunityCard({ icon, image, title, lines, onPress, trailing }: CardProps) {
   const theme = useTheme();
   // A blank line (a club with no location) would leave an empty row, and two equal lines would share a key.
   const shown = lines.filter((line) => line.trim() !== '');
@@ -30,11 +33,21 @@ export function CommunityCard({ icon, title, lines, onPress, trailing }: CardPro
       accessibilityLabel={[title, ...shown].join('. ')}
     >
       <ThemedView style={styles.row}>
-        <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
-          <Ionicons name={icon} size={22} color={theme.brand.primary} />
-        </ThemedView>
+        {image ? (
+          <Image
+            source={image}
+            style={styles.photo}
+            contentFit="cover"
+            // Decorative: the title next to it already names the item.
+            accessible={false}
+          />
+        ) : (
+          <ThemedView style={[styles.iconCircle, { backgroundColor: theme.brand.primaryTint }]}>
+            <Ionicons name={icon} size={22} color={theme.brand.primary} />
+          </ThemedView>
+        )}
         <ThemedView style={styles.info}>
-          <ThemedText type="smallBold" numberOfLines={1}>
+          <ThemedText type="smallBold" numberOfLines={2}>
             {title}
           </ThemedText>
           {shown.map((line, index) => (
@@ -105,6 +118,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  photo: { width: 56, height: 56, borderRadius: BorderRadius.md },
   info: { flex: 1, gap: Spacing.half },
   joinBtn: {
     paddingHorizontal: Spacing.three,

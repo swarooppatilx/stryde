@@ -13,8 +13,7 @@ interface Props {
 /** The fastest 1 km / 5 km / 10 km inside one run, with the pace each implies. */
 export function BestEfforts({ efforts, unitSystem }: Props) {
   return (
-    <View style={styles.container} accessibilityLabel="Best efforts">
-      <ThemedText type="smallBold">Best efforts</ThemedText>
+    <View style={styles.container}>
       {efforts.map((effort) => (
         <View key={effort.distance} style={styles.row}>
           <ThemedText type="small" themeColor="textSecondary">
@@ -31,6 +30,6 @@ export function BestEfforts({ efforts, unitSystem }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { gap: Spacing.one, paddingVertical: Spacing.two },
+  container: { gap: Spacing.one },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 });

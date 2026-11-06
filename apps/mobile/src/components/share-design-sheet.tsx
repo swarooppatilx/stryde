@@ -19,7 +19,7 @@ import { Palette } from '@/constants/palette';
 import { BorderRadius, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { ActivityType, Ring } from '@/types';
-import { SHARE_DESIGN_LABEL, type ShareDesign } from '@/utils/shareDesigns';
+import { SHARE_DESIGN_LABEL, type ShareCardStat, type ShareDesign } from '@/utils/shareDesigns';
 
 const CARD_WIDTH = 1080;
 const CARD_HEIGHT = 1920;
@@ -34,6 +34,8 @@ interface Props {
   onSelect: (design: ShareDesign) => void;
   onShare: () => void;
   onSave: () => void;
+  /** Copy the card to the clipboard, to paste into a chat or a story. */
+  onCopy?: () => void;
   onClose: () => void;
   /** The activity's link; when given, the sheet offers a QR code for it. */
   qrLink?: string;
@@ -45,6 +47,10 @@ interface Props {
     duration: number;
     activityType: ActivityType;
     photoUri?: string;
+    extraStats?: ShareCardStat[];
+    splits?: { index: number; distance: number; movingTime: number }[];
+    title?: string;
+    dateLabel?: string;
   };
 }
 
@@ -78,6 +84,7 @@ export function ShareDesignSheet({
   onSelect,
   onShare,
   onSave,
+  onCopy,
   onClose,
   qrLink,
   card,
@@ -170,15 +177,32 @@ export function ShareDesignSheet({
           >
             Share
           </AppButton>
-          <AppButton
-            variant="secondary"
-            onPress={() => {
-              onClose();
-              onSave();
-            }}
-          >
-            Save to Photos
-          </AppButton>
+          <View style={styles.secondaryRow}>
+            <AppButton
+              variant="secondary"
+              fullWidth={false}
+              style={styles.secondary}
+              onPress={() => {
+                onClose();
+                onSave();
+              }}
+            >
+              Save to Photos
+            </AppButton>
+            {onCopy && (
+              <AppButton
+                variant="secondary"
+                fullWidth={false}
+                style={styles.secondary}
+                onPress={() => {
+                  onClose();
+                  onCopy();
+                }}
+              >
+                Copy image
+              </AppButton>
+            )}
+          </View>
           {qrLink && (
             <AppButton variant="secondary" onPress={() => setQrOpen(true)}>
               Show QR code
@@ -217,4 +241,6 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row', gap: Spacing.two },
   dot: { width: DOT, height: DOT, borderRadius: BorderRadius.full },
   actions: { alignSelf: 'stretch', gap: Spacing.two },
+  secondaryRow: { flexDirection: 'row', gap: Spacing.two },
+  secondary: { flex: 1 },
 });

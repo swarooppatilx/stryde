@@ -10,22 +10,22 @@ import {
   useAnimatedReaction,
   useSharedValue,
 } from 'react-native-reanimated';
+import { ActivityRow } from '@/components/activity-row';
 import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { getSportIcon } from '@/constants/activity';
-import { BorderRadius, Spacing } from '@/constants/theme';
+import { BorderRadius, IconSize, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
 import { useCurrentUserId } from '@/hooks/useCurrentUserId';
 import { useTerritorySummary } from '@/hooks/useTerritorySummary';
 import { useActivityStore } from '@/stores/activityStore';
 import { type SavedRoute, useRouteStore } from '@/stores/routeStore';
-import { Alert } from '@/utils/alert';
-import { formatArea, formatDistance, formatDuration } from '@/utils/format';
+import { activitySubline } from '@/utils/activitySubline';
+import { confirmDestructive } from '@/utils/confirmDestructive';
+import { formatArea, formatDistance } from '@/utils/format';
 import { haptics } from '@/utils/haptics';
 import { countOf } from '@/utils/plural';
-import { recentRoutes } from '@/utils/recentRoutes';
 import { visibleSavedRoutes } from '@/utils/savedRoutesList';
 import { SHEET_SNAP_POINTS } from '@/utils/sheetSnap';
 import { ListMessage } from './list-message';
@@ -56,12 +56,14 @@ export function MapBottomSheet({ height, onPreviewRoute, previewId }: MapBottomS
   const removeRoute = useRouteStore((s) => s.remove);
   // A bookmark icon sits inside a tappable card, so a slip of the thumb removes a route; ask first.
   const confirmRemove = (route: SavedRoute) => {
-    Alert.alert('Remove saved route?', route.name, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => removeRoute(route.id) },
-    ]);
+    confirmDestructive({
+      title: 'Remove saved route?',
+      message: route.name,
+      confirmLabel: 'Remove',
+      onConfirm: () => removeRoute(route.id),
+    });
   };
-  const recentWithRoute = recentRoutes(userActivities, 5);
+  const recent = userActivities.slice(0, 5);
 
   // The map's floating buttons ride on the sheet's height, so it follows the sheet while it is dragged.
   useAnimatedReaction(
@@ -127,54 +129,43 @@ export function MapBottomSheet({ height, onPreviewRoute, previewId }: MapBottomS
               </Tappable>
             </ThemedView>
             {visibleSavedRoutes(savedRoutes, isExpanded).map((route) => (
-              <Tappable
+              <ActivityRow
                 key={route.id}
-                style={[styles.routeCard, { backgroundColor: theme.background }]}
-                activeOpacity={0.7}
+                variant="compact"
+                saved
+                title={route.name}
+                meta={formatDistance(route.distance, unitSystem)}
+                sport={route.sport}
+                polyline={route.polyline}
                 onPress={() => {
                   haptics.selection();
                   onPreviewRoute(route);
                 }}
-                accessibilityRole="button"
                 accessibilityState={{ selected: previewId === route.id }}
-                accessibilityLabel={`${route.name}, ${formatDistance(route.distance, unitSystem)}. Show on map`}
-              >
-                <ThemedView style={styles.routeIcon}>
-                  <Ionicons
-                    name={getSportIcon(route.sport)}
-                    size={20}
-                    color={theme.brand.primary}
-                  />
-                </ThemedView>
-                <ThemedView style={styles.routeInfo}>
-                  <ThemedText type="smallBold" numberOfLines={1} style={{ color: theme.text }}>
-                    {route.name}
-                  </ThemedText>
-                  <ThemedText type="caption" themeColor="textSecondary">
-                    {formatDistance(route.distance, unitSystem)}
-                  </ThemedText>
-                </ThemedView>
-                <Tappable
-                  onPress={() => confirmRemove(route)}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${route.name} from saved routes`}
-                >
-                  <Ionicons name="bookmark" size={18} color={theme.brand.primary} />
-                </Tappable>
-              </Tappable>
+                accessibilitySuffix="Show on map"
+                trailing={
+                  <Tappable
+                    onPress={() => confirmRemove(route)}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${route.name} from saved routes`}
+                  >
+                    <Ionicons name="bookmark" size={IconSize.inline} color={theme.brand.primary} />
+                  </Tappable>
+                }
+              />
             ))}
           </ThemedView>
         )}
 
-        {recentWithRoute.length > 0 && (
+        {recent.length > 0 && (
           <ThemedView style={styles.routesSection}>
             <ThemedView style={styles.sectionHeader}>
               <ThemedText type="sectionTitle" style={{ color: theme.text }}>
                 Recent activities
               </ThemedText>
               <Tappable
-                onPress={() => router.push('/(tabs)/profile')}
+                onPress={() => router.push('/activities')}
                 accessibilityRole="button"
                 accessibilityLabel="View all activities"
               >
@@ -184,38 +175,28 @@ export function MapBottomSheet({ height, onPreviewRoute, previewId }: MapBottomS
               </Tappable>
             </ThemedView>
 
-            {recentWithRoute.slice(0, isExpanded ? 5 : 2).map((activity) => (
-              <Tappable
+            {recent.slice(0, isExpanded ? 5 : 2).map((activity) => (
+              <ActivityRow
                 key={activity.id}
-                style={[styles.routeCard, { backgroundColor: theme.background }]}
-                activeOpacity={0.7}
+                variant="compact"
+                title={activity.name || 'Activity'}
+                meta={activitySubline(activity, unitSystem)}
+                sport={activity.activityType}
+                polyline={activity.polyline}
                 onPress={() => router.push(`/activities/${activity.id}`)}
-                accessibilityRole="button"
-                accessibilityLabel={`${activity.name}, ${formatDistance(activity.distance, unitSystem)}`}
-              >
-                <ThemedView style={styles.routeIcon}>
+                trailing={
                   <Ionicons
-                    name={getSportIcon(activity.activityType)}
-                    size={20}
+                    name="chevron-forward"
+                    size={IconSize.badge}
                     color={theme.textSecondary}
                   />
-                </ThemedView>
-                <ThemedView style={styles.routeInfo}>
-                  <ThemedText type="smallBold" numberOfLines={1} style={{ color: theme.text }}>
-                    {activity.name}
-                  </ThemedText>
-                  <ThemedText type="caption" themeColor="textSecondary">
-                    {formatDistance(activity.distance, unitSystem)} ·{' '}
-                    {formatDuration(activity.duration)}
-                  </ThemedText>
-                </ThemedView>
-                <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
-              </Tappable>
+                }
+              />
             ))}
           </ThemedView>
         )}
 
-        {recentWithRoute.length === 0 && totalArea === 0 && (
+        {recent.length === 0 && totalArea === 0 && (
           <ListMessage
             icon="map-outline"
             text="Start an activity to see your routes and captured territory here"
@@ -251,21 +232,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.one,
-  },
-  routeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: BorderRadius.lg,
-  },
-  routeIcon: {
-    width: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  routeInfo: {
-    flex: 1,
-    gap: Spacing.half,
   },
 });

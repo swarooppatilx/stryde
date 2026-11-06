@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { services } from '@repo/shared';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Keyboard, RefreshControl, SectionList, Share, StyleSheet, View } from 'react-native';
+import { Keyboard, RefreshControl, SectionList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton } from '@/components/button';
 import { CommunityCard } from '@/components/community-card';
@@ -16,6 +16,7 @@ import { Tappable } from '@/components/tappable';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { getSportLabel } from '@/constants/activity';
+import { stockImageFor } from '@/constants/stockImages';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUnitSystem } from '@/hooks/use-unit-system';
@@ -33,19 +34,18 @@ import {
 import { useRecentSearchStore } from '@/stores/recentSearchStore';
 import { searchActivities, searchUsers, useSocialStore } from '@/stores/socialStore';
 import type { ChallengeEvent } from '@/types/event';
+import { clubRowSubtitle } from '@/utils/clubRow';
 import { formatDateRange } from '@/utils/dates';
 import { buildProfileDeepLink } from '@/utils/deepLink';
 import { eventStatus } from '@/utils/eventStatus';
 import { formatDistance, formatRelativeTime, getDisplayName } from '@/utils/format';
-import { logger } from '@/utils/logger';
 import { orderEvents } from '@/utils/otherEvents';
-import { countOf } from '@/utils/plural';
 import type { RecentSearch } from '@/utils/recentSearches';
 import { resultLimit, SEARCH_SCOPES, type SearchScope, scopeShows } from '@/utils/searchScope';
+import { shareMessage } from '@/utils/shareMessage';
 import type { SocialActivity, SocialUser } from '@/utils/socialSelectors';
 import { matchesSportFilter } from '@/utils/sportFilter';
 import { suggestPeople } from '@/utils/suggestedPeople';
-import { Toast } from '@/utils/toast';
 import { withoutHidden } from '@/utils/withoutHidden';
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -207,14 +207,8 @@ export default function SearchScreen() {
     return idle;
   }, [hasQuery, users, activities, clubs, events, recents, showAllRecents, suggestions, scope]);
 
-  const inviteFriends = async () => {
-    try {
-      await Share.share({ message: `Join me on Stryde\n${buildProfileDeepLink(me)}` });
-    } catch (error) {
-      logger.warn('[Search] Invite share failed', error);
-      Toast.fail('Could not open sharing', 1);
-    }
-  };
+  const inviteFriends = () =>
+    shareMessage(`Join me on Stryde\n${buildProfileDeepLink(me)}`, 'Could not open sharing');
 
   const openUser = (user: SocialUser) => {
     remember({ kind: 'user', id: user.id, label: getDisplayName(user) });
@@ -261,8 +255,9 @@ export default function SearchScreen() {
         return (
           <CommunityCard
             icon="people-outline"
+            image={stockImageFor('club', club.id)}
             title={club.name}
-            lines={[club.location, countOf(club.memberCount, 'member', 'members')]}
+            lines={[clubRowSubtitle(club)]}
             onPress={() => router.push(`/clubs/${club.id}`)}
           />
         );
@@ -272,6 +267,7 @@ export default function SearchScreen() {
         return (
           <CommunityCard
             icon="calendar-outline"
+            image={stockImageFor('event', event.id)}
             title={event.title}
             lines={[
               eventStatus(event.startDate, event.endDate).label,

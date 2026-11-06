@@ -1,5 +1,5 @@
 import { GPS_DISTANCE_SPORTS } from '@/constants/activity';
-import type { ActivityStream, ActivityType } from '@/types';
+import type { ActivityStream, ActivityType, HiddenStat } from '@/types';
 import { cadenceSummary } from './cadence';
 import {
   formatDistance,
@@ -100,4 +100,33 @@ export function sportStatSet(activity: StatSource, unitSystem: UnitSystem): Acti
   return activityStats(activity, unitSystem)
     .filter((stat) => order.includes(stat.label))
     .sort((a, b) => order.indexOf(a.label) - order.indexOf(b.label));
+}
+
+const HIDDEN_STATS: readonly HiddenStat[] = ['start_time', 'pace'];
+
+/** Whether a figure is kept from this viewer: only other people are held back, the owner sees it all. */
+export function isStatHidden(
+  stat: HiddenStat,
+  hidden: readonly HiddenStat[] | undefined,
+  viewerIsOwner: boolean
+): boolean {
+  return !viewerIsOwner && !!hidden?.includes(stat);
+}
+
+/** The stats without the ones the author hid from other people. Speed is the same figure as pace, so it goes too. */
+export function applyHiddenStats(
+  stats: ActivityStat[],
+  hidden: readonly HiddenStat[] | undefined,
+  viewerIsOwner: boolean
+): ActivityStat[] {
+  if (!isStatHidden('pace', hidden, viewerIsOwner)) return stats;
+  return stats.filter((stat) => stat.label !== 'Pace' && stat.label !== 'Speed');
+}
+
+/** Hidden stats read from published metadata: names this app does not know are dropped. */
+export function parseHiddenStats(raw: readonly string[] | undefined): HiddenStat[] | undefined {
+  const known = [...new Set(raw)].filter((s): s is HiddenStat =>
+    (HIDDEN_STATS as readonly string[]).includes(s)
+  );
+  return known.length > 0 ? known : undefined;
 }

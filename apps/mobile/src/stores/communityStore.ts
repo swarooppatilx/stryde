@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ActivityType } from '@/types';
 import type { ChallengeEvent } from '@/types/event';
+import { sameAddress } from '@/utils/address';
 import { logger } from '@/utils/logger';
 import { chainScopedStorageAdapter, isoDateReviver } from '@/utils/storage';
 
@@ -251,9 +252,7 @@ export const useCommunityStore = create<CommunityState>()(
       isEventJoined: (eventId: string) => get().joinedEvents.includes(eventId),
       isEventHost: (eventId: string, wallet?: `0x${string}`) => {
         const event = get().events.find((e) => e.id === eventId);
-        return (
-          !!event && !!event.host && !!wallet && event.host.toLowerCase() === wallet.toLowerCase()
-        );
+        return sameAddress(event?.host, wallet);
       },
 
       reset: () => set({ ...INITIAL_STATE }),

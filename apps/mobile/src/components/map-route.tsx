@@ -91,6 +91,8 @@ export interface MapRouteProps {
   /** Point cloud for the activity-density heatmap layer. */
   heatmapPoints?: LngLatPair[];
   heatmapVisible?: boolean;
+  /** Colours of the heatmap, cool to hot; the classic ramp when left out. */
+  heatmapRamp?: readonly (readonly [number, string])[];
   /** Fires with the territory id when a territory (own or another athlete's) is tapped. */
   onTerritoryPress?: (territoryId: string) => void;
   /** Keeps the parent's zoom state in sync (drives the 2D zoom buttons). */
@@ -119,6 +121,10 @@ const SPLIT_LABEL_SIZE = ['interpolate', ['linear'], ['zoom'], 12, 8, 16, 11] as
 
 /** Line widths grow with zoom so the route stays readable from a city view down to a street. */
 const ROUTE_LINE_WIDTH = ['interpolate', ['linear'], ['zoom'], 10, 3, 15, 4.5, 18, 7] as never;
+/** The outline under the route on the dark base map: a pale, see-through edge, because a dark one vanishes into the map. */
+const ROUTE_CASING_COLOR_DARK = '#c9d1dc';
+const ROUTE_CASING_OPACITY_DARK = 0.4;
+const ROUTE_CASING_OPACITY_LIGHT = 0.9;
 const ROUTE_CASING_WIDTH = ['interpolate', ['linear'], ['zoom'], 10, 5.5, 15, 8, 18, 11] as never;
 
 /** Some platform builds put `features` on the event itself rather than under `nativeEvent`. */
@@ -240,6 +246,7 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
   othersTerritoryOpacity = 0.12,
   heatmapPoints = [],
   heatmapVisible = true,
+  heatmapRamp,
   onTerritoryPress,
   onZoomChanged,
   onCameraMove,
@@ -365,7 +372,7 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
                 'interpolate',
                 ['linear'],
                 ['heatmap-density'],
-                ...HEAT_RAMP.flat(),
+                ...(heatmapRamp ?? HEAT_RAMP).flat(),
               ],
               'heatmap-radius': 20,
               'heatmap-opacity': 0.55,
@@ -437,9 +444,9 @@ const MapLibreRouteInternal = React.memo(function MapLibreRouteInternal({
             'line-join': 'round',
           }}
           paint={{
-            'line-color': dark ? '#0d1014' : Palette.white,
+            'line-color': dark ? ROUTE_CASING_COLOR_DARK : Palette.white,
             'line-width': ROUTE_CASING_WIDTH,
-            'line-opacity': 0.9,
+            'line-opacity': dark ? ROUTE_CASING_OPACITY_DARK : ROUTE_CASING_OPACITY_LIGHT,
           }}
         />
         <Layer

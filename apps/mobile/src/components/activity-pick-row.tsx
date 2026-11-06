@@ -1,13 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
-import { Tappable } from '@/components/tappable';
-import { ThemedText } from '@/components/themed-text';
-import { SPORT_ICONS } from '@/constants/activity';
-import { BorderRadius, Spacing, tint } from '@/constants/theme';
+import { ActivityRow } from '@/components/activity-row';
+import { IconSize, Spacing, tint } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Activity, ActivityPrivacy } from '@/types';
-import { formatWeekdayDay } from '@/utils/dates';
-import { formatDistance, formatDuration, type UnitSystem } from '@/utils/format';
+import { activitySubline } from '@/utils/activitySubline';
+import type { UnitSystem } from '@/utils/format';
 
 const PRIVACY_ICON: Record<ActivityPrivacy, keyof typeof Ionicons.glyphMap> = {
   everyone: 'globe-outline',
@@ -31,7 +29,7 @@ interface Props {
   onLongPress(): void;
 }
 
-/** An activity in the full list: sport, title, when, how far, who can see it, and a box while picking. */
+/** An activity in the full list: its map, title, one meta line, who can see it, and a box while picking. */
 export function ActivityPickRow({
   activity,
   unitSystem,
@@ -42,54 +40,47 @@ export function ActivityPickRow({
 }: Props) {
   const theme = useTheme();
   const privacy = activity.privacy ?? 'everyone';
-  const name = activity.name || 'Activity';
-  const when = formatWeekdayDay(activity.stream?.startedAt ?? activity.createdAt);
   return (
-    <Tappable
+    <ActivityRow
+      variant="compact"
+      title={activity.name || 'Activity'}
+      meta={activitySubline(activity, unitSystem)}
+      sport={activity.activityType}
+      polyline={activity.polyline}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={[
-        styles.row,
-        {
-          backgroundColor: selected ? tint(theme.brand.primary, 0.12) : theme.backgroundElement,
-          borderColor: selected ? theme.brand.primary : theme.border,
-        },
-      ]}
+      style={
+        selected
+          ? {
+              backgroundColor: tint(theme.brand.primary, 0.12),
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: theme.brand.primary,
+            }
+          : undefined
+      }
       accessibilityRole={selecting ? 'checkbox' : 'button'}
       accessibilityState={selecting ? { checked: selected } : undefined}
-      accessibilityLabel={`${name}, ${when}, ${formatDistance(activity.distance, unitSystem)}, ${PRIVACY_LABEL[privacy]}`}
-    >
-      {selecting ? (
-        <Ionicons
-          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-          size={24}
-          color={selected ? theme.brand.primary : theme.textSecondary}
-        />
-      ) : (
-        <Ionicons name={SPORT_ICONS[activity.activityType]} size={22} color={theme.textSecondary} />
-      )}
-      <View style={styles.info}>
-        <ThemedText type="smallBold" numberOfLines={1}>
-          {name}
-        </ThemedText>
-        <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
-          {when} · {formatDistance(activity.distance, unitSystem)} ·{' '}
-          {formatDuration(activity.duration)}
-        </ThemedText>
-      </View>
-      <Ionicons name={PRIVACY_ICON[privacy]} size={16} color={theme.textSecondary} />
-    </Tappable>
+      accessibilitySuffix={PRIVACY_LABEL[privacy]}
+      trailing={
+        <View style={styles.trailing}>
+          <Ionicons
+            name={PRIVACY_ICON[privacy]}
+            size={IconSize.badge}
+            color={theme.textSecondary}
+          />
+          {selecting ? (
+            <Ionicons
+              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+              size={IconSize.action}
+              color={selected ? theme.brand.primary : theme.textSecondary}
+            />
+          ) : null}
+        </View>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-  },
-  info: { flex: 1, gap: Spacing.half },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
 });

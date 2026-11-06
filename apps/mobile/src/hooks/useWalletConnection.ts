@@ -17,6 +17,7 @@ import {
   rememberWalletKind,
 } from '@/services/walletIdentity';
 import { logger } from '@/utils/logger';
+import { walletRetryDelayMs } from '@/utils/walletRetry';
 
 const CHAIN_MAP: Record<ChainMode, Chain> = {
   'ethereum-sepolia': sepolia,
@@ -29,6 +30,8 @@ export interface WalletState {
   address: `0x${string}` | null;
   isLoading: boolean;
   walletError: string | null;
+  /** True from the first failed start until the wallet connects: unlike `walletError` it stays set while a retry is running, so screens can keep saying "not connected" instead of flickering back to a spinner. */
+  walletFailed: boolean;
   /** 'smart' = gas-free; 'embedded' = pays its own gas (the smart wallet couldn't be used). */
   walletKind: 'smart' | 'embedded' | null;
   /** Tries to connect again after a failure (e.g. the gas-free wallet was unreachable). */
@@ -47,6 +50,7 @@ export function useWalletConnection(mode: ChainMode = 'ethereum-sepolia'): Walle
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletKind, setWalletKind] = useState<'smart' | 'embedded' | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [walletFailed, setWalletFailed] = useState(false);
 
   // getClientForChain's identity changes every render; reading it via a ref keeps it out of the effect deps, which would otherwise re-run and re-throw (a starvation loop, see the pre-login guard below).
   const getClientForChainRef = useRef(getClientForChain);
@@ -141,10 +145,12 @@ export function useWalletConnection(mode: ChainMode = 'ethereum-sepolia'): Walle
           setWalletKind(connection.kind);
           setActiveWallet(connection.wallet, connection.address);
           setCurrentUserId(connection.address);
+          setWalletFailed(false);
         }
       } catch (error) {
-        logger.error('[useWalletConnection] Failed to initialize:', error);
+        logger.error('[useWalletConnection] Failed to initialize:', error, (error as Error)?.cause);
         setWalletError(error instanceof Error ? error.message : 'Wallet initialization failed');
+        setWalletFailed(true);
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -165,5 +171,17 @@ export function useWalletConnection(mode: ChainMode = 'ethereum-sepolia'): Walle
     setAttempt((n) => n + 1);
   }, []);
 
-  return { wallet, address, isLoading, walletError, walletKind, retry };
+  // The gas-free wallet often fails right after a cold start and works a minute later, so keep trying
+  // quietly with growing pauses instead of leaving the athlete stuck until the app is reopened.
+  const failures = useRef(0);
+  useEffect(() => {
+    // Only a connected wallet resets the count: the error also clears when each retry starts.
+    if (!walletFailed) failures.current = 0;
+    if (!walletError) return;
+    failures.current += 1;
+    const timer = setTimeout(retry, walletRetryDelayMs(failures.current));
+    return () => clearTimeout(timer);
+  }, [walletError, walletFailed, retry]);
+
+  return { wallet, address, isLoading, walletError, walletFailed, walletKind, retry };
 }

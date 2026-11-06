@@ -2,12 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { BorderRadius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { ActivityType, Split } from '@/types';
-import {
-  formatDuration,
-  formatElevation,
-  formatPaceOrSpeed,
-  type UnitSystem,
-} from '@/utils/format';
+import { formatElevation, formatPaceOrSpeed, type UnitSystem } from '@/utils/format';
 import { gradeAdjustedSplits } from '@/utils/gradeAdjusted';
 import { ThemedText } from './themed-text';
 
@@ -42,13 +37,7 @@ export function SplitsList({ splits, unitSystem, activityType }: Props) {
   });
 
   return (
-    <View style={styles.container} accessibilityLabel="Splits">
-      <View style={styles.row}>
-        <ThemedText type="smallBold">Splits</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          Moving time {formatDuration(splits.reduce((sum, s) => sum + s.movingTime, 0))}
-        </ThemedText>
-      </View>
+    <View style={styles.container}>
       {splits.map((split, position) => {
         const msPerMeter = split.distance > 0 ? split.movingTime / split.distance : 0;
         const isFastest = msPerMeter > 0 && msPerMeter === fastest;
@@ -101,7 +90,7 @@ export function SplitsList({ splits, unitSystem, activityType }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { gap: Spacing.one, paddingVertical: Spacing.two },
+  container: { gap: Spacing.one },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -18,8 +18,11 @@ export const PUSH_PRIMER_COPY = {
 
 /** Copy for the Groups tab screens. */
 export const COMMUNITY_COPY = {
+  challengesEmptyTitle: 'Check back for Upcoming & New Challenges',
+  clubsEmptyTitle: 'No clubs yet',
+  eventsEmptyTitle: 'No events yet',
   challengesEmpty:
-    'No challenges yet. Challenge a friend: put up a small stake — whoever covers more distance wins both.',
+    'Challenge a friend: put up a small stake — whoever covers more distance wins both.',
   /** Shown instead of an error that no retry could fix, on a profile with no network behind it. */
   challengesSandbox:
     "Challenges need a live network, so they aren't available in the Sandbox profile.",

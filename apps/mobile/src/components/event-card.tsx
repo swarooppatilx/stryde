@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image, type ImageSource } from 'expo-image';
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { eventCoverColor } from '@/constants/sportColors';
@@ -14,6 +15,8 @@ const COVER_OPACITY = 0.2;
 interface EventCardProps {
   sport: ActivityType | 'multi';
   icon: keyof typeof Ionicons.glyphMap;
+  /** A photo for the cover; the sport-coloured icon cover shows when there is none. */
+  image?: ImageSource | number;
   title: string;
   /** Shown on the cover's corner, e.g. the start date. */
   badge: string;
@@ -22,8 +25,17 @@ interface EventCardProps {
   trailing?: ReactNode;
 }
 
-/** An event in the Groups list; events have no picture, so the cover is drawn from the sport. */
-export function EventCard({ sport, icon, title, badge, lines, onPress, trailing }: EventCardProps) {
+/** An event in the Groups list; events carry no picture on-chain, so the cover is a stock photo, or drawn from the sport without one. */
+export function EventCard({
+  sport,
+  icon,
+  image,
+  title,
+  badge,
+  lines,
+  onPress,
+  trailing,
+}: EventCardProps) {
   const theme = useTheme();
   const color = eventCoverColor(sport);
   return (
@@ -34,7 +46,17 @@ export function EventCard({ sport, icon, title, badge, lines, onPress, trailing 
       accessibilityLabel={`${title}, ${badge}`}
     >
       <View style={[styles.cover, { backgroundColor: tint(color, COVER_OPACITY) }]}>
-        <Ionicons name={icon} size={40} color={color} />
+        {image ? (
+          // Decorative: the title below names the event. Cropped from the middle, where faces tend to be.
+          <Image
+            source={image}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            accessible={false}
+          />
+        ) : (
+          <Ionicons name={icon} size={40} color={color} />
+        )}
         <View style={[styles.badge, { backgroundColor: theme.backgroundSunken }]}>
           <ThemedText type="smallBold">{badge}</ThemedText>
         </View>

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { FlatCard } from '@/components/activity-detail/analysis-card';
 import { PaceChart } from '@/components/pace-chart';
 import { ScrubChart } from '@/components/scrub-chart';
 import { Tappable } from '@/components/tappable';
@@ -75,6 +76,7 @@ export function ActivityChartPager({
       return (
         <ScrubChart
           title="Elevation"
+          minSpan={20}
           values={elevation.values}
           times={elevation.times}
           timed={elevation.source === 'stream'}
@@ -90,6 +92,7 @@ export function ActivityChartPager({
       return (
         <ScrubChart
           title="Heart rate"
+          minSpan={30}
           values={heartRate.bpm}
           times={heartRate.t}
           timed
@@ -103,7 +106,7 @@ export function ActivityChartPager({
     return null;
   };
 
-  if (pages.length === 1) return renderPage(pages[0] as ChartPage);
+  if (pages.length === 1) return <FlatCard>{renderPage(pages[0] as ChartPage)}</FlatCard>;
 
   const goTo = (index: number) => {
     scroller.current?.scrollTo({ x: index * width, animated: true });
@@ -111,42 +114,44 @@ export function ActivityChartPager({
   };
 
   return (
-    <View
-      style={styles.container}
-      onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
-    >
-      <ScrollView
-        ref={scroller}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) =>
-          width > 0 && setPage(Math.round(e.nativeEvent.contentOffset.x / width))
-        }
+    <FlatCard>
+      <View
+        style={styles.container}
+        onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
       >
-        {pages.map((kind) => (
-          <View key={kind} style={{ width }}>
-            {renderPage(kind)}
-          </View>
-        ))}
-      </ScrollView>
-      <View style={styles.dots} accessibilityRole="tablist">
-        {pages.map((kind, index) => (
-          <Tappable
-            key={kind}
-            onPress={() => goTo(index)}
-            hitSlop={12}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: index === page }}
-            accessibilityLabel={`${PAGE_LABEL[kind]} chart`}
-            style={[
-              styles.dot,
-              { backgroundColor: index === page ? theme.brand.primary : theme.border },
-            ]}
-          />
-        ))}
+        <ScrollView
+          ref={scroller}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) =>
+            width > 0 && setPage(Math.round(e.nativeEvent.contentOffset.x / width))
+          }
+        >
+          {pages.map((kind) => (
+            <View key={kind} style={{ width }}>
+              {renderPage(kind)}
+            </View>
+          ))}
+        </ScrollView>
+        <View style={styles.dots} accessibilityRole="tablist">
+          {pages.map((kind, index) => (
+            <Tappable
+              key={kind}
+              onPress={() => goTo(index)}
+              hitSlop={12}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: index === page }}
+              accessibilityLabel={`${PAGE_LABEL[kind]} chart`}
+              style={[
+                styles.dot,
+                { backgroundColor: index === page ? theme.brand.primary : theme.border },
+              ]}
+            />
+          ))}
+        </View>
       </View>
-    </View>
+    </FlatCard>
   );
 }
 

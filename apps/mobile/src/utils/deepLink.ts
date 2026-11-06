@@ -6,12 +6,18 @@ import * as Linking from 'expo-linking';
  * older, screen-named links are still understood.
  */
 
+const SHARE_SCHEME = 'stryde';
+
+function shareUrl(path: string): string {
+  return Linking.createURL(path, { scheme: SHARE_SCHEME });
+}
+
 export function buildActivityDeepLink(activityId: string): string {
-  return Linking.createURL(`activities/${encodeURIComponent(activityId)}`);
+  return shareUrl(`activities/${encodeURIComponent(activityId)}`);
 }
 
 export function buildProfileDeepLink(athleteId: string): string {
-  return Linking.createURL(`athletes/${encodeURIComponent(athleteId)}`);
+  return shareUrl(`athletes/${encodeURIComponent(athleteId)}`);
 }
 
 /** A link to a club, event or challenge page. */
@@ -19,5 +25,5 @@ export function buildDetailDeepLink(
   resource: 'clubs' | 'events' | 'challenges',
   id: string
 ): string {
-  return Linking.createURL(`${resource}/${encodeURIComponent(id)}`);
+  return shareUrl(`${resource}/${encodeURIComponent(id)}`);
 }
