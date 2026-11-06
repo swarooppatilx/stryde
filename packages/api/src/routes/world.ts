@@ -50,6 +50,13 @@ if (SKIP_REMOTE_VERIFY_REQUESTED && IS_PRODUCTION_DEPLOY) {
   );
 }
 
+if (IS_PRODUCTION_DEPLOY && WORLD_ENVIRONMENT !== 'production') {
+  // Sandbox proofs are free to make, yet each accepted enrollment writes a permanent ProfileRegistry badge.
+  console.error(
+    `[world] WORLD_ENVIRONMENT is '${WORLD_ENVIRONMENT}' on the production deployment — proofs made by anyone in the World simulator are accepted.`
+  );
+}
+
 if (!RP_SIGNING_KEY) {
   console.warn('[world] WORLD_RP_SIGNING_KEY not set — /world/session will return 503');
 }

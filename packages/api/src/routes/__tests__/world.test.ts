@@ -298,6 +298,32 @@ describe('polling a session', () => {
   });
 });
 
+describe('WORLD_ENVIRONMENT on the production deployment', () => {
+  afterEach(() => {
+    for (const k of [...ENV_KEYS, 'WORLD_ENVIRONMENT'] as const) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['sandbox', true],
+    [undefined, true],
+    ['production', false],
+  ])('with %s, warns loudly: %s', async (environment, warns) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    if (environment) process.env.WORLD_ENVIRONMENT = environment;
+    else delete process.env.WORLD_ENVIRONMENT;
+
+    await loadWorld({ skip: false, vercelEnv: 'production' });
+
+    const warned = error.mock.calls.some(([line]) => String(line).includes('WORLD_ENVIRONMENT'));
+    expect(warned).toBe(warns);
+  });
+});
+
 describe('POST /verify', () => {
   afterEach(() => {
     for (const k of ENV_KEYS) {
