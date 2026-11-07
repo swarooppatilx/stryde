@@ -59,3 +59,18 @@ The renewal job ([`arkivRenewal.ts`](../packages/api/src/lib/arkivRenewal.ts)) e
 3. The run's proof card shows "Open on Swarm", "View on Arkiv" and "Download GPX", all read back from the archive entity.
 4. The segment screen reads the leaderboard from `stryde_effort`. The map reads segment pins from `stryde_segment`.
 5. Sharing a run writes `stryde_beacon` every 30 seconds. The friend's screen polls it until it expires or is deleted.
+
+## In the demo video
+
+| Time | What you see | Arkiv entity |
+|---|---|---|
+| 0:30 | The home feed and athlete cards | `idx_event` |
+| 0:42 to 0:45 | Live sharing starts while recording, and the link is sent to a friend | `stryde_beacon` created |
+| 0:48 to 0:54 | The friend opens the link: "running live", with the dot on the map | `stryde_beacon` read and patched |
+| 1:09 | The run is saved | `stryde_route_archive` written readonly, then transferred to the athlete |
+| 1:36 | The proof card: "GPX archived on Swarm", "Open on Swarm", the Arkiv link | `stryde_route_archive` read back |
+| 1:39 to 1:42 | The archive on the Arkiv explorer: owner, creator, attributes | `stryde_route_archive` |
+| 1:54 to 2:30 | A club is created, gets a post and an invite QR code, and an event is added | `club_record` |
+| 2:33 | Segments near the runner, with distance from where they stand | `stryde_segment` (geohash `startsWith`) |
+| 2:36 to 2:42 | A segment's page and leaderboard, then the segment on the Arkiv explorer | `stryde_segment`, `stryde_effort` |
+| 2:45 | Creating a segment from the run | `stryde_segment` written |

@@ -104,7 +104,14 @@ We ran steps 3 and 4 on 6 November 2026 and got entity `0x5c7761…5a69bd` with 
 
 ## In the demo video
 
-TODO: timestamp (mm:ss) where the run's proof card shows "Open on Swarm", "View on Arkiv" and "Download GPX", and the GPX opens from the gateway.
+| Time | What you see |
+|---|---|
+| 1:03 to 1:06 | Saving the run. The route is uploaded to Swarm through our Bee node while the run is saved |
+| 1:09 | "Activity saved: Night Walk". The route archive is written to Arkiv in the same step |
+| 1:36 | The run's proof card: "GPX archived on Swarm", "Open on Swarm" and the Arkiv link |
+| 1:39 to 1:42 | "View on Arkiv" opens the route archive entity on the Arkiv explorer: owner, creator, attributes and the Swarm reference |
+
+The GPX downloaded from the gateway is not in the video. Step 5 above shows how to open it from any browser.
 
 ## What got in our way with Swarm
 
