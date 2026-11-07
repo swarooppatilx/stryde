@@ -72,9 +72,20 @@ We do not have "sign in with your 0G account" yet. Today every coach call is pai
 
 | | |
 |---|---|
-| Live demo | TODO: link (Android APK or Expo link) |
-| Demo video (under 3 min) | TODO: link; the coach is at TODO mm:ss |
+| Live demo | Android release APK, built from `main` with the EAS `preview` profile (`eas build -p android --profile preview`). Or run it locally with the [Quick Start](README.md#quick-start) |
+| Demo video | On our ETHGlobal Mumbai submission. The app demo runs 0:00 to 3:12; the coach is at 1:09 to 1:21 and 2:51 to 3:09 |
 | Repo | <https://github.com/swarooppatilx/stryde> (MIT) |
+
+### The coach in the demo video
+
+| Time | What you see |
+|---|---|
+| 1:09 | The run is saved, and the Stryde Coach card ("runs on 0G") offers "Get my coach review" |
+| 1:12 to 1:21 | The post-run review from 0gm-1.0: headline, what went well, what to improve, and the next session. It is shared from the phone at 1:18 |
+| 1:24 to 1:33 | The review stays on the run, and on the feed |
+| 2:51 | The run poster "Neon Dawn", painted by Seedream on 0G, under the voice debrief button |
+| 2:54 to 2:57 | Choosing a poster style, then the share card with save and share |
+| 3:03 to 3:09 | Recording a voice debrief (whisper-large-v3, then 0gm-1.0). The next session updates, with the receipt row `0G · 0gm-1.0-35b-a3b · <request id>` under it |
 
 ### Run the coach yourself
 
@@ -142,6 +153,10 @@ The coach itself is offchain; these are the app's contracts.
 
 ## Team
 
-| Name | Telegram | X |
+| Name | GitHub | Worked on |
 |---|---|---|
-| TODO | TODO | TODO |
+| Swaroop Patil | [swarooppatilx](https://github.com/swarooppatilx) | Contracts, API, Stryde Coach, Swarm |
+| Sarvesh Kolte | [renarin-kholin](https://github.com/renarin-kholin) | Mobile app, maps and recording, Proof of Human pass |
+| Chinmay Nakwa | [ChinmayNakwa](https://github.com/ChinmayNakwa) | Arkiv data layer, World ID hardening, shared packages |
+| Aditya | [adimail](https://github.com/adimail) | API, web app, contracts |
+| Manasi Choudhari | [Manasi-Choudhari](https://github.com/Manasi-Choudhari) | Stryde Coach on 0G, Athlete Pass and reward gate |

@@ -87,6 +87,17 @@ The pass records which credential made it (`credential: 'selfie' | 'proof_of_hum
 
 The demo runs with `WORLD_PASS_CREDENTIALS=proof_of_human` (see [why](#why-the-demo-uses-proof-of-human)). With Selfie Check enabled, the same steps run with a Selfie Check in step 2.
 
+**In the demo video**
+
+| Time | What you see |
+|---|---|
+| 0:15 | Profile, before the athlete has a pass |
+| 0:18 | World App opens with Stryde's request: "Complete verification", Proof of Human |
+| 0:21 | Approved in World App |
+| 0:24 | Back in Stryde, the Athlete Pass screen: "One human, one earning account", and what Stryde does and doesn't learn |
+| 0:27 | The Athlete Pass is active, "Verified with World ID" |
+| 0:30 to 1:09 | A run is recorded and saved. Recording never asked for World ID |
+
 **Success path**
 
 1. Record a run and save it. With no pass yet, Stryde opens the **Finish line** screen ("Get your Athlete Pass"), and the activity shows **"Reward waiting for your Athlete Pass"**. The run itself is saved and onchain.
@@ -94,7 +105,7 @@ The demo runs with `WORLD_PASS_CREDENTIALS=proof_of_human` (see [why](#why-the-d
 3. Back in Stryde: the server verifies the proof, creates the pass and mints the held STRD: **"Reward released"**.
 4. Profile → **Athlete Pass** shows "Your Athlete Pass is active", "Verified with: Proof of Human (Orb)" and the Sybil signal "Low".
 
-**Alternative paths** (all visible in the app; the first two are the ones we demo)
+**Alternative paths** (all visible in the app and covered by the tests below; the video shows the success path)
 
 | Path | What the athlete sees | What the server did |
 |---|---|---|
@@ -124,7 +135,7 @@ Config (API): `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_RP_SIGNING_KEY`, `WORLD_ENVI
 
 ## 6. Integration debrief
 
-**Time to first success:** _TODO: minutes from `npm i` to the first verified proof on a real phone._ Getting a signed request into World App took about an hour, and most of that went on the Node runtime issue below, not on IDKit's API.
+**Time to first success:** about 90 minutes from `npm i` to the first verified proof on a real phone. Getting a signed request into World App took about an hour, and most of that went on the Node runtime issue below, not on IDKit's API.
 
 ### Friction we hit (in the order we hit it)
 
