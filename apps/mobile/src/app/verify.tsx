@@ -140,8 +140,9 @@ export default function VerifyScreen() {
                 <ThemedView style={styles.benefitCopy}>
                   <ThemedText type="smallBold">Enough to stop farms</ThemedText>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    STRD is real value. World ID proves one unique human holds this account, so bot
-                    farms and one person running ten accounts cannot split the rewards.
+                    STRD rewards are worth protecting. World ID proves one unique human holds this
+                    account, so bot farms and one person running ten accounts cannot split the
+                    rewards.
                   </ThemedText>
                 </ThemedView>
               </ThemedView>

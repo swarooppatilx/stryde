@@ -29,4 +29,13 @@ describe('friendlyError', () => {
   it('lets the caller word the unreachable case', () => {
     expect(friendlyError(new Error('Failed to fetch'), 'x', 'Offline')).toBe('Offline');
   });
+
+  it.each(['Internal server error', 'Bad Gateway', 'Service Unavailable', 'Gateway Timeout'])(
+    'rewords a bare server status line: %s',
+    (message) => {
+      expect(friendlyError(new Error(message), 'Could not save')).toBe(
+        'Something went wrong on our side. Try again in a moment.'
+      );
+    }
+  );
 });

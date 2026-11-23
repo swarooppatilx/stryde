@@ -23,6 +23,7 @@ import { starredList, useSegmentStarsStore } from '@/stores/segmentStarsStore';
 import type { Activity } from '@/types';
 import { Alert } from '@/utils/alert';
 import { formatDistance } from '@/utils/format';
+import { friendlyError } from '@/utils/friendlyError';
 import { haversineDistance } from '@/utils/geo';
 import { Toast } from '@/utils/toast';
 
@@ -76,7 +77,9 @@ export default function SegmentsScreen() {
       setError(null);
     } catch (e) {
       setError(
-        isNotConfigured(e) ? 'Arkiv is not configured on the Stryde API yet.' : (e as Error).message
+        isNotConfigured(e)
+          ? 'Segments are not switched on for this server yet.'
+          : friendlyError(e, "Segments can't load right now. Try again in a moment.")
       );
     } finally {
       setLoading(false);
@@ -157,6 +160,9 @@ export default function SegmentsScreen() {
               <ThemedText type="small" themeColor="textSecondary">
                 {error}
               </ThemedText>
+              <AppButton variant="secondary" onPress={() => void load()}>
+                Try again
+              </AppButton>
             </Card>
           )}
 

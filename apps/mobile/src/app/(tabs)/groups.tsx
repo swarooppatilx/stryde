@@ -214,14 +214,17 @@ export default function CommunityScreen() {
         ...(isEventHost(item.id, address ?? undefined) ? ['You host this event'] : []),
       ]}
       onPress={() => router.push(`/events/${item.id}`)}
+      // An ended event is read-only: the card keeps its chevron instead of a Join or Joined button.
       trailing={
-        <JoinButton
-          joined={joinedEvents.includes(item.id)}
-          pending={isSending(eventKey(item.id))}
-          name={item.title}
-          onPress={() => handleJoinEvent(item)}
-          disabled={isEventHost(item.id, address ?? undefined)}
-        />
+        eventStatus(item.startDate, item.endDate).phase === 'ended' ? undefined : (
+          <JoinButton
+            joined={joinedEvents.includes(item.id)}
+            pending={isSending(eventKey(item.id))}
+            name={item.title}
+            onPress={() => handleJoinEvent(item)}
+            disabled={isEventHost(item.id, address ?? undefined)}
+          />
+        )
       }
     />
   );
